@@ -18,66 +18,37 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Shopify API version - use stable version
-SHOPIFY_API_VERSION = "2024-01"
 
-
-class BillingInterval(str, Enum):
-    """Billing interval for recurring charges."""
-    EVERY_30_DAYS = "EVERY_30_DAYS"
-    ANNUAL = "ANNUAL"
-
-
-class SubscriptionLineItemType(str, Enum):
-    """Type of subscription line item."""
-    RECURRING = "RECURRING"
-    USAGE = "USAGE"
+@dataclass
+class ShopifySubscriptionResponse:
+    """Response from Shopify subscription API."""
+    subscription_id: str
+    confirmation_url: Optional[str] = None
+    status: Optional[str] = None
+    current_period_end: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    name: Optional[str] = None
+    return_url: Optional[str] = None
+    test: bool = False
 
 
 @dataclass
-class ShopifySubscription:
-    """Represents a Shopify AppSubscription from the API."""
-    id: str  # GraphQL GID
+class ShopifyPlanConfig:
+    """Configuration for a Shopify billing plan."""
     name: str
-    status: str
-    created_at: Optional[datetime] = None
-    current_period_end: Optional[datetime] = None
+    price: float  # In dollars
+    interval: str = "EVERY_30_DAYS"  # or "ANNUAL"
     trial_days: int = 0
     test: bool = False
-    line_items: list = None
-
-    def __post_init__(self):
-        if self.line_items is None:
-            self.line_items = []
-
-
-@dataclass
-class CreateSubscriptionResult:
-    """Result of creating a subscription."""
-    confirmation_url: str
-    app_subscription: Optional[ShopifySubscription] = None
-    user_errors: list = None
-
-    def __post_init__(self):
-        if self.user_errors is None:
-            self.user_errors = []
-
-    @property
-    def success(self) -> bool:
-        return bool(self.confirmation_url) and not self.user_errors
 
 
 class ShopifyBillingError(Exception):
-    """Base exception for Shopify Billing API errors."""
-    pass
+    """Error from Shopify Billing API."""
 
-
-class ShopifyAPIError(ShopifyBillingError):
-    """Error communicating with Shopify API."""
-    def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[dict] = None):
+    def __init__(self, message: str, code: Optional[str] = None, details: Optional[Dict] = None):
         super().__init__(message)
-        self.status_code = status_code
-        self.response = response
+        self.code = code
+        self.details = details or {}
 
 
 class ShopifyBillingClient:
@@ -130,7 +101,7 @@ class ShopifyBillingClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
 
-    async def _execute_graphql(self, query: str, variables: Optional[dict] = None) -> dict:
+    async def _execute_graphql(self, query: str, variables: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Execute a GraphQL query against Shopify Admin API.
 
@@ -302,34 +273,24 @@ class ShopifyBillingClient:
         """
 
         variables = {
-            "name": name,
+            "name": plan.name,
             "returnUrl": return_url,
+            "test": plan.test,
+            "trialDays": plan.trial_days,
             "lineItems": [
                 {
                     "plan": {
                         "appRecurringPricingDetails": {
                             "price": {
-                                "amount": price_amount,
-                                "currencyCode": currency_code
+                                "amount": plan.price,
+                                "currencyCode": "USD"
                             },
-                            "interval": interval.value
+                            "interval": plan.interval,
                         }
                     }
                 }
             ],
-            "trialDays": trial_days,
-            "test": test,
-            "replacementBehavior": replacement_behavior
         }
-
-        logger.info("Creating Shopify subscription", extra={
-            "shop_domain": self.shop_domain,
-            "name": name,
-            "price_amount": price_amount,
-            "interval": interval.value,
-            "trial_days": trial_days,
-            "test": test
-        })
 
         data = await self._execute_graphql(mutation, variables)
         result = data.get("appSubscriptionCreate", {})
