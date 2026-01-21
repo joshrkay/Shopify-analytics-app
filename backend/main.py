@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.platform.tenant_context import TenantContextMiddleware, get_tenant_context
-from src.api.routes import health
+from src.api.routes import health, billing, webhooks_shopify
 
 # Configure structured logging
 logging.basicConfig(
@@ -88,6 +88,12 @@ app.middleware("http")(tenant_middleware)
 
 # Include health route (bypasses authentication)
 app.include_router(health.router)
+
+# Include billing routes (requires authentication)
+app.include_router(billing.router)
+
+# Include Shopify webhook routes (no authentication, uses HMAC verification)
+app.include_router(webhooks_shopify.router)
 
 
 # Example protected endpoint
