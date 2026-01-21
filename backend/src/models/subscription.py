@@ -80,7 +80,7 @@ class Subscription(Base, TimestampMixin, TenantScopedMixin):
     # Subscription lifecycle
     status = Column(
         Enum(
-            "pending", "active", "frozen", "cancelled", "declined", "expired",
+            SubscriptionStatus,
             name="subscription_status"
         ),
         default="pending",
