@@ -53,7 +53,10 @@ class BillingEventType:
     STORE_UNINSTALLED = "store_uninstalled"
 
 
-class ActorType:
+from enum import Enum as PyEnum
+
+
+class ActorType(str, PyEnum):
     """Actor type constants."""
     USER = "user"
     SYSTEM = "system"
