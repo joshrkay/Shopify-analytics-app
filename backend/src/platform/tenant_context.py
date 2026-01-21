@@ -121,42 +121,22 @@ class TenantContextMiddleware:
         token = credentials.credentials
         
         try:
-            # Fetch JWKS
-            jwks = await self.jwks_client.get_jwks()
+            # Get signing key from JWKS (PyJWKClient handles fetching/caching)
+            signing_key = self.jwks_client.get_signing_key(token)
             
-            # Get signing key
-            signing_key = self.jwks_client.get_signing_key(token, jwks)
-            if not signing_key:
-                logger.warning("No matching signing key found in JWKS", extra={
-                    "path": request.url.path
-                })
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Invalid token: no matching signing key"
-                )
-            
-            # Verify and decode JWT
-            algorithm = signing_key.get("alg", "RS256")
-            
-            # Convert JWK to PEM for jose library (if RS256)
-            if algorithm == "RS256":
-                try:
-                    # Try using JWK dict directly first (some jose versions support this)
-                    key_for_verification = signing_key
-                except:
-                    # Fallback: convert to PEM
-                    key_for_verification = self.jwks_client._jwk_to_pem(signing_key)
-            else:
-                key_for_verification = signing_key
-            
-            # Decode and verify token
+            # Decode and verify token using PyJWT
             payload = jwt.decode(
                 token,
-                key_for_verification,
-                algorithms=[algorithm],
+                signing_key.key,
+                algorithms=["RS256"],  # Frontegg uses RS256
                 audience=self.jwks_client.client_id,
                 issuer=self.issuer,
-                options={"verify_signature": True, "verify_aud": True, "verify_iss": True}
+                options={
+                    "verify_signature": True,
+                    "verify_aud": True,
+                    "verify_iss": True,
+                    "verify_exp": True
+                }
             )
             
             # Extract tenant context from payload
