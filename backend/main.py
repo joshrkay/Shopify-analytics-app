@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.platform.tenant_context import TenantContextMiddleware, get_tenant_context
+from src.api.routes import health
 
 # Configure structured logging
 logging.basicConfig(
@@ -73,14 +74,8 @@ except Exception as e:
     raise
 
 
-# Health check endpoint (bypasses authentication)
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Render monitoring."""
-    return {
-        "status": "healthy",
-        "service": "ai-growth-api"
-    }
+# Include health route (bypasses authentication)
+app.include_router(health.router)
 
 
 # Example protected endpoint
