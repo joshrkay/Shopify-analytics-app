@@ -16,7 +16,9 @@ from sqlalchemy.orm import relationship
 from src.models.base import Base, TimestampMixin, TenantScopedMixin, generate_uuid
 
 
-class SubscriptionStatus(str):
+from enum import Enum as PyEnum
+
+class SubscriptionStatus(str, PyEnum):
     """Subscription status values."""
     PENDING = "pending"          # Charge created, awaiting merchant approval
     ACTIVE = "active"            # Merchant approved, subscription active
