@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.platform.tenant_context import TenantContextMiddleware, get_tenant_context
+from src.platform.health import get_health_checker
 from src.api.routes import health
 
 # Configure structured logging
@@ -26,12 +27,18 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan events."""
+    """Application lifespan events with Render deployment validation."""
     # Startup
     logger.info("Starting AI Growth Analytics API")
     
+    # Initialize health checker
+    health_checker = get_health_checker()
+    
+    # Log configuration status (NO secrets)
+    health_checker.log_config_status()
+    
     # Verify required environment variables
-    required_vars = ["FRONTEGG_CLIENT_ID", "FRONTEGG_CLIENT_SECRET"]
+    required_vars = ["FRONTEGG_CLIENT_ID", "FRONTEGG_CLIENT_SECRET", "DATABASE_URL"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     
     if missing_vars:
@@ -39,6 +46,17 @@ async def lifespan(app: FastAPI):
         raise ValueError(f"Missing required environment variables: {missing_vars}")
     
     logger.info("Environment variables validated")
+    
+    # Check database connectivity on startup
+    db_check = health_checker.check_database()
+    if db_check["status"] != "ok":
+        logger.error("Database connectivity check failed on startup", extra={
+            "error": db_check["message"]
+        })
+        # Don't fail startup - let health endpoint report degraded status
+        # This allows service to start and Render to detect the issue via /health
+    else:
+        logger.info("Database connectivity verified")
     
     yield
     
