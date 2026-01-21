@@ -110,12 +110,23 @@ class TenantContextMiddleware:
     async def __call__(self, request: Request, call_next):
         """
         Process request and extract tenant context from JWT.
-        
+
         SECURITY: tenant_id is ONLY extracted from JWT, never from request body/query.
         """
         # Skip tenant check for health endpoint
         if request.url.path == "/health":
             return await call_next(request)
+
+        # Check if authentication is configured (set in app lifespan)
+        if hasattr(request.app.state, "auth_configured") and not request.app.state.auth_configured:
+            logger.warning(
+                "Authentication not configured - protected endpoint accessed",
+                extra={"path": request.url.path, "method": request.method}
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service not configured. Please set FRONTEGG_CLIENT_ID environment variable."
+            )
         
         # Extract Bearer token
         credentials: Optional[HTTPAuthorizationCredentials] = await security(request)

@@ -29,31 +29,36 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     logger.info("Starting AI Growth Analytics API")
-    
-    # Verify required environment variables
-    required_vars = ["FRONTEGG_CLIENT_ID", "FRONTEGG_CLIENT_SECRET"]
+
+    # Check Frontegg authentication environment variables
+    # These are optional - app can run without them but auth will be disabled
+    auth_vars = ["FRONTEGG_CLIENT_ID"]
     env_status = {}
-    for var in required_vars:
+    for var in auth_vars:
         value = os.getenv(var)
         env_status[var] = "set" if value else "missing"
-        if not value:
-            logger.error(f"Environment variable {var} is not set or is empty")
-    
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
+
+    missing_vars = [var for var in auth_vars if not os.getenv(var)]
+
+    # Store auth configuration status in app state
+    app.state.auth_configured = len(missing_vars) == 0
+
     if missing_vars:
-        logger.error(f"Missing required environment variables: {missing_vars}")
-        logger.error(f"Environment variable status: {env_status}")
-        raise ValueError(f"Missing required environment variables: {missing_vars}")
-    
-    logger.info("Environment variables validated", extra={"env_status": env_status})
-    
-    # Middleware will initialize lazily on first request
-    # Env vars are validated above, so initialization will succeed
-    logger.info("Tenant context middleware ready (lazy initialization)")
-    
+        logger.warning(
+            f"Frontegg authentication not configured (missing: {missing_vars}). "
+            "Protected endpoints will return 503. Set FRONTEGG_CLIENT_ID to enable authentication."
+        )
+    else:
+        logger.info("Frontegg authentication configured", extra={"env_status": env_status})
+
+    # Middleware will initialize lazily on first request if auth is configured
+    logger.info(
+        "Tenant context middleware ready",
+        extra={"auth_enabled": app.state.auth_configured}
+    )
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down AI Growth Analytics API")
 
