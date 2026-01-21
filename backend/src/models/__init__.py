@@ -1,66 +1,25 @@
 """
-Billing models for Epic 1: Billing, Entitlements & Revenue Control Plane.
+Database models for billing, subscriptions, and entitlements.
 
-This module exports all SQLAlchemy models for the billing system.
+All models follow strict tenant isolation patterns.
+Tenant-scoped models inherit from TenantScopedMixin.
 """
 
-from src.models.base import (
-    Base,
-    TimestampMixin,
-    TenantScopedMixin,
-    generate_uuid,
-)
-
-from src.models.store import (
-    ShopifyStore,
-    StoreStatus,
-)
-
-from src.models.plan import (
-    Plan,
-    PlanFeature,
-    FeatureKey,
-)
-
-from src.models.subscription import (
-    Subscription,
-    SubscriptionStatus,
-)
-
-from src.models.usage import (
-    UsageRecord,
-    UsageAggregate,
-    UsageType,
-)
-
-from src.models.billing_event import (
-    BillingEvent,
-    BillingEventType,
-    ActorType,
-)
+from src.models.base import TimestampMixin, TenantScopedMixin
+from src.models.store import ShopifyStore
+from src.models.plan import Plan, PlanFeature
+from src.models.subscription import Subscription
+from src.models.usage import UsageRecord, UsageAggregate
+from src.models.billing_event import BillingEvent
 
 __all__ = [
-    # Base
-    "Base",
     "TimestampMixin",
     "TenantScopedMixin",
-    "generate_uuid",
-    # Store
     "ShopifyStore",
-    "StoreStatus",
-    # Plan
     "Plan",
     "PlanFeature",
-    "FeatureKey",
-    # Subscription
     "Subscription",
-    "SubscriptionStatus",
-    # Usage
     "UsageRecord",
     "UsageAggregate",
-    "UsageType",
-    # Billing Event
     "BillingEvent",
-    "BillingEventType",
-    "ActorType",
 ]

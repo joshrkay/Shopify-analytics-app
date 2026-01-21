@@ -1,243 +1,132 @@
 """
-BillingEvent model for immutable audit trail.
+BillingEvent model - Immutable audit log for billing events.
 
-CRITICAL: This table is APPEND-ONLY for finance audit compliance.
-Never update or delete billing events - only insert new ones.
+SECURITY: This is append-only. No UPDATE or DELETE operations allowed.
+Used for audit trail and reconciliation with Shopify Billing API.
 """
 
-from datetime import datetime, timezone
+import uuid
+import enum
+from sqlalchemy import Column, String, Integer, Numeric, DateTime, ForeignKey, Index, func
+from sqlalchemy.dialects.postgresql import JSONB
 
-from sqlalchemy import (
-    Column, String, Integer, DateTime, Enum, Text,
-    ForeignKey, Index
-)
-from sqlalchemy.orm import relationship
-
-from src.models.base import Base, TenantScopedMixin, generate_uuid
+from src.repositories.base_repo import Base
+from src.models.base import TenantScopedMixin
 
 
-class BillingEventType:
-    """Billing event type constants."""
-    # Subscription lifecycle
+class BillingEventType(str, enum.Enum):
+    """Billing event type enumeration."""
     SUBSCRIPTION_CREATED = "subscription_created"
-    SUBSCRIPTION_ACTIVATED = "subscription_activated"
+    SUBSCRIPTION_UPDATED = "subscription_updated"
     SUBSCRIPTION_CANCELLED = "subscription_cancelled"
-    SUBSCRIPTION_UPGRADED = "subscription_upgraded"
-    SUBSCRIPTION_DOWNGRADED = "subscription_downgraded"
-    SUBSCRIPTION_EXPIRED = "subscription_expired"
-    SUBSCRIPTION_REACTIVATED = "subscription_reactivated"
-
-    # Payment events
-    PAYMENT_SUCCEEDED = "payment_succeeded"
-    PAYMENT_FAILED = "payment_failed"
-    PAYMENT_REFUNDED = "payment_refunded"
-
-    # Trial events
-    TRIAL_STARTED = "trial_started"
-    TRIAL_ENDED = "trial_ended"
-    TRIAL_CONVERTED = "trial_converted"
-
-    # Grace period
-    GRACE_PERIOD_STARTED = "grace_period_started"
-    GRACE_PERIOD_ENDED = "grace_period_ended"
-
-    # Plan changes
+    SUBSCRIPTION_RENEWED = "subscription_renewed"
+    CHARGE_CREATED = "charge_created"
+    CHARGE_SUCCEEDED = "charge_succeeded"
+    CHARGE_FAILED = "charge_failed"
     PLAN_CHANGED = "plan_changed"
-
-    # Usage events
-    USAGE_LIMIT_WARNING = "usage_limit_warning"
-    USAGE_LIMIT_REACHED = "usage_limit_reached"
-
-    # Store events
-    STORE_INSTALLED = "store_installed"
-    STORE_UNINSTALLED = "store_uninstalled"
-
-
-from enum import Enum as PyEnum
-
-
-class ActorType(str, PyEnum):
-    """Actor type constants."""
-    USER = "user"
-    SYSTEM = "system"
-    SHOPIFY = "shopify"
-    WEBHOOK = "webhook"
-    CRON = "cron"
+    REFUND_ISSUED = "refund_issued"
 
 
 class BillingEvent(Base, TenantScopedMixin):
     """
-    Immutable audit log of all billing events.
-
-    CRITICAL REQUIREMENTS:
-    - APPEND-ONLY: Never update or delete records
-    - Complete audit trail for finance compliance
-    - All state changes must be recorded
-    - Includes monetary amounts for reconciliation
-
-    NOTE: Does not use TimestampMixin - uses occurred_at for event time
-    and has separate created_at for record insertion time.
+    Immutable audit log for billing events.
+    
+    SECURITY: This is append-only. No UPDATE or DELETE operations allowed.
+    All billing changes must be recorded here for audit and reconciliation.
     """
-
+    
     __tablename__ = "billing_events"
-
-    # Primary key
+    
     id = Column(
-        String(36),
+        String(255),
         primary_key=True,
-        default=generate_uuid
+        default=lambda: str(uuid.uuid4()),
+        comment="Primary key (UUID)"
     )
-
-    # Foreign keys (nullable for flexibility)
-    subscription_id = Column(
-        String(36),
-        ForeignKey("subscriptions.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-        comment="Related subscription (may be null for store-level events)"
-    )
-    store_id = Column(
-        String(36),
-        ForeignKey("shopify_stores.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-        comment="Related store"
-    )
-
-    # Event identification
+    
     event_type = Column(
-        Enum(
-            # Subscription lifecycle
-            "subscription_created",
-            "subscription_activated",
-            "subscription_cancelled",
-            "subscription_upgraded",
-            "subscription_downgraded",
-            "subscription_expired",
-            "subscription_reactivated",
-            # Payment events
-            "payment_succeeded",
-            "payment_failed",
-            "payment_refunded",
-            # Trial events
-            "trial_started",
-            "trial_ended",
-            "trial_converted",
-            # Grace period
-            "grace_period_started",
-            "grace_period_ended",
-            # Plan changes
-            "plan_changed",
-            # Usage events
-            "usage_limit_warning",
-            "usage_limit_reached",
-            # Store events
-            "store_installed",
-            "store_uninstalled",
-            name="billing_event_type"
-        ),
+        String(100),
         nullable=False,
         index=True,
-        comment="Type of billing event"
+        comment="Event type (e.g., 'subscription_created', 'charge_succeeded')"
     )
-
-    # Timing
-    occurred_at = Column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
+    
+    store_id = Column(
+        String(255),
+        nullable=True,
         index=True,
-        comment="When the event occurred"
+        comment="Foreign key to shopify_stores.id (optional)"
     )
-    created_at = Column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
-        comment="When the record was created (may differ from occurred_at)"
+    
+    subscription_id = Column(
+        String(255),
+        nullable=True,
+        index=True,
+        comment="Foreign key to tenant_subscriptions.id (optional)"
     )
-
-    # Monetary values (in cents)
+    
+    from_plan_id = Column(
+        String(255),
+        nullable=True,
+        comment="Previous plan ID (for plan changes)"
+    )
+    
+    to_plan_id = Column(
+        String(255),
+        nullable=True,
+        comment="New plan ID (for plan changes)"
+    )
+    
     amount_cents = Column(
         Integer,
         nullable=True,
-        comment="Monetary amount in cents (if applicable)"
+        comment="Amount in cents (for charges/refunds)"
     )
-    currency = Column(
-        String(10),
-        default="USD",
-        comment="Currency code"
-    )
-
-    # Plan context (for plan change events)
-    from_plan_id = Column(
-        String(36),
-        ForeignKey("plans.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="Previous plan (for upgrades/downgrades)"
-    )
-    to_plan_id = Column(
-        String(36),
-        ForeignKey("plans.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="New plan (for upgrades/downgrades)"
-    )
-
-    # External references
-    shopify_charge_id = Column(
-        String(50),
-        nullable=True,
-        comment="Shopify charge ID"
-    )
-    shopify_transaction_id = Column(
-        String(50),
-        nullable=True,
-        comment="Shopify transaction ID"
-    )
-
-    # Event metadata (JSON for flexible data)
-    metadata = Column(
-        Text,
-        nullable=True,
-        comment="Additional event data as JSON"
-    )
-
-    # Actor information (who/what triggered the event)
-    actor_type = Column(
-        Enum("user", "system", "shopify", "webhook", "cron", name="actor_type"),
-        default="system",
-        comment="Type of actor that triggered the event"
-    )
-    actor_id = Column(
+    
+    shopify_subscription_id = Column(
         String(255),
         nullable=True,
-        comment="ID of the actor (user_id, job name, etc.)"
+        index=True,
+        comment="Shopify Billing API subscription ID"
     )
-
-    # Description for human readability
-    description = Column(
-        Text,
+    
+    shopify_charge_id = Column(
+        String(255),
         nullable=True,
-        comment="Human-readable event description"
+        index=True,
+        comment="Shopify charge ID"
     )
-
-    # Relationships
-    subscription = relationship("Subscription", back_populates="billing_events")
-    store = relationship("ShopifyStore", back_populates="billing_events")
-
-    # Indexes for audit queries
+    
+    extra_metadata = Column(
+        "metadata",
+        JSONB,
+        nullable=True,
+        comment="Additional event metadata (JSON)"
+    )
+    
+    # Note: No updated_at - this is append-only
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        index=True,
+        comment="Timestamp when event occurred (append-only)"
+    )
+    
+    # Indexes
     __table_args__ = (
-        Index("ix_billing_events_tenant_time", "tenant_id", "occurred_at"),
-        Index("ix_billing_events_type_time", "event_type", "occurred_at"),
-        Index("ix_billing_events_store_time", "store_id", "occurred_at"),
-        Index("ix_billing_events_subscription_time", "subscription_id", "occurred_at"),
+        Index(
+            "idx_billing_events_tenant_created",
+            "tenant_id",
+            "created_at",
+            postgresql_ops={"created_at": "DESC"}
+        ),
+        Index(
+            "idx_billing_events_tenant_type",
+            "tenant_id",
+            "event_type"
+        ),
     )
-
+    
     def __repr__(self) -> str:
-        return f"<BillingEvent(id={self.id}, type={self.event_type}, occurred_at={self.occurred_at})>"
-
-    @property
-    def amount_dollars(self) -> float | None:
-        """Get amount in dollars."""
-        if self.amount_cents is None:
-            return None
-        return self.amount_cents / 100
+        return f"<BillingEvent(id={self.id}, tenant_id={self.tenant_id}, event_type={self.event_type}, amount_cents={self.amount_cents})>"

@@ -1,51 +1,43 @@
 """
-ShopifyStore model for linking Shopify stores to Frontegg tenants.
+ShopifyStore model - Links Shopify shop to Frontegg tenant.
 
-CRITICAL DESIGN DECISIONS:
-- tenant_id comes from Frontegg JWT (org_id)
-- shop_domain is the canonical Shopify identifier (mystore.myshopify.com)
-- access_token is encrypted at rest
-- A Frontegg tenant can have MULTIPLE Shopify stores
+SECURITY: tenant_id is ONLY extracted from JWT, never from client input.
 """
 
-from sqlalchemy import (
-    Column, String, Text, DateTime, Enum, Index,
-    UniqueConstraint
-)
-from sqlalchemy.orm import relationship
+import uuid
+from sqlalchemy import Column, String, Enum
+from sqlalchemy.dialects.postgresql import UUID
+import enum
 
-from src.models.base import Base, TimestampMixin, TenantScopedMixin, generate_uuid
+from src.repositories.base_repo import Base
+from src.models.base import TimestampMixin, TenantScopedMixin
 
 
-class StoreStatus(str):
-    """Store installation status values."""
-    INSTALLING = "installing"
+class StoreStatus(str, enum.Enum):
+    """Shopify store status enumeration."""
     ACTIVE = "active"
-    UNINSTALLED = "uninstalled"
+    INACTIVE = "inactive"
     SUSPENDED = "suspended"
+    UNINSTALLED = "uninstalled"
 
 
 class ShopifyStore(Base, TimestampMixin, TenantScopedMixin):
     """
-    Links a Shopify store to a Frontegg tenant.
-
-    SECURITY:
-    - tenant_id is from Frontegg JWT, NEVER from request
-    - access_token_encrypted must be decrypted only when making API calls
-    - shop_domain is unique (one app install per store)
+    Shopify store linked to a Frontegg tenant.
+    
+    Maps a Shopify shop domain to a tenant_id (from JWT org_id).
+    Stores encrypted access token for Shopify API calls.
     """
-
+    
     __tablename__ = "shopify_stores"
-
-    # Primary key
+    
     id = Column(
-        String(36),
+        String(255),
         primary_key=True,
-        default=generate_uuid,
-        comment="UUID primary key"
+        default=lambda: str(uuid.uuid4()),
+        comment="Primary key (UUID)"
     )
-
-    # Shopify identifiers
+    
     shop_domain = Column(
         String(255),
         nullable=False,
