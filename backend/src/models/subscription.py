@@ -1,25 +1,31 @@
 """
-Subscription model - Per-store subscription to a plan.
+Subscription model for tracking store subscriptions.
 
-Links a ShopifyStore to a Plan via Shopify Billing API.
+CRITICAL: One subscription per store (Shopify limitation).
+Subscription status is synced with Shopify via webhooks and reconciliation.
 """
 
-import uuid
-import enum
-from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint, Index, text
-from sqlalchemy.dialects.postgresql import JSONB
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    Column, String, Integer, DateTime, Enum, Text,
+    ForeignKey, Index, UniqueConstraint
+)
 from sqlalchemy.orm import relationship
 
-from src.repositories.base_repo import Base
-from src.models.base import TimestampMixin, TenantScopedMixin
+from src.models.base import Base, TimestampMixin, TenantScopedMixin, generate_uuid
 
 
-class SubscriptionStatus(str, enum.Enum):
-    """Subscription status enumeration."""
-    ACTIVE = "active"
-    CANCELLED = "cancelled"
-    EXPIRED = "expired"
-    TRIALING = "trialing"
+from enum import Enum as PyEnum
+
+class SubscriptionStatus(str, PyEnum):
+    """Subscription status values."""
+    PENDING = "pending"          # Charge created, awaiting merchant approval
+    ACTIVE = "active"            # Merchant approved, subscription active
+    FROZEN = "frozen"            # Payment failed, in grace period
+    CANCELLED = "cancelled"      # Merchant cancelled
+    DECLINED = "declined"        # Merchant declined charge
+    EXPIRED = "expired"          # Trial expired without conversion
 
 
 class Subscription(Base, TimestampMixin, TenantScopedMixin):
