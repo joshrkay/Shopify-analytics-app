@@ -109,20 +109,25 @@ class TenantContextMiddleware:
     
     async def __call__(self, request: Request, call_next):
         """
-        Process request and extract tenant context from JWT or Shopify session token.
+        Process request and extract tenant context from JWT.
 
-        SECURITY: tenant_id is ONLY extracted from JWT/session token, never from request body/query.
-        
-        Supports dual authentication:
-        - Shopify session tokens (for embedded app routes)
-        - Frontegg JWT (for admin routes)
+        SECURITY: tenant_id is ONLY extracted from JWT, never from request body/query.
         """
-        # Skip tenant check for health endpoint, webhooks, and OAuth routes
-        if (request.url.path == "/health" or 
-            request.url.path.startswith("/api/webhooks/") or
-            request.url.path.startswith("/api/auth/")):
+        # Skip tenant check for health endpoint and webhooks (webhooks use HMAC verification)
+        if request.url.path == "/health" or request.url.path.startswith("/api/webhooks/"):
             return await call_next(request)
 
+        # Check if authentication is configured (set in app lifespan)
+        if hasattr(request.app.state, "auth_configured") and not request.app.state.auth_configured:
+            logger.warning(
+                "Authentication not configured - protected endpoint accessed",
+                extra={"path": request.url.path, "method": request.method}
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service not configured. Please set FRONTEGG_CLIENT_ID environment variable."
+            )
+        
         # Extract Bearer token
         credentials: Optional[HTTPAuthorizationCredentials] = await security(request)
         
@@ -137,76 +142,6 @@ class TenantContextMiddleware:
             )
         
         token = credentials.credentials
-        
-        # Try Shopify session token first (for embedded app routes)
-        try:
-            from src.platform.shopify_session import get_session_token_verifier
-            
-            verifier = get_session_token_verifier()
-            
-            # If verifier is None, Shopify credentials not configured - skip to Frontegg
-            if verifier is None:
-                # Raise a specific exception that will be caught and fall through to Frontegg
-                raise ValueError("Shopify session token verification not configured")
-            
-            shopify_session = verifier.verify_session_token(token)
-            
-            # Convert Shopify session to TenantContext
-            tenant_context = TenantContext(
-                tenant_id=shopify_session.tenant_id,
-                user_id=shopify_session.user_id or "shopify-user",
-                roles=[],  # Shopify session tokens don't include roles
-                org_id=shopify_session.shop_domain,  # Use shop_domain as org_id for reference
-            )
-            
-            # Attach to request state
-            request.state.tenant_context = tenant_context
-            
-            logger.info("Request authenticated via Shopify session token", extra={
-                "tenant_id": tenant_context.tenant_id,
-                "shop_domain": shopify_session.shop_domain,
-                "path": request.url.path,
-                "method": request.method
-            })
-            
-            # Continue to next middleware/handler
-            response = await call_next(request)
-            
-            # Add tenant_id to response headers for debugging (optional)
-            if hasattr(request.state, "tenant_context"):
-                response.headers["X-Tenant-ID"] = request.state.tenant_context.tenant_id
-            
-            return response
-            
-        except ValueError as shopify_config_error:
-            # Shopify not configured - fall through to Frontegg
-            if "not configured" in str(shopify_config_error):
-                logger.debug("Shopify session token verification not configured, trying Frontegg JWT", extra={
-                    "path": request.url.path
-                })
-            else:
-                # Other ValueError - re-raise
-                raise
-        except HTTPException as shopify_auth_error:
-            # Shopify token verification failed (invalid token) - do NOT fall back to Frontegg
-            # This is a security requirement: invalid tokens should be rejected, not tried with another auth method
-            logger.warning("Shopify session token verification failed", extra={
-                "error": str(shopify_auth_error.detail),
-                "path": request.url.path
-            })
-            raise
-        
-        # Fall through to Frontegg JWT verification (only if Shopify not configured)
-        # Check if Frontegg authentication is configured
-        if hasattr(request.app.state, "auth_configured") and not request.app.state.auth_configured:
-            logger.warning(
-                "Authentication not configured - protected endpoint accessed",
-                extra={"path": request.url.path, "method": request.method}
-            )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service not configured. Please set FRONTEGG_CLIENT_ID environment variable."
-            )
         
         try:
             # Get signing key from JWKS (PyJWKClient handles fetching/caching)
@@ -263,7 +198,7 @@ class TenantContextMiddleware:
             request.state.tenant_context = tenant_context
             
             # Log with tenant context (for audit trail)
-            logger.info("Request authenticated via Frontegg JWT", extra={
+            logger.info("Request authenticated", extra={
                 "tenant_id": tenant_context.tenant_id,
                 "user_id": tenant_context.user_id,
                 "path": request.url.path,
