@@ -10,9 +10,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, String, Integer, DateTime, Enum, Text,
-    ForeignKey, Index, UniqueConstraint, text
+    ForeignKey, Index, UniqueConstraint, text, JSON
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from src.models.base import TimestampMixin, TenantScopedMixin
@@ -118,7 +117,7 @@ class Subscription(Base, TimestampMixin, TenantScopedMixin):
     
     extra_metadata = Column(
         "metadata",
-        JSONB,
+        JSON,
         nullable=True,
         comment="Additional subscription metadata"
     )
@@ -128,14 +127,14 @@ class Subscription(Base, TimestampMixin, TenantScopedMixin):
     store = relationship("ShopifyStore", back_populates="subscription")
     
     # Constraints and indexes
+    # Note: deferrable/initially options removed for SQLite compatibility in tests.
+    # For PostgreSQL-specific constraints, use database migrations.
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
             "plan_id",
             "status",
             name="uk_tenant_subscriptions_tenant_plan",
-            deferrable=True,
-            initially="DEFERRED"
         ),
         Index(
             "idx_tenant_subscriptions_tenant_status",
