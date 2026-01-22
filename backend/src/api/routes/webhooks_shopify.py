@@ -15,8 +15,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Request, HTTPException, status, Header
+from fastapi import APIRouter, Request, HTTPException, status, Header, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +138,12 @@ async def get_verified_webhook_body(request: Request) -> tuple[dict, str]:
     return data, shop_domain
 
 
-async def get_db_session():
-    """Get database session for webhook processing."""
+def get_db_session():
+    """
+    Get database session for webhook processing.
+
+    This is a dependency that can be overridden in tests.
+    """
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
@@ -165,6 +170,7 @@ async def get_db_session():
 @router.post("/subscription-update", response_model=WebhookResponse)
 async def handle_subscription_update(
     request: Request,
+    session: Session = Depends(get_db_session),
     x_shopify_topic: Optional[str] = Header(None, alias="X-Shopify-Topic"),
     x_shopify_api_version: Optional[str] = Header(None, alias="X-Shopify-API-Version")
 ):
@@ -204,22 +210,6 @@ async def handle_subscription_update(
         "subscription_gid": subscription_gid,
         "status": subscription_status
     })
-
-    # Get database session
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        logger.error("Database not configured for webhook processing")
-        return WebhookResponse(message="Database not configured")
-
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-    engine = create_engine(database_url, pool_pre_ping=True)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = SessionLocal()
 
     try:
         # Find store by shop domain
@@ -304,13 +294,12 @@ async def handle_subscription_update(
         session.rollback()
         # Return 200 to acknowledge receipt (Shopify will retry on 4xx/5xx)
         return WebhookResponse(message=f"Error: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.post("/app-uninstalled", response_model=WebhookResponse)
 async def handle_app_uninstalled(
     request: Request,
+    session: Session = Depends(get_db_session),
     x_shopify_topic: Optional[str] = Header(None, alias="X-Shopify-Topic")
 ):
     """
@@ -330,22 +319,6 @@ async def handle_app_uninstalled(
         "shop_domain": shop_domain,
         "topic": x_shopify_topic
     })
-
-    # Get database session
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        logger.error("Database not configured for webhook processing")
-        return WebhookResponse(message="Database not configured")
-
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-    engine = create_engine(database_url, pool_pre_ping=True)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = SessionLocal()
 
     try:
         from src.models.store import ShopifyStore
@@ -397,8 +370,6 @@ async def handle_app_uninstalled(
         })
         session.rollback()
         return WebhookResponse(message=f"Error: {str(e)}")
-    finally:
-        session.close()
 
 
 @router.post("/customers-redact", response_model=WebhookResponse)

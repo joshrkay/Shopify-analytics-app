@@ -384,17 +384,16 @@ def test_app(db_session, mock_billing_client, test_tenant_id):
     - Test tenant context
     """
     from main import app
-    from src.integrations.shopify.billing_client import get_billing_client
+    from src.api.routes.webhooks_shopify import get_db_session
 
     # Store original dependency overrides
     original_overrides = app.dependency_overrides.copy()
 
-    # Override billing client factory
-    def mock_get_billing_client(shop_domain: str, access_token: str):
-        return mock_billing_client
+    # Override database session dependency to use test session
+    def override_get_db_session():
+        yield db_session
 
-    # Note: Additional overrides can be added here as needed
-    # app.dependency_overrides[get_billing_client] = mock_get_billing_client
+    app.dependency_overrides[get_db_session] = override_get_db_session
 
     yield app
 
