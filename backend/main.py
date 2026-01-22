@@ -18,6 +18,7 @@ from src.api.routes import health
 from src.api.routes import billing
 from src.api.routes import webhooks_shopify
 from src.api.routes import admin_plans
+from src.api.routes import auth
 
 # Configure structured logging
 logging.basicConfig(
@@ -91,6 +92,9 @@ app.middleware("http")(tenant_middleware)
 
 # Include health route (bypasses authentication)
 app.include_router(health.router)
+
+# Include OAuth routes (bypasses authentication, uses OAuth state for CSRF protection)
+app.include_router(auth.router)
 
 # Include billing routes (requires authentication)
 app.include_router(billing.router)
