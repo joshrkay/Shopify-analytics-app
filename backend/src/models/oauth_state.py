@@ -80,9 +80,11 @@ class OAuthState(Base, TimestampMixin):
     )
     
     # Table constraints and indexes
-    # Note: Indexes are created in migration 0002_oauth_states.sql
-    # We don't define them here to avoid conflicts during test setup
-    __table_args__ = ()
+    __table_args__ = (
+        Index("ix_oauth_states_state", "state"),
+        Index("ix_oauth_states_shop_domain", "shop_domain"),
+        Index("ix_oauth_states_expires_at", "expires_at"),
+    )
     
     def __repr__(self) -> str:
         return f"<OAuthState(id={self.id}, shop_domain={self.shop_domain}, state={self.state[:8]}...)>"
