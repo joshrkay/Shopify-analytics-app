@@ -79,8 +79,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
+              arguments:
+                to: ref('_tenant_airbyte_connections')
+                field: tenant_id
               config:
                 where: "tenant_id is not null"
       - name: airbyte_record_id
@@ -164,8 +165,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
+              arguments:
+                to: ref('_tenant_airbyte_connections')
+                field: tenant_id
               config:
                 where: "tenant_id is not null"
       - name: airbyte_record_id
@@ -265,8 +267,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
+              arguments:
+                to: ref('_tenant_airbyte_connections')
+                field: tenant_id
               config:
                 where: "tenant_id is not null"
       - name: airbyte_record_id

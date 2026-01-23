@@ -7,25 +7,8 @@ models:
   # ============================================
   # STAGING MODELS
   # ============================================
-  
-  - name: _tenant_airbyte_connections
-    description: "Staging model for tenant Airbyte connections mapping"
-    columns:
-      - name: tenant_id
-        description: "Tenant identifier"
-        tests:
-          - not_null
-      - name: airbyte_connection_id
-        description: "Airbyte connection ID"
-        tests:
-          - not_null
-      - name: source_type
-        description: "Source type (shopify, meta_ads, google_ads)"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['shopify', 'meta_ads', 'google_ads']
+  # Note: _tenant_airbyte_connections and staging models (stg_*)
+  # are defined in models/staging/schema.yml
 
   - name: stg_shopify_orders
     description: "Staging model for Shopify orders"
