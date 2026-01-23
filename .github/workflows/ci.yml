@@ -284,7 +284,10 @@ jobs:
           DB_NAME: test_dbt_db
           DB_SSLMODE: disable
         run: |
+          echo "Creating profiles.yml from template..."
+          cp profiles.yml.example profiles.yml
           echo "dbt profiles configured via environment variables"
+          echo "Profiles file location: $(pwd)/profiles.yml"
 
       - name: Run dbt debug
         working-directory: ./analytics
