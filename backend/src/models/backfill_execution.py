@@ -10,6 +10,7 @@ from enum import Enum as PyEnum
 from sqlalchemy import (
     Column, String, DateTime, Enum, Text, Integer, Float, JSON, Index
 )
+from sqlalchemy.dialects.postgresql import UUID
 
 from src.db_base import Base
 from src.models.base import TimestampMixin
