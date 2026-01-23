@@ -47,6 +47,7 @@ class ConnectionInfo:
     last_sync_at: Optional[datetime]
     last_sync_status: Optional[str]
     created_at: datetime
+    sync_frequency_minutes: Optional[str] = None
 
 
 @dataclass
@@ -117,6 +118,7 @@ class AirbyteService:
             last_sync_at=connection.last_sync_at,
             last_sync_status=connection.last_sync_status,
             created_at=connection.created_at,
+            sync_frequency_minutes=connection.sync_frequency_minutes,
         )
 
     def register_connection(
