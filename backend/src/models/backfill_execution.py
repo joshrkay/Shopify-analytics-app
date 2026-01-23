@@ -10,7 +10,6 @@ from enum import Enum as PyEnum
 from sqlalchemy import (
     Column, String, DateTime, Enum, Text, Integer, Float, JSON, Index
 )
-from sqlalchemy.dialects.postgresql import UUID
 
 from src.db_base import Base
 from src.models.base import TimestampMixin
@@ -34,9 +33,9 @@ class BackfillExecution(Base, TimestampMixin):
     __tablename__ = "backfill_executions"
     
     id = Column(
-        UUID(as_uuid=True),
+        String(255),
         primary_key=True,
-        default=uuid.uuid4,
+        default=lambda: str(uuid.uuid4()),
         comment="Primary key (UUID)"
     )
     
