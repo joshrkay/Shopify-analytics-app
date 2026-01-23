@@ -18,19 +18,42 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
-# Default schema
 models:
   shopify_analytics:
-    +materialized: table
     staging:
-      +schema: analytics_staging
       +materialized: view
+      shopify:
+        +schema: staging
+      ads:
+        +schema: staging
     facts:
+      +materialized: incremental
+      +unique_key: id
       +schema: analytics
-      +materialized: table
+    metrics:
+      +materialized: view
+      +schema: analytics
+    attribution:
+      +materialized: view
+      +schema: analytics
 
-# Variables for backfill parameters
+tests:
+  shopify_analytics:
+    # Critical data quality tests should fail the build
+    +severity: error
+    # Freshness tests are critical - fail build if data is stale
+    test_freshness:
+      +severity: error
+    # Volume anomaly tests are warnings - alert but don't fail build
+    test_volume_anomaly:
+      +severity: warn
+    # Primary key and not_null tests are critical
+    not_null:
+      +severity: error
+    unique:
+      +severity: error
+    relationships:
+      +severity: error
+
 vars:
-  backfill_start_date: null
-  backfill_end_date: null
-  tenant_id: null
+  tenant_isolation_enforced: true
