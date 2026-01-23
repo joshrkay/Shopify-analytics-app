@@ -282,6 +282,7 @@ jobs:
           DB_PASSWORD: test
           DB_PORT: 5432
           DB_NAME: test_dbt_db
+          DB_SSLMODE: disable
         run: |
           echo "dbt profiles configured via environment variables"
 
@@ -293,6 +294,7 @@ jobs:
           DB_PASSWORD: test
           DB_PORT: 5432
           DB_NAME: test_dbt_db
+          DB_SSLMODE: disable
         run: |
           echo "=========================================="
           echo "Running dbt debug"
@@ -307,6 +309,7 @@ jobs:
           DB_PASSWORD: test
           DB_PORT: 5432
           DB_NAME: test_dbt_db
+          DB_SSLMODE: disable
         run: |
           echo "=========================================="
           echo "Compiling dbt models"
@@ -321,6 +324,7 @@ jobs:
           DB_PASSWORD: test
           DB_PORT: 5432
           DB_NAME: test_dbt_db
+          DB_SSLMODE: disable
         run: |
           echo "=========================================="
           echo "Running dbt models (staging+)"
@@ -335,6 +339,7 @@ jobs:
           DB_PASSWORD: test
           DB_PORT: 5432
           DB_NAME: test_dbt_db
+          DB_SSLMODE: disable
         run: |
           echo "=========================================="
           echo "Running dbt tests"
