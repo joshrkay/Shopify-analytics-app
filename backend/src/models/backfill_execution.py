@@ -33,9 +33,9 @@ class BackfillExecution(Base, TimestampMixin):
     __tablename__ = "backfill_executions"
     
     id = Column(
-        String(255),
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4()),
+        default=uuid.uuid4,
         comment="Primary key (UUID)"
     )
     
