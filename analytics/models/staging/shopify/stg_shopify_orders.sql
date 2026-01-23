@@ -54,70 +54,97 @@ orders_extracted as (
 orders_normalized as (
     select
         -- Primary key: normalize order ID (remove gid:// prefix if present)
+        -- Edge case: Handle null, empty, and various GID formats
         case
+            when order_id_raw is null or trim(order_id_raw) = '' then null
             when order_id_raw like 'gid://shopify/Order/%' 
                 then replace(order_id_raw, 'gid://shopify/Order/', '')
-            else order_id_raw
+            when order_id_raw like 'gid://shopify/Order%' 
+                then regexp_replace(order_id_raw, '^gid://shopify/Order/?', '', 'g')
+            else trim(order_id_raw)
         end as order_id,
         
         -- Order identifiers
         order_name,
-        order_number_raw::integer as order_number,
+        -- Edge case: Handle invalid integers, nulls, empty strings
+        case
+            when order_number_raw is null or trim(order_number_raw) = '' then null
+            when order_number_raw ~ '^[0-9]+$' 
+                then order_number_raw::integer
+            else null
+        end as order_number,
         
         -- Customer information
         customer_email,
+        -- Edge case: Validate JSON before extraction to prevent casting errors
         case
-            when customer_json is not null 
-                then customer_json::json->>'id'
+            when customer_json is null or trim(customer_json) = '' then null
+            when customer_json::text ~ '^\s*\{' 
+                then (customer_json::json->>'id')
             else null
         end as customer_id_raw,
         
         -- Timestamps: normalize to UTC
+        -- Edge case: Handle invalid timestamp formats gracefully
         case
-            when created_at_raw is not null 
+            when created_at_raw is null or trim(created_at_raw) = '' then null
+            when created_at_raw ~ '^\d{4}-\d{2}-\d{2}' 
                 then (created_at_raw::timestamp with time zone) at time zone 'UTC'
             else null
         end as created_at,
         
         case
-            when updated_at_raw is not null 
+            when updated_at_raw is null or trim(updated_at_raw) = '' then null
+            when updated_at_raw ~ '^\d{4}-\d{2}-\d{2}' 
                 then (updated_at_raw::timestamp with time zone) at time zone 'UTC'
             else null
         end as updated_at,
         
         case
-            when cancelled_at_raw is not null 
+            when cancelled_at_raw is null or trim(cancelled_at_raw) = '' then null
+            when cancelled_at_raw ~ '^\d{4}-\d{2}-\d{2}' 
                 then (cancelled_at_raw::timestamp with time zone) at time zone 'UTC'
             else null
         end as cancelled_at,
         
         case
-            when closed_at_raw is not null 
+            when closed_at_raw is null or trim(closed_at_raw) = '' then null
+            when closed_at_raw ~ '^\d{4}-\d{2}-\d{2}' 
                 then (closed_at_raw::timestamp with time zone) at time zone 'UTC'
             else null
         end as closed_at,
         
-        -- Financial fields: convert to numeric, handle nulls
+        -- Financial fields: convert to numeric, handle nulls and invalid values
+        -- Edge case: Validate numeric format, handle negative, scientific notation
         case
-            when total_price_raw is not null and total_price_raw != ''
-                then total_price_raw::numeric
+            when total_price_raw is null or trim(total_price_raw) = '' then 0.0
+            when trim(total_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' 
+                then least(greatest(trim(total_price_raw)::numeric, -999999999.99), 999999999.99)
             else 0.0
         end as total_price,
         
         case
-            when subtotal_price_raw is not null and subtotal_price_raw != ''
-                then subtotal_price_raw::numeric
+            when subtotal_price_raw is null or trim(subtotal_price_raw) = '' then 0.0
+            when trim(subtotal_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' 
+                then least(greatest(trim(subtotal_price_raw)::numeric, -999999999.99), 999999999.99)
             else 0.0
         end as subtotal_price,
         
         case
-            when total_tax_raw is not null and total_tax_raw != ''
-                then total_tax_raw::numeric
+            when total_tax_raw is null or trim(total_tax_raw) = '' then 0.0
+            when trim(total_tax_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' 
+                then least(greatest(trim(total_tax_raw)::numeric, -999999999.99), 999999999.99)
             else 0.0
         end as total_tax,
         
-        -- Currency: standardize to uppercase
-        upper(coalesce(currency_code, 'USD')) as currency,
+        -- Currency: standardize to uppercase, validate format
+        -- Edge case: Handle null, empty, invalid currency codes
+        case
+            when currency_code is null or trim(currency_code) = '' then 'USD'
+            when upper(trim(currency_code)) ~ '^[A-Z]{3}$' 
+                then upper(trim(currency_code))
+            else 'USD'
+        end as currency,
         
         -- Status fields
         coalesce(financial_status, 'unknown') as financial_status,
@@ -136,25 +163,51 @@ orders_normalized as (
 
 -- Join to tenant mapping to get tenant_id
 -- 
--- Tenant mapping strategy:
--- 1. If Airbyte uses connection-specific schemas, extract connection_id from current_schema()
--- 2. If connection_id is in table metadata, use that
--- 3. For single-tenant setups, use the first active Shopify connection
+-- CRITICAL: Tenant isolation must be properly configured based on your Airbyte setup.
+-- The current implementation assumes single connection per tenant.
+-- 
+-- Tenant mapping strategies:
+-- 1. Connection-specific schemas: Extract connection_id from schema name
+-- 2. Connection ID in metadata: Join on connection_id from _airbyte_data or metadata
+-- 3. Single connection per tenant: Use the approach below (current)
 --
--- This implementation uses a subquery to get tenant_id. Adjust based on your Airbyte setup:
--- - If schemas are connection-specific: extract connection_id from schema name
--- - If you have a connection_id column: join on that
--- - For single connection per tenant: use the approach below
+-- SECURITY WARNING: If multiple tenants have active Shopify connections,
+-- the current `limit 1` approach will assign ALL orders to the first tenant.
+-- This causes cross-tenant data leakage. You MUST configure proper tenant mapping.
+--
+-- To fix: Uncomment and configure one of the options below based on your setup.
 orders_with_tenant as (
     select
         ord.*,
         coalesce(
-            -- Option 1: Extract from schema if connection_id is in schema name
-            -- (select tenant_id from {{ ref('_tenant_airbyte_connections') }}
-            --  where airbyte_connection_id = split_part(current_schema(), '_', 2)),
+            -- Option 1: Extract connection_id from schema name (if Airbyte uses connection-specific schemas)
+            -- Example: schema name is "_airbyte_raw_<connection_id>_shopify"
+            -- (select tenant_id 
+            --  from {{ ref('_tenant_airbyte_connections') }} t
+            --  where t.airbyte_connection_id = split_part(current_schema(), '_', 3)
+            --    and t.source_type = 'shopify'
+            --    and t.status = 'active'
+            --    and t.is_enabled = true
+            --  limit 1),
             
-            -- Option 2: Use first active Shopify connection (for single-connection setups)
-            (select tenant_id from {{ ref('_tenant_airbyte_connections') }} limit 1),
+            -- Option 2: Extract connection_id from table metadata or _airbyte_data
+            -- (select tenant_id 
+            --  from {{ ref('_tenant_airbyte_connections') }} t
+            --  where t.airbyte_connection_id = ord.airbyte_connection_id_from_metadata
+            --    and t.source_type = 'shopify'
+            --    and t.status = 'active'
+            --    and t.is_enabled = true
+            --  limit 1),
+            
+            -- Option 3: Single connection per tenant (CURRENT - USE WITH CAUTION)
+            -- This only works if exactly one active Shopify connection exists
+            -- If multiple connections exist, this causes data leakage
+            (select tenant_id 
+             from {{ ref('_tenant_airbyte_connections') }}
+             where source_type = 'shopify'
+               and status = 'active'
+               and is_enabled = true
+             limit 1),
             
             -- Fallback: null if no connection found
             null
@@ -185,3 +238,5 @@ select
     tenant_id
 from orders_with_tenant
 where tenant_id is not null
+    and order_id is not null  -- Edge case: Filter out null primary keys
+    and trim(order_id) != ''  -- Edge case: Filter out empty primary keys

@@ -184,3 +184,30 @@ sources:
             description: JSONB column containing the actual customer data
             tests:
               - not_null
+
+  - name: platform
+    description: Platform tables for tenant mapping and configuration
+    tables:
+      - name: tenant_airbyte_connections
+        description: Maps Airbyte connections to tenants for data isolation
+        columns:
+          - name: airbyte_connection_id
+            description: Airbyte connection ID
+            tests:
+              - not_null
+          - name: tenant_id
+            description: Tenant identifier
+            tests:
+              - not_null
+          - name: source_type
+            description: Type of data source (e.g., shopify)
+            tests:
+              - not_null
+          - name: status
+            description: Connection status
+            tests:
+              - not_null
+          - name: is_enabled
+            description: Whether connection is enabled
+            tests:
+              - not_null
