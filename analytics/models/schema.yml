@@ -55,8 +55,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
+              arguments:
+                to: ref('_tenant_airbyte_connections')
+                field: tenant_id
 
   - name: stg_shopify_customers
     description: "Staging model for Shopify customers"
@@ -91,8 +92,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
+              arguments:
+                to: ref('_tenant_airbyte_connections')
+                field: tenant_id
 
   - name: stg_meta_ads
     description: "Staging model for Meta (Facebook) ads data"
@@ -144,8 +146,9 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
+              arguments:
+                to: ref('_tenant_airbyte_connections')
+                field: tenant_id
 
   - name: stg_google_ads
     description: "Staging model for Google Ads data"
@@ -197,132 +200,12 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
+              arguments:
+                to: ref('_tenant_airbyte_connections')
+                field: tenant_id
 
   # ============================================
   # FACT MODELS
   # ============================================
   # Note: fact_orders, fact_ad_spend, and fact_campaign_performance
   # are defined in models/facts/schema.yml
-
-  - name: fact_ad_spend
-    description: "Fact table for ad spend analytics"
-    columns:
-      - name: id
-        description: "Surrogate key"
-        tests:
-          - not_null
-          - unique
-      - name: ad_account_id
-        description: "Ad account identifier"
-        tests:
-          - not_null
-      - name: campaign_id
-        description: "Campaign identifier"
-        tests:
-          - not_null
-      - name: spend_date
-        description: "Date of spend"
-        tests:
-          - not_null
-      - name: spend
-        description: "Ad spend amount"
-        tests:
-          - not_null
-      - name: currency
-        description: "Currency code"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
-      - name: platform
-        description: "Ad platform (meta_ads or google_ads)"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['meta_ads', 'google_ads']
-      - name: tenant_id
-        description: "Tenant identifier"
-        tests:
-          - not_null
-          - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
-      - name: ingested_at
-        description: "Data ingestion timestamp"
-        tests:
-          - not_null
-      - name: dbt_updated_at
-        description: "dbt model update timestamp"
-        tests:
-          - not_null
-
-  # Note: fact_campaign_performance is defined in models/facts/schema.yml
-  - name: fact_campaign_performance
-    description: "Fact table for campaign performance metrics"
-    columns:
-      - name: id
-        description: "Surrogate key"
-        tests:
-          - not_null
-          - unique
-      - name: ad_account_id
-        description: "Ad account identifier"
-        tests:
-          - not_null
-      - name: campaign_id
-        description: "Campaign identifier"
-        tests:
-          - not_null
-      - name: performance_date
-        description: "Performance date"
-        tests:
-          - not_null
-      - name: spend
-        description: "Ad spend amount"
-        tests:
-          - not_null
-      - name: impressions
-        description: "Number of impressions"
-        tests:
-          - not_null
-      - name: clicks
-        description: "Number of clicks"
-        tests:
-          - not_null
-      - name: conversions
-        description: "Number of conversions"
-        tests:
-          - not_null
-      - name: currency
-        description: "Currency code"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
-      - name: platform
-        description: "Ad platform (meta_ads or google_ads)"
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['meta_ads', 'google_ads']
-      - name: tenant_id
-        description: "Tenant identifier"
-        tests:
-          - not_null
-          - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
-      - name: ingested_at
-        description: "Data ingestion timestamp"
-        tests:
-          - not_null
-      - name: dbt_updated_at
-        description: "dbt model update timestamp"
-        tests:
-          - not_null
