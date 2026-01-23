@@ -24,7 +24,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['shopify', 'meta_ads', 'google_ads']
+              arguments:
+                values: ['shopify', 'meta_ads', 'google_ads']
 
   - name: stg_shopify_orders
     description: "Staging model for Shopify orders"
@@ -47,7 +48,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              arguments:
+                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
       - name: tenant_id
         description: "Tenant identifier"
         tests:
@@ -128,13 +130,15 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              arguments:
+                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
       - name: platform
         description: "Ad platform identifier"
         tests:
           - not_null
           - accepted_values:
-              values: ['meta_ads']
+              arguments:
+                values: ['meta_ads']
       - name: tenant_id
         description: "Tenant identifier"
         tests:
@@ -179,13 +183,15 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              arguments:
+                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
       - name: platform
         description: "Ad platform identifier"
         tests:
           - not_null
           - accepted_values:
-              values: ['google_ads']
+              arguments:
+                values: ['google_ads']
       - name: tenant_id
         description: "Tenant identifier"
         tests:
@@ -197,53 +203,8 @@ models:
   # ============================================
   # FACT MODELS
   # ============================================
-
-  - name: fact_orders
-    description: "Fact table for order analytics"
-    columns:
-      - name: id
-        description: "Surrogate key"
-        tests:
-          - not_null
-          - unique
-      - name: order_id
-        description: "Order identifier"
-        tests:
-          - not_null
-      - name: order_created_at
-        description: "Order creation timestamp"
-        tests:
-          - not_null
-      - name: revenue
-        description: "Order revenue"
-        tests:
-          - not_null
-      - name: currency
-        description: "Currency code"
-        tests:
-          - not_null
-          - accepted_values:
-              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
-      - name: tenant_id
-        description: "Tenant identifier"
-        tests:
-          - not_null
-          - relationships:
-              to: ref('_tenant_airbyte_connections')
-              field: tenant_id
-      - name: ingested_at
-        description: "Data ingestion timestamp"
-        tests:
-          - not_null
-      - name: dbt_updated_at
-        description: "dbt model update timestamp"
-        tests:
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - order_id
-            - tenant_id
+  # Note: fact_orders, fact_ad_spend, and fact_campaign_performance
+  # are defined in models/facts/schema.yml
 
   - name: fact_ad_spend
     description: "Fact table for ad spend analytics"
@@ -274,13 +235,15 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              arguments:
+                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
       - name: platform
         description: "Ad platform (meta_ads or google_ads)"
         tests:
           - not_null
           - accepted_values:
-              values: ['meta_ads', 'google_ads']
+              arguments:
+                values: ['meta_ads', 'google_ads']
       - name: tenant_id
         description: "Tenant identifier"
         tests:
@@ -297,6 +260,7 @@ models:
         tests:
           - not_null
 
+  # Note: fact_campaign_performance is defined in models/facts/schema.yml
   - name: fact_campaign_performance
     description: "Fact table for campaign performance metrics"
     columns:
@@ -338,13 +302,15 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              arguments:
+                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
       - name: platform
         description: "Ad platform (meta_ads or google_ads)"
         tests:
           - not_null
           - accepted_values:
-              values: ['meta_ads', 'google_ads']
+              arguments:
+                values: ['meta_ads', 'google_ads']
       - name: tenant_id
         description: "Tenant identifier"
         tests:
