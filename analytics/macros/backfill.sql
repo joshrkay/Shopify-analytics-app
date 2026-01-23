@@ -22,16 +22,16 @@
   
   {# Date range filtering #}
   {%- if start_date is not none and start_date != '' -%}
-    {%- set _ = conditions.append("created_at >= '" ~ start_date ~ "'::timestamp") -%}
+    {%- set _ = conditions.append("created_at >= " ~ dbt.string_literal(start_date) ~ "::timestamp") -%}
   {%- endif -%}
   
   {%- if end_date is not none and end_date != '' -%}
-    {%- set _ = conditions.append("created_at <= '" ~ end_date ~ "'::timestamp") -%}
+    {%- set _ = conditions.append("created_at <= " ~ dbt.string_literal(end_date) ~ "::timestamp") -%}
   {%- endif -%}
   
   {# Tenant filtering #}
   {%- if tenant_id is not none and tenant_id != '' -%}
-    {%- set _ = conditions.append("tenant_id = '" ~ tenant_id ~ "'") -%}
+    {%- set _ = conditions.append("tenant_id = " ~ dbt.string_literal(tenant_id)) -%}
   {%- endif -%}
   
   {# Return combined conditions #}
