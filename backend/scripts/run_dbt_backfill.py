@@ -139,16 +139,14 @@ def parse_dbt_run_output(stdout: str) -> Optional[int]:
     Parse dbt run output to extract the total number of records processed.
     It sums up the numbers from lines containing patterns like '[SELECT 100]'.
     """
-    total_records = 0
     try:
         # Find all occurrences of the pattern '[SELECT <number>]' in dbt's output
         matches = re.findall(r'\[SELECT (\d+)\]', stdout)
         if not matches:
             return None
         
-        total_records = sum(int(match) for match in matches)
-        return total_records
-    except (ValueError, TypeError):
+        return sum(int(match) for match in matches)
+    except Exception:
         # In case of unexpected format, return None
         logger.warning("Could not parse dbt run output for record count.")
         return None
