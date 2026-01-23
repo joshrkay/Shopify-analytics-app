@@ -18,6 +18,8 @@ from src.api.routes import health
 from src.api.routes import billing
 from src.api.routes import webhooks_shopify
 from src.api.routes import admin_plans
+from src.api.routes import sync
+from src.api.routes import data_health
 
 # Configure structured logging
 logging.basicConfig(
@@ -100,6 +102,12 @@ app.include_router(webhooks_shopify.router)
 
 # Include admin routes (requires admin role)
 app.include_router(admin_plans.router)
+
+# Include sync routes (requires authentication)
+app.include_router(sync.router)
+
+# Include data health routes (requires authentication)
+app.include_router(data_health.router)
 
 
 # Example protected endpoint
