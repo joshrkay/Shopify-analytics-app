@@ -1,0 +1,186 @@
+version: 2
+
+models:
+  - name: _tenant_airbyte_connections
+    description: Helper model that exposes tenant_airbyte_connections for staging models
+    columns:
+      - name: airbyte_connection_id
+        description: Airbyte connection ID
+        tests:
+          - not_null
+      - name: tenant_id
+        description: Tenant identifier
+        tests:
+          - not_null
+      - name: source_type
+        description: Type of data source
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['shopify']
+
+  - name: stg_shopify_orders
+    description: Staging model for Shopify orders with normalized fields and tenant isolation
+    columns:
+      - name: order_id
+        description: Normalized order ID (primary key)
+        tests:
+          - not_null
+          - unique
+      - name: order_name
+        description: Order name/number from Shopify
+      - name: order_number
+        description: Order number as integer
+      - name: customer_email
+        description: Customer email address
+      - name: customer_id_raw
+        description: Raw customer ID from Shopify (may need normalization)
+      - name: created_at
+        description: Order creation timestamp (UTC)
+        tests:
+          - not_null
+      - name: updated_at
+        description: Order last update timestamp (UTC)
+      - name: cancelled_at
+        description: Order cancellation timestamp (UTC, nullable)
+      - name: closed_at
+        description: Order closure timestamp (UTC, nullable)
+      - name: total_price
+        description: Total order price (numeric)
+        tests:
+          - not_null
+      - name: subtotal_price
+        description: Subtotal price (numeric)
+      - name: total_tax
+        description: Total tax amount (numeric)
+      - name: currency
+        description: Currency code (uppercase)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              config:
+                where: "currency is not null"
+      - name: financial_status
+        description: Financial status of the order
+      - name: fulfillment_status
+        description: Fulfillment status of the order
+      - name: tags
+        description: Order tags
+      - name: note
+        description: Order notes
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+              config:
+                where: "tenant_id is not null"
+      - name: airbyte_record_id
+        description: Airbyte record ID
+      - name: airbyte_emitted_at
+        description: Airbyte emission timestamp
+
+  - name: stg_shopify_customers
+    description: Staging model for Shopify customers with normalized fields and tenant isolation
+    columns:
+      - name: customer_id
+        description: Normalized customer ID (primary key)
+        tests:
+          - not_null
+          - unique
+      - name: email
+        description: Customer email address
+        tests:
+          - not_null
+      - name: first_name
+        description: Customer first name
+      - name: last_name
+        description: Customer last name
+      - name: full_name
+        description: Full name (first + last or email)
+      - name: phone
+        description: Customer phone number
+      - name: created_at
+        description: Customer creation timestamp (UTC)
+        tests:
+          - not_null
+      - name: updated_at
+        description: Customer last update timestamp (UTC)
+      - name: accepts_marketing
+        description: Whether customer accepts marketing (boolean)
+      - name: verified_email
+        description: Whether email is verified (boolean)
+      - name: orders_count
+        description: Number of orders (integer)
+        tests:
+          - not_null
+      - name: total_spent
+        description: Total amount spent (numeric)
+        tests:
+          - not_null
+      - name: currency
+        description: Currency code (uppercase)
+        tests:
+          - not_null
+      - name: state
+        description: Customer state
+      - name: country_code
+        description: Country code from default address
+      - name: city
+        description: City from default address
+      - name: tags
+        description: Customer tags
+      - name: note
+        description: Customer notes
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+              config:
+                where: "tenant_id is not null"
+      - name: airbyte_record_id
+        description: Airbyte record ID
+      - name: airbyte_emitted_at
+        description: Airbyte emission timestamp
+
+sources:
+  - name: airbyte_raw
+    description: Raw Airbyte data tables
+    tables:
+      - name: _airbyte_raw_shopify_orders
+        description: Raw Shopify orders data from Airbyte
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual order data
+            tests:
+              - not_null
+      
+      - name: _airbyte_raw_shopify_customers
+        description: Raw Shopify customers data from Airbyte
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual customer data
+            tests:
+              - not_null
