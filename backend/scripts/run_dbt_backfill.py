@@ -21,6 +21,7 @@ import subprocess
 import argparse
 import logging
 import json
+import re
 import time
 from pathlib import Path
 from datetime import datetime
@@ -135,25 +136,22 @@ def run_dbt_command(
 
 def parse_dbt_run_output(stdout: str) -> Optional[int]:
     """
-    Parse dbt run output to extract records processed count.
-    
-    This is a simple implementation - dbt doesn't always provide
-    record counts in a parseable format, so this may return None.
+    Parse dbt run output to extract the total number of records processed.
+    It sums up the numbers from lines containing patterns like '[SELECT 100]'.
     """
-    # Try to extract record counts from dbt output
-    # This is a placeholder - actual parsing would depend on dbt output format
-    lines = stdout.split('\n')
-    for line in lines:
-        if 'rows' in line.lower() or 'records' in line.lower():
-            # Attempt to extract number (simplified)
-            try:
-                parts = line.split()
-                for part in parts:
-                    if part.isdigit():
-                        return int(part)
-            except:
-                pass
-    return None
+    total_records = 0
+    try:
+        # Find all occurrences of the pattern '[SELECT <number>]' in dbt's output
+        matches = re.findall(r'\[SELECT (\d+)\]', stdout)
+        if not matches:
+            return None
+        
+        total_records = sum(int(match) for match in matches)
+        return total_records
+    except (ValueError, TypeError):
+        # In case of unexpected format, return None
+        logger.warning("Could not parse dbt run output for record count.")
+        return None
 
 
 def main():
