@@ -1,0 +1,36 @@
+name: shopify_analytics
+version: '1.0.0'
+config-version: 2
+
+# Profile configuration
+profile: shopify_analytics
+
+# Model configuration
+model-paths: ["models"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Default schema
+models:
+  shopify_analytics:
+    +materialized: table
+    staging:
+      +schema: analytics_staging
+      +materialized: view
+    facts:
+      +schema: analytics
+      +materialized: table
+
+# Variables for backfill parameters
+vars:
+  backfill_start_date: null
+  backfill_end_date: null
+  tenant_id: null

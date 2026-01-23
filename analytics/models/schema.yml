@@ -1,0 +1,362 @@
+version: 2
+
+# Schema tests for dbt models
+# These tests validate data quality and enforce constraints
+
+models:
+  # ============================================
+  # STAGING MODELS
+  # ============================================
+  
+  - name: _tenant_airbyte_connections
+    description: "Staging model for tenant Airbyte connections mapping"
+    columns:
+      - name: tenant_id
+        description: "Tenant identifier"
+        tests:
+          - not_null
+      - name: airbyte_connection_id
+        description: "Airbyte connection ID"
+        tests:
+          - not_null
+      - name: source_type
+        description: "Source type (shopify, meta_ads, google_ads)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['shopify', 'meta_ads', 'google_ads']
+
+  - name: stg_shopify_orders
+    description: "Staging model for Shopify orders"
+    columns:
+      - name: order_id
+        description: "Unique order identifier"
+        tests:
+          - not_null
+          - unique
+      - name: created_at
+        description: "Order creation timestamp"
+        tests:
+          - not_null
+      - name: total_price
+        description: "Order total price"
+        tests:
+          - not_null
+      - name: currency
+        description: "Order currency code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+      - name: tenant_id
+        description: "Tenant identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+
+  - name: stg_shopify_customers
+    description: "Staging model for Shopify customers"
+    columns:
+      - name: customer_id
+        description: "Unique customer identifier"
+        tests:
+          - not_null
+          - unique
+      - name: email
+        description: "Customer email address"
+        tests:
+          - not_null
+      - name: created_at
+        description: "Customer creation timestamp"
+        tests:
+          - not_null
+      - name: orders_count
+        description: "Number of orders placed"
+        tests:
+          - not_null
+      - name: total_spent
+        description: "Total amount spent"
+        tests:
+          - not_null
+      - name: currency
+        description: "Currency code"
+        tests:
+          - not_null
+      - name: tenant_id
+        description: "Tenant identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+
+  - name: stg_meta_ads
+    description: "Staging model for Meta (Facebook) ads data"
+    columns:
+      - name: ad_account_id
+        description: "Meta ad account ID"
+        tests:
+          - not_null
+      - name: campaign_id
+        description: "Campaign ID"
+        tests:
+          - not_null
+      - name: date
+        description: "Performance date"
+        tests:
+          - not_null
+      - name: spend
+        description: "Ad spend amount"
+        tests:
+          - not_null
+      - name: impressions
+        description: "Number of impressions"
+        tests:
+          - not_null
+      - name: clicks
+        description: "Number of clicks"
+        tests:
+          - not_null
+      - name: conversions
+        description: "Number of conversions"
+        tests:
+          - not_null
+      - name: currency
+        description: "Currency code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+      - name: platform
+        description: "Ad platform identifier"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads']
+      - name: tenant_id
+        description: "Tenant identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+
+  - name: stg_google_ads
+    description: "Staging model for Google Ads data"
+    columns:
+      - name: ad_account_id
+        description: "Google ad account ID"
+        tests:
+          - not_null
+      - name: campaign_id
+        description: "Campaign ID"
+        tests:
+          - not_null
+      - name: date
+        description: "Performance date"
+        tests:
+          - not_null
+      - name: spend
+        description: "Ad spend amount"
+        tests:
+          - not_null
+      - name: impressions
+        description: "Number of impressions"
+        tests:
+          - not_null
+      - name: clicks
+        description: "Number of clicks"
+        tests:
+          - not_null
+      - name: conversions
+        description: "Number of conversions"
+        tests:
+          - not_null
+      - name: currency
+        description: "Currency code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+      - name: platform
+        description: "Ad platform identifier"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['google_ads']
+      - name: tenant_id
+        description: "Tenant identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+
+  # ============================================
+  # FACT MODELS
+  # ============================================
+
+  - name: fact_orders
+    description: "Fact table for order analytics"
+    columns:
+      - name: id
+        description: "Surrogate key"
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        description: "Order identifier"
+        tests:
+          - not_null
+      - name: order_created_at
+        description: "Order creation timestamp"
+        tests:
+          - not_null
+      - name: revenue
+        description: "Order revenue"
+        tests:
+          - not_null
+      - name: currency
+        description: "Currency code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+      - name: tenant_id
+        description: "Tenant identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+      - name: ingested_at
+        description: "Data ingestion timestamp"
+        tests:
+          - not_null
+      - name: dbt_updated_at
+        description: "dbt model update timestamp"
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - order_id
+            - tenant_id
+
+  - name: fact_ad_spend
+    description: "Fact table for ad spend analytics"
+    columns:
+      - name: id
+        description: "Surrogate key"
+        tests:
+          - not_null
+          - unique
+      - name: ad_account_id
+        description: "Ad account identifier"
+        tests:
+          - not_null
+      - name: campaign_id
+        description: "Campaign identifier"
+        tests:
+          - not_null
+      - name: spend_date
+        description: "Date of spend"
+        tests:
+          - not_null
+      - name: spend
+        description: "Ad spend amount"
+        tests:
+          - not_null
+      - name: currency
+        description: "Currency code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+      - name: platform
+        description: "Ad platform (meta_ads or google_ads)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads', 'google_ads']
+      - name: tenant_id
+        description: "Tenant identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+      - name: ingested_at
+        description: "Data ingestion timestamp"
+        tests:
+          - not_null
+      - name: dbt_updated_at
+        description: "dbt model update timestamp"
+        tests:
+          - not_null
+
+  - name: fact_campaign_performance
+    description: "Fact table for campaign performance metrics"
+    columns:
+      - name: id
+        description: "Surrogate key"
+        tests:
+          - not_null
+          - unique
+      - name: ad_account_id
+        description: "Ad account identifier"
+        tests:
+          - not_null
+      - name: campaign_id
+        description: "Campaign identifier"
+        tests:
+          - not_null
+      - name: performance_date
+        description: "Performance date"
+        tests:
+          - not_null
+      - name: spend
+        description: "Ad spend amount"
+        tests:
+          - not_null
+      - name: impressions
+        description: "Number of impressions"
+        tests:
+          - not_null
+      - name: clicks
+        description: "Number of clicks"
+        tests:
+          - not_null
+      - name: conversions
+        description: "Number of conversions"
+        tests:
+          - not_null
+      - name: currency
+        description: "Currency code"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+      - name: platform
+        description: "Ad platform (meta_ads or google_ads)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads', 'google_ads']
+      - name: tenant_id
+        description: "Tenant identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+      - name: ingested_at
+        description: "Data ingestion timestamp"
+        tests:
+          - not_null
+      - name: dbt_updated_at
+        description: "dbt model update timestamp"
+        tests:
+          - not_null
