@@ -45,6 +45,7 @@ shopify_analytics:
       dbname: "{{ env_var('DB_NAME', 'shopify_analytics') }}"
       schema: analytics
       threads: 4
+      sslmode: require
     
     production:
       type: postgres
@@ -55,3 +56,4 @@ shopify_analytics:
       dbname: "{{ env_var('DB_NAME', 'shopify_analytics') }}"
       schema: analytics
       threads: 4
+      sslmode: require
