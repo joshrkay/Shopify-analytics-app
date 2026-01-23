@@ -8,8 +8,11 @@ This ensures complete tenant isolation for data source connections.
 import uuid
 import enum
 
-from sqlalchemy import Column, String, Enum, DateTime, Text, Index, Boolean
+from sqlalchemy import Column, String, Enum, DateTime, Text, Index, Boolean, JSON
 from sqlalchemy.dialects.postgresql import JSONB
+
+# Use JSONB for PostgreSQL (optimized for queries), JSON for other databases (testing)
+JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 from src.db_base import Base
 from src.models.base import TimestampMixin, TenantScopedMixin
@@ -109,7 +112,7 @@ class TenantAirbyteConnection(Base, TimestampMixin, TenantScopedMixin):
         comment="Current connection status"
     )
     configuration = Column(
-        JSONB,
+        JSONType,
         nullable=True,
         default=dict,
         comment="Non-sensitive connection configuration metadata"
