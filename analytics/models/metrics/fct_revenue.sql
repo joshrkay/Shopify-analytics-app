@@ -78,34 +78,26 @@ refunds_parsed as (
             (
                 select sum(
                     case
-                        when (refund_elem->>'transactions') is not null
-                        then (
-                            select sum(
-                                case
-                                    when (txn->>'amount') ~ '^-?[0-9]+\.?[0-9]*$'
-                                    then (txn->>'amount')::numeric
-                                    else 0.0
-                                end
-                            )
-                            from jsonb_array_elements(
-                                case
-                                    when jsonb_typeof(refund_elem->'transactions') = 'array'
-                                    then refund_elem->'transactions'
-                                    else '[]'::jsonb
-                                end
-                            ) as txn
-                            where (txn->>'kind') = 'refund'
-                        )
+                        when (txn->>'amount') ~ '^-?[0-9]+(\.[0-9]+)?$'
+                        then (txn->>'amount')::numeric
                         else 0.0
                     end
                 )
                 from jsonb_array_elements(
                     case
-                        when refunds_json is not null and jsonb_typeof(refunds_json::jsonb) = 'array'
-                        then refunds_json::jsonb
+                        when refunds_json is not null and jsonb_typeof(refunds_json) = 'array'
+                        then refunds_json
                         else '[]'::jsonb
                     end
                 ) as refund_elem
+                cross join lateral jsonb_array_elements(
+                    case
+                        when jsonb_typeof(refund_elem->'transactions') = 'array'
+                        then refund_elem->'transactions'
+                        else '[]'::jsonb
+                    end
+                ) as txn
+                where (txn->>'kind') = 'refund'
             ),
             0.0
         ) as calculated_refund_amount
