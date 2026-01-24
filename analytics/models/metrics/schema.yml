@@ -1,0 +1,564 @@
+version: 2
+
+models:
+  - name: fct_revenue
+    description: |
+      ## Revenue Metrics Fact Table
+
+      This table provides a comprehensive view of revenue with proper handling of refunds and cancellations.
+
+      ### Business Rules
+
+      **Gross Revenue:**
+      - Includes: Product subtotal + Shipping + Taxes
+      - Includes order statuses: `paid`, `pending`, `partially_refunded`
+      - Date attribution: Uses order `created_at` (when customer placed order)
+      - Excludes: $0 orders, orders with null dates
+
+      **Refunds:**
+      - Recorded as NEGATIVE revenue on the refund date (`cancelled_at`)
+      - Does NOT adjust the original order date retroactively
+      - Allows you to see cash flow impact on the actual refund date
+
+      **Cancellations:**
+      - Recorded as separate NEGATIVE revenue line item
+      - Appears on the cancellation date (`cancelled_at`)
+      - Enables waterfall reporting: Gross → Refunds → Cancellations → Net
+
+      **Net Revenue:**
+      - Formula: `Gross Revenue + Refunds + Cancellations`
+      - (Refunds and Cancellations are negative, so this is effectively subtraction)
+
+      ### Revenue Type Values
+
+      - `gross_revenue`: Positive revenue from orders
+      - `refund`: Negative revenue from refunded orders
+      - `cancellation`: Negative revenue from cancelled orders
+
+      ### Tenant Isolation
+
+      All revenue calculations are tenant-scoped. Each merchant only sees their own revenue data.
+      The `tenant_id` field is NEVER null and is validated against active connections.
+
+      ### Edge Cases Handled
+
+      1. **Zero-dollar orders**: Excluded from gross revenue
+      2. **Same-day refunds**: Creates 2 events (gross on created_at, refund on cancelled_at)
+      3. **Partial refunds**: Currently estimated at 50% (TODO: parse refunds array for exact amount)
+      4. **Month-boundary events**: Order in Jan, refund in Feb (each appears in correct month)
+      5. **Negative amounts**: Invalid negative orders excluded
+      6. **Multi-currency**: Preserved as-is (no currency conversion)
+      7. **Missing dates**: Events with null revenue_date excluded
+      8. **Future dates**: Excluded (data quality issue)
+      9. **Pending orders**: Included in gross revenue per business requirement
+      10. **Tenant isolation**: All calculations enforce tenant_id is not null
+
+      ### Known Limitations
+
+      - **Shipping amount**: Currently defaults to 0 (needs `shipping_lines` array parsing)
+      - **Partial refund accuracy**: Uses 50% estimate (needs `refunds` array parsing)
+      - **Multiple refunds**: Currently creates single refund event (needs enhancement)
+
+      ### Usage Examples
+
+      ```sql
+      -- Daily gross revenue by tenant
+      SELECT
+        tenant_id,
+        date_trunc('day', revenue_date) as date,
+        SUM(gross_revenue) as gross_revenue
+      FROM fct_revenue
+      WHERE revenue_type = 'gross_revenue'
+      GROUP BY 1, 2;
+
+      -- Revenue waterfall for a specific day
+      SELECT
+        revenue_type,
+        SUM(gross_revenue) as gross_revenue,
+        SUM(refund_amount) as refunds,
+        SUM(cancellation_amount) as cancellations,
+        SUM(net_revenue) as net_revenue
+      FROM fct_revenue
+      WHERE date_trunc('day', revenue_date) = '2024-01-15'
+        AND tenant_id = 'tenant_a'
+      GROUP BY 1;
+
+      -- Month-over-month revenue comparison
+      SELECT
+        date_trunc('month', revenue_date) as month,
+        SUM(CASE WHEN revenue_type = 'gross_revenue' THEN gross_revenue ELSE 0 END) as gross,
+        SUM(refund_amount) as refunds,
+        SUM(cancellation_amount) as cancellations,
+        SUM(net_revenue) as net
+      FROM fct_revenue
+      WHERE tenant_id = 'tenant_a'
+      GROUP BY 1
+      ORDER BY 1;
+      ```
+
+    config:
+      tags: ['metrics', 'revenue', 'core']
+
+    columns:
+      - name: id
+        description: Unique identifier for each revenue event (MD5 hash of tenant_id + order_id + event type)
+        tests:
+          - unique
+          - not_null
+
+      - name: tenant_id
+        description: Tenant identifier (CRITICAL for multi-tenant isolation)
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('_tenant_airbyte_connections')
+                field: tenant_id
+
+      - name: order_id
+        description: Shopify order ID (normalized, without gid:// prefix)
+        tests:
+          - not_null
+
+      - name: order_name
+        description: Human-readable order name (e.g., "#1001")
+
+      - name: order_number
+        description: Numeric order number
+
+      - name: customer_email
+        description: Customer email address
+
+      - name: customer_id_raw
+        description: Shopify customer ID
+
+      - name: revenue_date
+        description: |
+          Date when revenue is recognized:
+          - For gross_revenue: order created_at
+          - For refunds: order cancelled_at
+          - For cancellations: order cancelled_at
+        tests:
+          - not_null
+
+      - name: order_created_at
+        description: Original order creation timestamp (UTC)
+
+      - name: order_cancelled_at
+        description: Order cancellation/refund timestamp (UTC), null if never cancelled
+
+      - name: currency
+        description: ISO 4217 currency code (e.g., USD, EUR, GBP)
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY', 'INR', 'BRL', 'MXN']
+                quote: false
+              severity: warn  # Warn instead of fail for new currencies
+
+      - name: financial_status
+        description: Shopify financial status (paid, pending, refunded, etc.)
+
+      - name: fulfillment_status
+        description: Shopify fulfillment status (fulfilled, unfulfilled, etc.)
+
+      - name: revenue_type
+        description: Type of revenue event (gross_revenue, refund, cancellation)
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['gross_revenue', 'refund', 'cancellation']
+
+      - name: gross_revenue
+        description: |
+          Gross revenue amount (positive for revenue events, 0 for refund/cancellation events)
+          Includes: product subtotal + shipping + taxes
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              config:
+                where: "revenue_type = 'gross_revenue'"
+
+      - name: subtotal_price
+        description: Product subtotal (before shipping and taxes)
+
+      - name: total_tax
+        description: Total tax amount
+
+      - name: shipping_amount
+        description: Shipping charges (TODO: currently defaults to 0)
+
+      - name: refund_amount
+        description: |
+          Refund amount (negative for refund events, 0 otherwise)
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "<= 0"
+              config:
+                where: "revenue_type = 'refund'"
+
+      - name: cancellation_amount
+        description: |
+          Cancellation amount (negative for cancellation events, 0 otherwise)
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "<= 0"
+              config:
+                where: "revenue_type = 'cancellation'"
+
+      - name: net_revenue
+        description: |
+          Net revenue (gross_revenue + refund_amount + cancellation_amount)
+          Since refunds and cancellations are negative, this is effectively:
+          Gross Revenue - Refunds - Cancellations
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "= (gross_revenue + refund_amount + cancellation_amount)"
+              config:
+                error_if: ">= 1"  # Allow for small floating point errors
+
+      - name: tags
+        description: Shopify order tags
+
+      - name: note
+        description: Order notes
+
+      - name: ingested_at
+        description: Timestamp when data was ingested from Airbyte
+
+      - name: dbt_updated_at
+        description: Timestamp when this record was last updated by dbt
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - tenant_id
+            - order_id
+            - revenue_type
+
+  - name: fct_aov
+    description: |
+      ## Average Order Value (AOV) Metric
+
+      This table calculates AOV across multiple time periods with outlier detection.
+
+      ### Business Rules
+
+      **AOV Formula:**
+      - AOV = Net Revenue / Number of Orders
+      - Uses NET revenue (after refunds and cancellations)
+      - Excludes extreme outliers (>3 standard deviations from mean)
+
+      **Order Inclusion:**
+      - Includes: `paid`, `pending`, `partially_refunded` orders
+      - Same orders used in gross revenue calculation
+      - Outliers excluded using 90-day rolling window statistics
+
+      **Time Periods:**
+      - `daily`: AOV per day
+      - `weekly`: AOV per week (starts Monday)
+      - `monthly`: AOV per calendar month
+      - `all_time`: AOV across entire history
+
+      **Multi-Currency:**
+      - AOV calculated separately for each currency
+      - No currency conversion performed
+
+      ### Edge Cases Handled
+
+      1. **Zero orders in period**: Period excluded (not returned with NULL AOV)
+      2. **Division by zero**: Returns NULL if somehow order_count = 0
+      3. **Outlier detection**: Uses 3-sigma rule on 90-day rolling window
+      4. **Negative net revenue**: Included (reflects heavy refunds reality)
+      5. **Multi-currency**: Separate AOV per currency
+      6. **Sparse data**: If stddev = 0, no outliers detected
+      7. **Tenant isolation**: All calculations scoped by tenant_id
+
+      ### Usage Examples
+
+      ```sql
+      -- Monthly AOV trend for a tenant
+      SELECT
+        period_start,
+        aov,
+        order_count,
+        outliers_excluded_count
+      FROM fct_aov
+      WHERE tenant_id = 'tenant_a'
+        AND currency = 'USD'
+        AND period_type = 'monthly'
+      ORDER BY period_start;
+
+      -- Compare daily AOV to all-time average
+      SELECT
+        d.period_start,
+        d.aov as daily_aov,
+        a.aov as all_time_aov,
+        (d.aov - a.aov) / a.aov * 100 as pct_difference
+      FROM fct_aov d
+      JOIN fct_aov a
+        ON d.tenant_id = a.tenant_id
+        AND d.currency = a.currency
+        AND a.period_type = 'all_time'
+      WHERE d.period_type = 'daily'
+        AND d.tenant_id = 'tenant_a';
+      ```
+
+    config:
+      tags: ['metrics', 'aov', 'core']
+
+    columns:
+      - name: id
+        description: Unique identifier (MD5 of tenant_id + currency + period_type + period_start)
+        tests:
+          - unique
+          - not_null
+
+      - name: tenant_id
+        description: Tenant identifier (CRITICAL for multi-tenant isolation)
+        tests:
+          - not_null
+
+      - name: currency
+        description: ISO 4217 currency code
+        tests:
+          - not_null
+
+      - name: period_type
+        description: Time period granularity (daily, weekly, monthly, all_time)
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['daily', 'weekly', 'monthly', 'all_time']
+
+      - name: period_start
+        description: Start of the time period (NULL for all_time)
+
+      - name: order_count
+        description: Number of orders in period (after outlier exclusion)
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+
+      - name: total_net_revenue
+        description: Total net revenue for period (after outlier exclusion)
+
+      - name: aov
+        description: |
+          Average Order Value (Net Revenue / Order Count)
+          NULL if order_count = 0 (should not happen due to filtering)
+        tests:
+          - not_null
+
+      - name: avg_order_value
+        description: Alternative AOV calculation (should match aov field exactly)
+
+      - name: min_order_value
+        description: Minimum order value in period
+
+      - name: max_order_value
+        description: Maximum order value in period
+
+      - name: stddev_order_value
+        description: Standard deviation of order values
+
+      - name: outliers_excluded_count
+        description: Number of orders excluded due to outlier detection
+
+      - name: dbt_updated_at
+        description: Timestamp when this record was last updated by dbt
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - tenant_id
+            - currency
+            - period_type
+            - period_start
+
+  - name: fct_roas
+    description: |
+      ## Return on Ad Spend (ROAS) Metric
+
+      Calculates both Gross ROAS and Net ROAS across multiple time periods.
+
+      ### Business Rules
+
+      **ROAS Formula:**
+      - Gross ROAS = Attributed Gross Revenue / Ad Spend
+      - Net ROAS = Attributed Net Revenue / Ad Spend
+
+      **Ad Spend:**
+      - Includes: Meta Ads + Google Ads (actual spend from platform APIs)
+      - Excludes: Agency fees, creative production costs, other marketing spend
+
+      **Attribution:**
+      - Platform-specific windows:
+        * Meta: 7-day click / 1-day view (platform default)
+        * Google: Last-click (platform default)
+      - Only orders with `attribution_status = 'attributed'` counted
+      - Organic/direct traffic excluded
+
+      **Zero Spend Handling:**
+      - When spend = 0: ROAS = 0 (not NULL or infinity)
+
+      ### Usage Examples
+
+      ```sql
+      -- Compare Gross vs Net ROAS monthly
+      SELECT
+        date_trunc('month', period_start) as month,
+        platform,
+        gross_roas,
+        net_roas,
+        (gross_roas - net_roas) as roas_impact_of_refunds
+      FROM fct_roas
+      WHERE period_type = 'monthly'
+        AND tenant_id = 'tenant_a';
+      ```
+
+    config:
+      tags: ['metrics', 'roas', 'attribution']
+
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+      - name: gross_roas
+        description: Gross Revenue / Ad Spend (before refunds)
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: net_roas
+        description: Net Revenue / Ad Spend (after refunds/cancellations)
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+  - name: fct_cac
+    description: |
+      ## Customer Acquisition Cost (CAC) & Net CAC Metrics
+
+      Calculates both CAC and nCAC across multiple time periods.
+
+      ### Business Rules
+
+      **CAC Formula:**
+      - CAC = Total Ad Spend / All New Customers
+      - Includes ALL customers (even if first order was refunded/cancelled)
+
+      **nCAC (Net CAC) Formula:**
+      - nCAC = Total Ad Spend / Net New Customers
+      - Excludes customers whose first order was:
+        * Fully cancelled
+        * Fully refunded (financial_status = 'refunded' or 'voided')
+        * Results in net revenue <= 0
+
+      **New Customer Definition:**
+      - First order ever (based on customer_email or customer_id)
+      - Must be attributed to paid channel (Meta or Google Ads)
+
+      **Ad Spend:**
+      - Same as ROAS: Meta Ads + Google Ads
+
+      ### Key Insights
+
+      **Customer Retention Rate:**
+      - Formula: (Net New Customers / All New Customers) * 100
+      - Shows % of acquired customers who didn't immediately cancel/refund
+      - Low rate indicates acquisition quality issues
+
+      **nCAC vs CAC:**
+      - nCAC >= CAC always (fewer customers = higher cost per good customer)
+      - Gap between nCAC and CAC shows cost of acquiring bad customers
+      - Example: CAC = $50, nCAC = $60 → $10 wasted per cancelled customer
+
+      ### Usage Examples
+
+      ```sql
+      -- Track customer quality over time
+      SELECT
+        date_trunc('month', period_start) as month,
+        new_customers,
+        net_new_customers,
+        customer_retention_rate_pct,
+        cac,
+        ncac,
+        (ncac - cac) as cost_of_bad_customers
+      FROM fct_cac
+      WHERE period_type = 'monthly'
+        AND tenant_id = 'tenant_a'
+      ORDER BY month;
+
+      -- Compare CAC across platforms
+      SELECT
+        platform,
+        cac,
+        ncac,
+        customer_retention_rate_pct
+      FROM fct_cac
+      WHERE period_type = 'all_time'
+        AND tenant_id = 'tenant_a';
+      ```
+
+    config:
+      tags: ['metrics', 'cac', 'attribution']
+
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+      - name: new_customers
+        description: Total new customers acquired (includes cancelled/refunded)
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: net_new_customers
+        description: New customers whose first order wasn't cancelled/fully refunded
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+          - dbt_utils.expression_is_true:
+              expression: "<= new_customers"
+              config:
+                error_if: ">= 1"
+
+      - name: cac
+        description: Customer Acquisition Cost (spend / all new customers)
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: ncac
+        description: Net Customer Acquisition Cost (spend / net new customers)
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: customer_retention_rate_pct
+        description: Percentage of acquired customers who didn't immediately cancel/refund
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0 and <= 100"
+
+      - name: first_order_roas
+        description: First order revenue / spend (all customers)
+
+      - name: net_first_order_roas
+        description: Net first order revenue / spend (net customers only)
+
+      - name: avg_first_order_value
+        description: Average first order value (all customers)
+
+      - name: avg_net_first_order_value
+        description: Average first order value (net customers only)
