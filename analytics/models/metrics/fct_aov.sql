@@ -42,39 +42,48 @@ with order_revenue as (
     group by 1, 2, 3, 4, 6
 ),
 
--- Calculate statistics for outlier detection
--- Use rolling 90-day window to adapt to changing business patterns
-revenue_statistics as (
-    select
-        tenant_id,
-        currency,
-        date_trunc('day', order_date) as date,
-        avg(net_revenue) as avg_revenue,
-        stddev(net_revenue) as stddev_revenue,
-        count(*) as order_count
-    from order_revenue
-    where order_date >= current_date - interval '90 days'
-    group by 1, 2, 3
-),
-
--- Identify outliers (>3 standard deviations from mean)
+-- Calculate statistics for outlier detection using rolling 90-day window
+-- Use window functions to calculate rolling average and stddev for each order
+-- based on the preceding 90 days of data from that order's date
 orders_with_outlier_flag as (
     select
         o.*,
-        s.avg_revenue,
-        s.stddev_revenue,
+        -- Calculate rolling average over preceding 90 days (including current order)
+        avg(o.net_revenue) over (
+            partition by o.tenant_id, o.currency
+            order by o.order_date
+            range between interval '90 days' preceding and current row
+        ) as avg_revenue,
+        -- Calculate rolling standard deviation over preceding 90 days
+        stddev(o.net_revenue) over (
+            partition by o.tenant_id, o.currency
+            order by o.order_date
+            range between interval '90 days' preceding and current row
+        ) as stddev_revenue,
         -- Edge case: if stddev is 0 or null, no outliers detected
         case
-            when s.stddev_revenue is null then false
-            when s.stddev_revenue = 0 then false
-            when abs(o.net_revenue - s.avg_revenue) > (3 * s.stddev_revenue) then true
+            when stddev(o.net_revenue) over (
+                partition by o.tenant_id, o.currency
+                order by o.order_date
+                range between interval '90 days' preceding and current row
+            ) is null then false
+            when stddev(o.net_revenue) over (
+                partition by o.tenant_id, o.currency
+                order by o.order_date
+                range between interval '90 days' preceding and current row
+            ) = 0 then false
+            when abs(o.net_revenue - avg(o.net_revenue) over (
+                partition by o.tenant_id, o.currency
+                order by o.order_date
+                range between interval '90 days' preceding and current row
+            )) > (3 * stddev(o.net_revenue) over (
+                partition by o.tenant_id, o.currency
+                order by o.order_date
+                range between interval '90 days' preceding and current row
+            )) then true
             else false
         end as is_outlier
     from order_revenue o
-    left join revenue_statistics s
-        on o.tenant_id = s.tenant_id
-        and o.currency = s.currency
-        and date_trunc('day', o.order_date) = s.date
 ),
 
 -- Filter out outliers
