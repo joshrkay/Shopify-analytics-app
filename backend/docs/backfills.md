@@ -1,241 +1,290 @@
-# dbt Backfills Guide
+# Backfills & Reprocessing
 
-This guide explains how to run dbt backfills for historical data reprocessing and tenant-scoped data rebuilds.
+**Story 4.8** - Support for parameterized dbt backfills with tenant isolation and audit logging.
 
 ## Overview
 
-dbt backfills allow you to:
-- Reprocess historical data for specific date ranges
-- Rebuild analytics for specific tenants
-- Fix data quality issues by re-running transformations
+The backfill system allows platform operators to reprocess historical data safely by:
+- Parameterizing dbt models with date range filters
+- Enforcing tenant isolation at the model level
+- Auditing all backfill executions
 
-All backfill executions are logged to the `backfill_executions` table for audit purposes.
+## Architecture
 
-## Prerequisites
+### Components
 
-1. **Database Access**: Ensure `DATABASE_URL` environment variable is set
-2. **dbt Configuration**: dbt profiles.yml must be configured (see `analytics/profiles.yml`)
-3. **Model Support**: All models must use the `backfill_date_range` macro (see below)
+1. **dbt Macro** (`analytics/macros/backfill.sql`)
+   - Provides `backfill_date_filter()` macro for date range filtering
+   - Used in incremental models to override default incremental logic
 
-## Running Backfills
+2. **Backend Service** (`backend/src/services/backfill_service.py`)
+   - Executes dbt commands with date range variables
+   - Enforces tenant isolation
+   - Logs audit events
 
-### Basic Usage
+3. **API Route** (`backend/src/api/routes/backfills.py`)
+   - REST endpoint for triggering backfills
+   - Validates date ranges
+   - Returns execution results
 
-Run a backfill for a specific date range:
+## Usage
 
-```bash
-python -m scripts.run_dbt_backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31
+### API Endpoint
+
+**POST** `/api/backfills/trigger`
+
+**Request Body:**
+```json
+{
+  "model_selector": "fact_orders",
+  "start_date": "2024-01-01",
+  "end_date": "2024-01-31"
+}
 ```
 
-### Tenant-Scoped Backfills
-
-Run a backfill for a specific tenant:
-
-```bash
-python -m scripts.run_dbt_backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31 \
-    --tenant-id tenant-123
+**Response:**
+```json
+{
+  "backfill_id": "uuid",
+  "tenant_id": "tenant-123",
+  "model_selector": "fact_orders",
+  "start_date": "2024-01-01",
+  "end_date": "2024-01-31",
+  "status": "success",
+  "is_successful": true,
+  "rows_affected": 1500,
+  "duration_seconds": 45.2,
+  "completed_at": "2024-02-01T10:30:00Z"
+}
 ```
 
-**Security Note**: Tenant-scoped backfills ensure data isolation. The `tenant_id` filter is applied at the SQL level to prevent cross-tenant data access.
+### Model Selectors
 
-### Selective Model Backfills
+The `model_selector` parameter uses dbt's selection syntax:
 
-Run backfills for specific models only:
+- `fact_orders` - Single model
+- `facts` - All models in facts directory
+- `fact_orders+` - fact_orders and all downstream dependencies
+- `fact_orders+2` - fact_orders and 2 levels of downstream dependencies
 
-```bash
-python -m scripts.run_dbt_backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31 \
-    --models staging+ facts+
-```
+### Date Formats
 
-Or specific models:
+Supported date formats:
+- `YYYY-MM-DD` (e.g., `2024-01-01`)
+- `YYYY-MM-DD HH:MI:SS` (e.g., `2024-01-01 00:00:00`)
 
-```bash
-python -m scripts.run_dbt_backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31 \
-    --models staging.fact_orders staging.fact_customers
-```
+Dates are interpreted as UTC timestamps.
 
-## Command-Line Arguments
+### Constraints
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `--start-date` | Yes | Start date for backfill (YYYY-MM-DD format) |
-| `--end-date` | Yes | End date for backfill (YYYY-MM-DD format) |
-| `--tenant-id` | No | Tenant ID for tenant-scoped backfill |
-| `--models` | No | Space-separated list of models to backfill (dbt selection syntax) |
-| `--database-url` | No | Database URL (overrides DATABASE_URL env var) |
-
-## Date Range Best Practices
-
-1. **Small Increments**: For large date ranges, consider running backfills in smaller chunks (e.g., monthly or weekly)
-2. **Validation**: Always validate results after backfills, especially for critical fact tables
-3. **Idempotency**: Backfills use incremental materialization - safe to re-run if needed
-4. **Time Windows**: Avoid backfilling very recent data (last 24 hours) as it may be incomplete
-
-### Example: Monthly Backfill
-
-```bash
-# Backfill January 2024
-python -m scripts.run_dbt_backfill \
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31
-
-# Backfill February 2024
-python -m scripts.run_dbt_backfill \
-    --start-date 2024-02-01 \
-    --end-date 2024-02-29
-```
-
-## Audit Logging
-
-All backfill executions are logged to the `backfill_executions` table with:
-
-- Execution ID (UUID)
-- Tenant ID (if tenant-scoped)
-- Date range (start_date, end_date)
-- Models executed
-- Status (running, completed, failed)
-- Duration (seconds)
-- Records processed (if available)
-- Error message (if failed)
-
-### Querying Backfill History
-
-```sql
--- View recent backfills
-SELECT 
-    id,
-    tenant_id,
-    start_date,
-    end_date,
-    status,
-    duration_seconds,
-    created_at
-FROM backfill_executions
-ORDER BY created_at DESC
-LIMIT 10;
-
--- View failed backfills
-SELECT *
-FROM backfill_executions
-WHERE status = 'failed'
-ORDER BY created_at DESC;
-```
-
-## Troubleshooting
-
-### Common Issues
-
-#### 1. dbt Connection Errors
-
-**Error**: `Connection refused` or `Authentication failed`
-
-**Solution**: 
-- Verify `DATABASE_URL` is set correctly
-- Check dbt `profiles.yml` configuration
-- Ensure database is accessible from your network
-
-#### 2. Date Range Validation Errors
-
-**Error**: `start_date must be <= end_date`
-
-**Solution**: Ensure start_date is before or equal to end_date
-
-#### 3. Model Compilation Errors
-
-**Error**: `Compilation error in model X`
-
-**Solution**:
-- Run `dbt compile` manually to see detailed errors
-- Check that models use the `backfill_date_range` macro correctly
-- Verify SQL syntax in affected models
-
-#### 4. Tenant Isolation Errors
-
-**Error**: Unexpected data in tenant-scoped backfill
-
-**Solution**:
-- Verify `tenant_id` parameter is correct
-- Check that source tables have proper tenant_id filtering
-- Review model SQL to ensure tenant_id is applied at all joins
-
-### Debugging Steps
-
-1. **Test Connection**:
-   ```bash
-   cd analytics
-   dbt debug
-   ```
-
-2. **Compile Models**:
-   ```bash
-   cd analytics
-   dbt compile --vars '{"backfill_start_date": "2024-01-01", "backfill_end_date": "2024-01-31"}'
-   ```
-
-3. **Dry Run**:
-   ```bash
-   dbt run --select staging+ --vars '{"backfill_start_date": "2024-01-01", "backfill_end_date": "2024-01-31"}' --dry-run
-   ```
-
-## Safety Considerations
-
-### Idempotency
-
-Backfills are designed to be idempotent:
-- Uses incremental materialization
-- Safe to re-run if interrupted
-- No duplicate records created on re-run
-
-### Data Integrity
-
-- Backfills do not delete existing data
-- They append or update based on incremental logic
-- Always verify results after large backfills
-
-### Performance
-
-- Large date ranges may take significant time
-- Consider running during off-peak hours
-- Monitor database performance during backfills
-
-### Tenant Isolation
-
-- Tenant-scoped backfills enforce strict isolation
-- Cross-tenant data access is prevented at SQL level
-- Always verify tenant_id filtering in model SQL
+- **Maximum date range**: 365 days
+- **Tenant isolation**: All backfills are automatically scoped to the authenticated tenant
+- **Idempotency**: Running the same backfill multiple times is safe (models use upsert logic)
 
 ## Model Implementation
 
-Models must support backfill parameters using the `backfill_date_range` macro:
+To enable backfill support in a dbt model, use the `backfill_date_filter()` macro:
 
 ```sql
-{{ config(materialized='incremental') }}
+{{
+    config(
+        materialized='incremental',
+        unique_key='id',
+    )
+}}
 
-SELECT 
-    id,
-    tenant_id,
-    created_at,
-    -- other columns
-FROM {{ ref('source_table') }}
-WHERE 1=1
-  {{ backfill_date_range(var('backfill_start_date'), var('backfill_end_date'), var('tenant_id')) }}
+with staging_data as (
+    select *
+    from {{ ref('stg_source') }}
+    where tenant_id is not null
+    
+    {% if var('backfill_start_date', none) and var('backfill_end_date', none) %}
+        -- Backfill mode: filter by date range
+        and {{ backfill_date_filter('airbyte_emitted_at', var('backfill_start_date'), var('backfill_end_date')) }}
+        {% if var('backfill_tenant_id', none) %}
+            -- Additional tenant filter (defense in depth)
+            and tenant_id = '{{ var("backfill_tenant_id") }}'
+        {% endif %}
+    {% elif is_incremental() %}
+        -- Incremental mode: only new/updated records
+        and airbyte_emitted_at > (
+            select coalesce(max(ingested_at), '1970-01-01'::timestamp with time zone)
+            from {{ this }}
+        )
+    {% endif %}
+)
+
+select * from staging_data
 ```
 
-The macro automatically:
-- Filters by date range if `backfill_start_date` and `backfill_end_date` are provided
-- Filters by tenant if `tenant_id` is provided
-- Returns empty string (no filtering) if variables are null/empty
+### Key Points
+
+1. **Tenant Isolation**: Always filter by `tenant_id is not null` (and optionally by `backfill_tenant_id` variable)
+2. **Date Column**: Use the appropriate timestamp column (typically `airbyte_emitted_at` or `created_at`)
+3. **Incremental Logic**: The backfill mode overrides the default incremental filter
+
+## Security
+
+### Tenant Isolation
+
+- All backfills are scoped to the authenticated tenant (from JWT)
+- Models must filter by `tenant_id` to prevent cross-tenant data access
+- The service passes `backfill_tenant_id` as a dbt variable for additional validation
+
+### Audit Logging
+
+All backfill executions are logged to the audit system:
+
+- `backfill.started` - When backfill execution begins
+- `backfill.completed` - When backfill succeeds
+- `backfill.failed` - When backfill fails
+
+Audit events include:
+- `backfill_id` - Unique identifier for the backfill
+- `model_selector` - Which models were processed
+- `start_date` / `end_date` - Date range
+- `duration_seconds` - Execution time
+- `rows_affected` - Number of rows processed (if available)
+- `error` - Error message (if failed)
+
+## Examples
+
+### Backfill Single Model
+
+```bash
+curl -X POST https://api.example.com/api/backfills/trigger \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_selector": "fact_orders",
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31"
+  }'
+```
+
+### Backfill All Fact Tables
+
+```bash
+curl -X POST https://api.example.com/api/backfills/trigger \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_selector": "facts",
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31"
+  }'
+```
+
+### Backfill with Dependencies
+
+```bash
+curl -X POST https://api.example.com/api/backfills/trigger \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_selector": "fact_orders+",
+    "start_date": "2024-01-01",
+    "end_date": "2024-01-31"
+  }'
+```
+
+## Error Handling
+
+### Invalid Date Range
+
+**Status:** `400 Bad Request`
+
+```json
+{
+  "detail": "Start date (2024-01-31) must be before end date (2024-01-01)"
+}
+```
+
+### Date Range Too Large
+
+**Status:** `400 Bad Request`
+
+```json
+{
+  "detail": "Date range too large: 400 days. Maximum allowed: 365 days"
+}
+```
+
+### dbt Execution Failure
+
+**Status:** `500 Internal Server Error`
+
+```json
+{
+  "detail": "Backfill execution failed: dbt execution failed: ..."
+}
+```
+
+## Monitoring
+
+### Audit Logs
+
+Query audit logs to monitor backfill activity:
+
+```sql
+SELECT 
+    action,
+    resource_id as backfill_id,
+    event_metadata->>'model_selector' as model_selector,
+    event_metadata->>'start_date' as start_date,
+    event_metadata->>'end_date' as end_date,
+    event_metadata->>'duration_seconds' as duration_seconds,
+    event_metadata->>'rows_affected' as rows_affected,
+    timestamp
+FROM audit_logs
+WHERE action IN ('backfill.started', 'backfill.completed', 'backfill.failed')
+    AND tenant_id = 'your-tenant-id'
+ORDER BY timestamp DESC;
+```
+
+### Application Logs
+
+Backfill service logs include:
+- Execution start/end
+- dbt command details
+- Row counts
+- Errors
+
+Search for logs with:
+- `backfill_id` - Specific backfill tracking
+- `tenant_id` - Tenant-scoped queries
+- `model_selector` - Model-specific queries
+
+## Best Practices
+
+1. **Test on Small Ranges First**: Start with a small date range (e.g., 1 day) before backfilling large periods
+2. **Monitor Resource Usage**: Large backfills can be resource-intensive; monitor database and dbt execution
+3. **Use Model Selectors Wisely**: Be specific with model selectors to avoid unnecessary reprocessing
+4. **Check Audit Logs**: Review audit logs after backfills to verify successful execution
+5. **Idempotency**: Backfills are safe to re-run; models use upsert logic
+
+## Troubleshooting
+
+### Backfill Hangs
+
+- Check dbt process status
+- Review database connection pool
+- Verify date range is reasonable
+
+### No Rows Processed
+
+- Verify date range matches data availability
+- Check tenant_id filtering in model
+- Review staging data for the date range
+
+### Cross-Tenant Data Concerns
+
+- Verify models filter by `tenant_id`
+- Check audit logs for tenant_id in metadata
+- Review model SQL for tenant isolation
 
 ## Related Documentation
 
-- [dbt Project Configuration](../analytics/dbt_project.yml)
-- [Backfill Macro](../analytics/macros/backfill.sql)
-- [BackfillExecution Model](../src/models/backfill_execution.py)
+- [dbt Selection Syntax](https://docs.getdbt.com/reference/node-selection/syntax)
+- [Incremental Models](https://docs.getdbt.com/docs/build/incremental-models)
+- [Audit Logging](../src/platform/audit.py)

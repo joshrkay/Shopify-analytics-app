@@ -284,7 +284,10 @@ jobs:
           DB_NAME: test_dbt_db
           DB_SSLMODE: disable
         run: |
+          echo "Creating profiles.yml from template..."
+          cp profiles.yml.example profiles.yml
           echo "dbt profiles configured via environment variables"
+          echo "Profiles file location: $(pwd)/profiles.yml"
 
       - name: Run dbt debug
         working-directory: ./analytics
@@ -301,6 +304,75 @@ jobs:
           echo "=========================================="
           dbt debug --profiles-dir . --project-dir . || exit 1
 
+      - name: Install dbt packages
+        working-directory: ./analytics
+        env:
+          DB_HOST: localhost
+          DB_USER: test
+          DB_PASSWORD: test
+          DB_PORT: 5432
+          DB_NAME: test_dbt_db
+          DB_SSLMODE: disable
+        run: |
+          echo "=========================================="
+          echo "Installing dbt packages"
+          echo "=========================================="
+          dbt deps --profiles-dir . --project-dir . || exit 1
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create dbt source tables
+        env:
+          DB_HOST: localhost
+          DB_USER: test
+          DB_PASSWORD: test
+          DB_PORT: 5432
+          DB_NAME: test_dbt_db
+        run: |
+          echo "=========================================="
+          echo "Creating dbt source schemas and tables"
+          echo "=========================================="
+          psql "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" -v ON_ERROR_STOP=1 <<'SQL'
+          create schema if not exists platform;
+          create schema if not exists airbyte_raw;
+
+          create table if not exists platform.tenant_airbyte_connections (
+            airbyte_connection_id text not null,
+            tenant_id text not null,
+            source_type text not null,
+            connection_name text,
+            status text not null,
+            is_enabled boolean not null
+          );
+
+          create table if not exists airbyte_raw._airbyte_raw_shopify_orders (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists airbyte_raw._airbyte_raw_shopify_customers (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists airbyte_raw._airbyte_raw_meta_ads (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists airbyte_raw._airbyte_raw_google_ads (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+          SQL
+
       - name: Run dbt compile
         working-directory: ./analytics
         env:
@@ -316,7 +388,7 @@ jobs:
           echo "=========================================="
           dbt compile --profiles-dir . --project-dir . || exit 1
 
-      - name: Run dbt run (staging models)
+      - name: Run dbt run (all models)
         working-directory: ./analytics
         env:
           DB_HOST: localhost
@@ -327,9 +399,9 @@ jobs:
           DB_SSLMODE: disable
         run: |
           echo "=========================================="
-          echo "Running dbt models (staging+)"
+          echo "Running all dbt models"
           echo "=========================================="
-          dbt run --select staging+ --profiles-dir . --project-dir . || exit 1
+          dbt run --profiles-dir . --project-dir . || exit 1
 
       - name: Run dbt test
         working-directory: ./analytics
@@ -354,7 +426,7 @@ jobs:
           echo "=========================================="
           echo "✓ dbt connection verified"
           echo "✓ Models compiled successfully"
-          echo "✓ Staging models built"
+          echo "✓ All models built"
           echo "✓ Data quality tests passed"
           echo ""
           echo "Schema/logic changes validated before merge."
@@ -363,7 +435,7 @@ jobs:
   pr-check:
     name: PR Merge Gate
     runs-on: ubuntu-latest
-    needs: [quality-gates, dbt-validation, platform-tests, billing-regression-tests]
+    needs: [quality-gates, platform-tests, billing-regression-tests, dbt-validation]
     if: github.event_name == 'pull_request'
     
     steps:
