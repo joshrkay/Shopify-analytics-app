@@ -319,6 +319,60 @@ jobs:
           echo "=========================================="
           dbt deps --profiles-dir . --project-dir . || exit 1
 
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create dbt source tables
+        env:
+          DB_HOST: localhost
+          DB_USER: test
+          DB_PASSWORD: test
+          DB_PORT: 5432
+          DB_NAME: test_dbt_db
+        run: |
+          echo "=========================================="
+          echo "Creating dbt source schemas and tables"
+          echo "=========================================="
+          psql "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" -v ON_ERROR_STOP=1 <<'SQL'
+          create schema if not exists platform;
+          create schema if not exists airbyte_raw;
+
+          create table if not exists platform.tenant_airbyte_connections (
+            airbyte_connection_id text not null,
+            tenant_id text not null,
+            source_type text not null,
+            connection_name text,
+            status text not null,
+            is_enabled boolean not null
+          );
+
+          create table if not exists airbyte_raw._airbyte_raw_shopify_orders (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists airbyte_raw._airbyte_raw_shopify_customers (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists airbyte_raw._airbyte_raw_meta_ads (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists airbyte_raw._airbyte_raw_google_ads (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+          SQL
+
       - name: Run dbt compile
         working-directory: ./analytics
         env:
