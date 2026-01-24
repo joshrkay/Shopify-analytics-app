@@ -399,9 +399,9 @@ jobs:
           DB_SSLMODE: disable
         run: |
           echo "=========================================="
-          echo "Running dbt models (staging+)"
+          echo "Running dbt models (+staging+)"
           echo "=========================================="
-          dbt run --select staging+ --profiles-dir . --project-dir . || exit 1
+          dbt run --select +staging+ --profiles-dir . --project-dir . || exit 1
 
       - name: Run dbt test
         working-directory: ./analytics

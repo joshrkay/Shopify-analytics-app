@@ -34,7 +34,8 @@ with all_orders as (
         customer_id_raw,
         order_created_at,
         revenue,
-        currency
+        currency,
+        financial_status
     from {{ ref('fact_orders') }}
     where tenant_id is not null
         and order_id is not null
@@ -65,7 +66,8 @@ first_order_details as (
         f.first_order_id,
         o.customer_email,
         o.revenue as first_order_revenue,
-        o.currency
+        o.currency,
+        o.financial_status
     from first_orders f
     join all_orders o
         on f.tenant_id = o.tenant_id
@@ -82,6 +84,7 @@ first_order_attribution as (
         f.customer_email,
         f.first_order_revenue,
         f.currency,
+        f.financial_status,
 
         a.platform,
         a.campaign_id,
@@ -89,8 +92,7 @@ first_order_attribution as (
         a.attribution_status,
         a.utm_source,
         a.utm_medium,
-        a.utm_campaign,
-        a.financial_status
+        a.utm_campaign
 
     from first_order_details f
     left join {{ ref('last_click') }} a
@@ -110,9 +112,9 @@ first_order_with_net_revenue as (
         and f.first_order_id = r.order_id
     group by
         f.tenant_id, f.customer_identifier, f.first_order_date, f.first_order_id,
-        f.customer_email, f.first_order_revenue, f.currency, f.platform,
-        f.campaign_id, f.campaign_name, f.attribution_status, f.utm_source,
-        f.utm_medium, f.utm_campaign, f.financial_status
+        f.customer_email, f.first_order_revenue, f.currency, f.financial_status,
+        f.platform, f.campaign_id, f.campaign_name, f.attribution_status,
+        f.utm_source, f.utm_medium, f.utm_campaign
 ),
 
 -- Filter to only customers acquired through paid channels
