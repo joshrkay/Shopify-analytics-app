@@ -8,7 +8,7 @@
 
 with tenant_count as (
     select 
-        count(distinct tenant_id) as active_shopify_tenant_count
+        coalesce(count(distinct tenant_id), 0) as active_shopify_tenant_count
     from {{ ref('_tenant_airbyte_connections') }}
     where source_type = 'shopify'
         and status = 'active'
