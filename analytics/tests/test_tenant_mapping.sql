@@ -4,6 +4,7 @@
 -- which would cause data leakage with the current `limit 1` approach.
 --
 -- If this test fails, you MUST configure proper tenant mapping in staging models.
+-- Returns rows only when tenant count is NOT exactly 1 (test fails if any rows returned)
 
 with tenant_count as (
     select
