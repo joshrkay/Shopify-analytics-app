@@ -154,7 +154,7 @@ models:
           - accepted_values:
               arguments:
                 values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY', 'INR', 'BRL', 'MXN']
-                quote: false
+                quote: true
               severity: warn  # Warn instead of fail for new currencies
 
       - name: financial_status
