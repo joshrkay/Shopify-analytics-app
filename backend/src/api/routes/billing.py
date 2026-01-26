@@ -348,13 +348,26 @@ class FeatureEntitlementResponse(BaseModel):
     grace_period_ends_on: Optional[str] = None
 
 
+class CategoryEntitlementResponse(BaseModel):
+    """Category entitlement information."""
+    category: str
+    is_entitled: bool
+    billing_state: str
+    plan_id: Optional[str]
+    reason: Optional[str] = None
+    action_required: Optional[str] = None
+    is_degraded_access: bool = False
+
+
 class EntitlementsResponse(BaseModel):
     """Complete entitlements information for UI."""
     billing_state: str
     plan_id: Optional[str]
     plan_name: Optional[str]
     features: dict[str, FeatureEntitlementResponse]
+    categories: dict[str, CategoryEntitlementResponse]
     grace_period_days_remaining: Optional[int] = None
+    current_period_end: Optional[str] = None
 
 
 @router.get("/entitlements", response_model=EntitlementsResponse)
@@ -385,6 +398,7 @@ async def get_entitlements(
         ).order_by(Subscription.created_at.desc()).first()
         
         # Create policy and get billing state
+        from src.entitlements.policy import EntitlementPolicy, BillingState
         policy = EntitlementPolicy(db_session)
         billing_state = policy.get_billing_state(subscription)
         
@@ -424,18 +438,46 @@ async def get_entitlements(
                 is_entitled=result.is_entitled,
                 billing_state=result.billing_state.value,
                 plan_id=result.plan_id,
-                plan_name=plan_name if result.plan_id == subscription_info.plan_id else None,
+                plan_name=plan_name if subscription_info and result.plan_id == subscription_info.plan_id else None,
                 reason=result.reason,
                 required_plan=result.required_plan,
                 grace_period_ends_on=result.grace_period_ends_on.isoformat() if result.grace_period_ends_on else None,
             )
         
+        # Build category entitlements (for UI gating)
+        from src.entitlements.categories import PremiumCategory
+        categories = {}
+        for category in [PremiumCategory.EXPORTS, PremiumCategory.AI, PremiumCategory.HEAVY_RECOMPUTE]:
+            # Check with GET method for UI (read access)
+            result = policy.check_category_entitlement(
+                tenant_id=tenant_ctx.tenant_id,
+                category=category,
+                method="GET",
+                subscription=subscription,
+            )
+            categories[category.value] = CategoryEntitlementResponse(
+                category=category.value,
+                is_entitled=result.is_entitled,
+                billing_state=result.billing_state.value,
+                plan_id=result.plan_id,
+                reason=result.reason,
+                action_required=result.action_required,
+                is_degraded_access=result.is_degraded_access,
+            )
+        
+        # Get current_period_end for canceled state
+        current_period_end = None
+        if subscription and subscription.current_period_end:
+            current_period_end = subscription.current_period_end.isoformat()
+        
         return EntitlementsResponse(
             billing_state=billing_state.value,
-            plan_id=subscription_info.plan_id,
+            plan_id=subscription_info.plan_id if subscription_info else None,
             plan_name=plan_name,
             features=features,
+            categories=categories,
             grace_period_days_remaining=grace_period_days_remaining,
+            current_period_end=current_period_end,
         )
     except Exception as e:
         logger.error("Error getting entitlements", extra={
