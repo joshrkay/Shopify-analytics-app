@@ -112,11 +112,15 @@ class TestMultiTenantAccess:
         assert not has_multi_tenant_access(["merchant_viewer"])
 
     def test_legacy_roles_no_multi_tenant_access(self):
-        """Legacy roles should not have multi-tenant access."""
-        assert not has_multi_tenant_access(["admin"])
+        """Non-admin legacy roles should not have multi-tenant access."""
+        # Note: admin has MULTI_TENANT_ACCESS as platform super-admin
         assert not has_multi_tenant_access(["owner"])
         assert not has_multi_tenant_access(["editor"])
         assert not has_multi_tenant_access(["viewer"])
+
+    def test_admin_has_multi_tenant_access(self):
+        """Admin role should have multi-tenant access as platform admin."""
+        assert has_multi_tenant_access(["admin"])
 
     def test_mixed_roles_with_agency(self):
         """If any role has multi-tenant, result should be True."""
