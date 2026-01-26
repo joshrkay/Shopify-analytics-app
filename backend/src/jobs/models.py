@@ -39,12 +39,15 @@ class JobCategory(str, PyEnum):
 
 
 # PostgreSQL enum type names - distinct from ingestion.jobs.models to avoid conflicts
+# Use values_callable to store lowercase string values (e.g., 'blocked_due_to_billing')
+# instead of member names (e.g., 'BLOCKED_DUE_TO_BILLING')
 BACKGROUND_JOB_STATUS_ENUM = Enum(
     JobStatus,
     name="background_job_status",  # Unique name to avoid conflict with ingestion JobStatus
     create_constraint=True,
     metadata=Base.metadata,
     validate_strings=True,
+    values_callable=lambda enum: [e.value for e in enum],
 )
 
 BACKGROUND_JOB_CATEGORY_ENUM = Enum(
@@ -53,6 +56,7 @@ BACKGROUND_JOB_CATEGORY_ENUM = Enum(
     create_constraint=True,
     metadata=Base.metadata,
     validate_strings=True,
+    values_callable=lambda enum: [e.value for e in enum],
 )
 
 
