@@ -96,7 +96,7 @@ export async function switchActiveStore(
  * Get the current user context from JWT.
  */
 export async function fetchUserContext(): Promise<UserContext> {
-  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+  const response = await fetch(`${API_BASE_URL}/agency/me`, {
     method: 'GET',
     headers: createHeaders(),
   });
