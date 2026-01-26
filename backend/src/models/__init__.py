@@ -13,6 +13,7 @@ from src.models.usage import UsageRecord, UsageAggregate
 from src.models.billing_event import BillingEvent
 from src.models.airbyte_connection import TenantAirbyteConnection, ConnectionStatus, ConnectionType
 from src.models.backfill import BackfillExecution, BackfillStatus
+from src.models.oauth_credential import OAuthCredential, CredentialStatus, CredentialProvider
 
 __all__ = [
     "TimestampMixin",
@@ -29,4 +30,7 @@ __all__ = [
     "ConnectionType",
     "BackfillExecution",
     "BackfillStatus",
+    "OAuthCredential",
+    "CredentialStatus",
+    "CredentialProvider",
 ]

@@ -7,30 +7,59 @@ This module provides:
 - EntitlementCache: Redis-backed cache with real-time invalidation
 - EntitlementMiddleware: FastAPI middleware for API enforcement
 - AuditLogger: Log all access denials for compliance
+- Category-based enforcement for premium features
 
 Grace period: 3 days (configurable via billing_rules.grace_period_days)
 """
 
-from src.entitlements.loader import EntitlementLoader, PlanEntitlements
-from src.entitlements.rules import AccessRules, AccessLevel, BillingState
-from src.entitlements.cache import EntitlementCache
+from src.entitlements.errors import EntitlementError, EntitlementDeniedError
+from src.entitlements.policy import (
+    BillingState,
+    EntitlementPolicy,
+    CategoryEntitlementResult,
+    EntitlementCheckResult,
+    get_billing_state_from_subscription,
+)
 from src.entitlements.middleware import (
     EntitlementMiddleware,
-    require_entitlement,
-    require_billing_state,
+    require_category,
+    require_category_dependency,
 )
-from src.entitlements.audit import EntitlementAuditLogger, AccessDenialEvent
+from src.entitlements.categories import (
+    PremiumCategory,
+    is_write_method,
+    is_read_method,
+    get_category_from_route,
+)
+from src.entitlements.audit import (
+    EntitlementAuditLogger,
+    AccessDenialEvent,
+    log_entitlement_denied,
+    log_degraded_access_used,
+)
 
 __all__ = [
-    "EntitlementLoader",
-    "PlanEntitlements",
-    "AccessRules",
-    "AccessLevel",
+    # Errors
+    "EntitlementError",
+    "EntitlementDeniedError",
+    # Policy
     "BillingState",
-    "EntitlementCache",
+    "EntitlementPolicy",
+    "CategoryEntitlementResult",
+    "EntitlementCheckResult",
+    "get_billing_state_from_subscription",
+    # Middleware
     "EntitlementMiddleware",
-    "require_entitlement",
-    "require_billing_state",
+    "require_category",
+    "require_category_dependency",
+    # Categories
+    "PremiumCategory",
+    "is_write_method",
+    "is_read_method",
+    "get_category_from_route",
+    # Audit
     "EntitlementAuditLogger",
     "AccessDenialEvent",
+    "log_entitlement_denied",
+    "log_degraded_access_used",
 ]
