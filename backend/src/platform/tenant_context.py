@@ -6,6 +6,12 @@ CRITICAL SECURITY REQUIREMENTS:
 - All requests without valid tenant context return 403
 - All database queries are scoped by tenant_id
 - Cross-tenant access is strictly prohibited
+
+AGENCY USER SUPPORT:
+- Agency users have access to multiple tenant_ids via JWT allowed_tenants[] claim
+- Active tenant_id can be switched via store selector (updates JWT context)
+- RLS enforces: tenant_id IN ({{ current_user.allowed_tenants }})
+- No wildcard access - explicit tenant_id list required
 """
 
 import os
@@ -21,6 +27,8 @@ from jwt import PyJWKClient, PyJWKClientError
 from jwt.exceptions import InvalidTokenError, DecodeError
 import json
 
+from src.constants.permissions import has_multi_tenant_access, RoleCategory, get_primary_role_category
+
 logger = logging.getLogger(__name__)
 
 # Security scheme for extracting Bearer token
@@ -28,14 +36,28 @@ security = HTTPBearer(auto_error=False)
 
 
 class TenantContext:
-    """Immutable tenant context extracted from JWT."""
-    
+    """
+    Immutable tenant context extracted from JWT.
+
+    For merchant users:
+        - tenant_id: Single tenant_id from org_id
+        - allowed_tenants: [tenant_id] (same as tenant_id)
+        - is_agency_user: False
+
+    For agency users:
+        - tenant_id: Currently active tenant_id (selected store)
+        - allowed_tenants: List of all accessible tenant_ids
+        - is_agency_user: True
+    """
+
     def __init__(
         self,
         tenant_id: str,
         user_id: str,
         roles: list[str],
         org_id: str,  # Original Frontegg org_id for reference
+        allowed_tenants: Optional[list[str]] = None,
+        billing_tier: Optional[str] = None,
     ):
         if not tenant_id:
             raise ValueError("tenant_id cannot be empty")
@@ -43,8 +65,67 @@ class TenantContext:
         self.user_id = user_id
         self.roles = roles
         self.org_id = org_id
-    
+        self.billing_tier = billing_tier or "free"
+
+        # Determine role category and multi-tenant access
+        self._role_category = get_primary_role_category(roles)
+        self._is_agency_user = has_multi_tenant_access(roles)
+
+        # Set allowed tenants based on role type
+        if self._is_agency_user and allowed_tenants:
+            # Agency users: explicit list of allowed tenant_ids (NO wildcards)
+            self.allowed_tenants = allowed_tenants
+        else:
+            # Merchant users: single tenant_id only
+            self.allowed_tenants = [tenant_id]
+
+        # Validate active tenant is in allowed list
+        if tenant_id not in self.allowed_tenants:
+            raise ValueError(
+                f"Active tenant_id {tenant_id} not in allowed_tenants list"
+            )
+
+    @property
+    def is_agency_user(self) -> bool:
+        """Check if this is an agency user with multi-tenant access."""
+        return self._is_agency_user
+
+    @property
+    def role_category(self) -> RoleCategory:
+        """Get the primary role category for this user."""
+        return self._role_category
+
+    def can_access_tenant(self, tenant_id: str) -> bool:
+        """
+        Check if user can access a specific tenant_id.
+
+        SECURITY: Always use this method before accessing data from another tenant.
+        """
+        return tenant_id in self.allowed_tenants
+
+    def get_rls_clause(self) -> str:
+        """
+        Generate RLS WHERE clause for query filtering.
+
+        Returns:
+            SQL clause for tenant isolation:
+            - Single tenant: "tenant_id = 'tenant_123'"
+            - Multi-tenant: "tenant_id IN ('tenant_123', 'tenant_456')"
+        """
+        if not self.allowed_tenants:
+            return "1=0"  # Guarantees no rows are returned
+        if len(self.allowed_tenants) == 1:
+            return f"tenant_id = '{self.allowed_tenants[0]}'"
+        else:
+            tenant_ids = "', '".join(self.allowed_tenants)
+            return f"tenant_id IN ('{tenant_ids}')"
+
     def __repr__(self) -> str:
+        if self._is_agency_user:
+            return (
+                f"TenantContext(tenant_id={self.tenant_id}, user_id={self.user_id}, "
+                f"is_agency=True, allowed_tenants={len(self.allowed_tenants)})"
+            )
         return f"TenantContext(tenant_id={self.tenant_id}, user_id={self.user_id})"
 
 
@@ -186,24 +267,44 @@ class TenantContextMiddleware:
                     detail="Token missing user identifier"
                 )
             
+            # Extract allowed_tenants for agency users (from JWT claim)
+            allowed_tenants = payload.get("allowed_tenants", [])
+            billing_tier = payload.get("billing_tier", "free")
+
+            # For agency users, active_tenant_id may differ from org_id
+            # Use 'active_tenant_id' claim if present, otherwise default to org_id
+            active_tenant_id = payload.get("active_tenant_id") or str(org_id)
+
+            # Ensure active_tenant_id is in allowed_tenants for agency users
+            if allowed_tenants and active_tenant_id not in allowed_tenants:
+                # Default to first allowed tenant
+                active_tenant_id = allowed_tenants[0] if allowed_tenants else str(org_id)
+
             # CRITICAL: tenant_id = org_id (from JWT, never from request)
+            # For agency users: tenant_id is the currently active tenant
             tenant_context = TenantContext(
-                tenant_id=str(org_id),
+                tenant_id=active_tenant_id,
                 user_id=str(user_id),
                 roles=roles if isinstance(roles, list) else [],
                 org_id=str(org_id),
+                allowed_tenants=allowed_tenants if allowed_tenants else None,
+                billing_tier=billing_tier,
             )
             
             # Attach to request state
             request.state.tenant_context = tenant_context
             
             # Log with tenant context (for audit trail)
-            logger.info("Request authenticated", extra={
+            log_extra = {
                 "tenant_id": tenant_context.tenant_id,
                 "user_id": tenant_context.user_id,
                 "path": request.url.path,
-                "method": request.method
-            })
+                "method": request.method,
+            }
+            if tenant_context.is_agency_user:
+                log_extra["is_agency_user"] = True
+                log_extra["allowed_tenants_count"] = len(tenant_context.allowed_tenants)
+            logger.info("Request authenticated", extra=log_extra)
             
         except (InvalidTokenError, DecodeError, PyJWKClientError) as e:
             logger.warning("JWT verification failed", extra={
@@ -230,10 +331,14 @@ class TenantContextMiddleware:
         # Continue to next middleware/handler
         response = await call_next(request)
         
-        # Add tenant_id to response headers for debugging (optional)
+        # Add tenant context to response headers for debugging (optional)
         if hasattr(request.state, "tenant_context"):
-            response.headers["X-Tenant-ID"] = request.state.tenant_context.tenant_id
-        
+            ctx = request.state.tenant_context
+            response.headers["X-Tenant-ID"] = ctx.tenant_id
+            if ctx.is_agency_user:
+                response.headers["X-Agency-User"] = "true"
+                response.headers["X-Allowed-Tenants-Count"] = str(len(ctx.allowed_tenants))
+
         return response
 
 
