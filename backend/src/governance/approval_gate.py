@@ -1,18 +1,8 @@
 """
 5.8.1 - Approval-Gated Deployment System
 
-Implements an approval-gated deployment system that:
-- Reads change_approvals from YAML config
-- Blocks deployment if required approvals are missing or expired
-- Enforces SLA deadlines
-- Supports emergency approvals with post-mortem requirement
-- Logs all approval decisions immutably
-- Allows rollbacks to bypass normal approval checks
-
-IMPORTANT CONSTRAINTS:
-- Do NOT decide who approves - read from config only
-- Do NOT auto-approve anything
-- All decisions must be logged immutably
+Reads approvals from config, blocks deployment if requirements not met.
+AI MUST NOT decide who approves or auto-approve anything.
 """
 
 import logging
@@ -23,7 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml
+from .base import load_yaml_config, serialize_dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -64,16 +54,7 @@ class ApprovalResult:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
-            "status": self.status.value,
-            "reason": self.reason,
-            "change_request_id": self.change_request_id,
-            "missing_approvals": self.missing_approvals,
-            "expired": self.expired,
-            "checklist_incomplete": self.checklist_incomplete,
-            "audit_id": self.audit_id,
-            "timestamp": self.timestamp.isoformat(),
-        }
+        return serialize_dataclass(self)
 
 
 @dataclass
@@ -90,15 +71,7 @@ class AuditLogEntry:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
-        return {
-            "audit_id": self.audit_id,
-            "timestamp": self.timestamp.isoformat(),
-            "change_request_id": self.change_request_id,
-            "action": self.action,
-            "result": self.result.value,
-            "reason": self.reason,
-            "context": self.context,
-        }
+        return serialize_dataclass(self)
 
 
 class ApprovalGate:
@@ -136,25 +109,11 @@ class ApprovalGate:
 
     def _load_config(self) -> None:
         """Load approval configuration from YAML."""
-        if not self.config_path.exists():
-            raise FileNotFoundError(f"Config not found: {self.config_path}")
-
-        with open(self.config_path) as f:
-            self._config = yaml.safe_load(f)
-
-        logger.info(f"Loaded approval config from {self.config_path}")
+        self._config = load_yaml_config(self.config_path, logger)
 
     def _load_change_requests(self) -> None:
         """Load change requests from YAML."""
-        if not self.change_requests_path.exists():
-            raise FileNotFoundError(
-                f"Change requests not found: {self.change_requests_path}"
-            )
-
-        with open(self.change_requests_path) as f:
-            self._change_requests = yaml.safe_load(f)
-
-        logger.info(f"Loaded change requests from {self.change_requests_path}")
+        self._change_requests = load_yaml_config(self.change_requests_path, logger)
 
     def _log_audit(self, entry: AuditLogEntry) -> None:
         """
@@ -536,34 +495,3 @@ class ApprovalGate:
         """Get all pending change requests."""
         requests = self._change_requests.get("change_requests", [])
         return [r for r in requests if r.get("status") == "pending_approval"]
-
-
-# Failure Examples for Documentation
-FAILURE_EXAMPLES = """
-FAILURE EXAMPLES:
-
-1. Missing Primary Approval:
-   Input: CR-2026-001 (metric_definition_change)
-   Status: BLOCK
-   Reason: "Missing required approvals from: ['Product Manager']"
-
-2. Expired SLA:
-   Input: CR-2026-004 (dbt_model_change, SLA was 2026-01-20)
-   Status: BLOCK
-   Reason: "SLA deadline expired at 2026-01-20T10:00:00Z. Request new approval."
-
-3. Incomplete Checklist:
-   Input: CR-2026-005 (rls_rule_change)
-   Status: BLOCK
-   Reason: "Pre-approval checklist incomplete. Missing: ['cross-tenant access test passes']"
-
-4. Emergency Without Incident Ticket:
-   Input: CR-2026-006 (emergency=true, no incident_ticket)
-   Status: BLOCK
-   Reason: "Emergency approval requires incident ticket"
-
-5. Unauthorized Rollback Trigger:
-   Input: rollback triggered by "Junior Developer"
-   Status: BLOCK
-   Reason: "Rollback trigger not authorized. 'Junior Developer' is not in allowed authorities"
-"""

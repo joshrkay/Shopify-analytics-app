@@ -1,16 +1,7 @@
 """
 5.8.2 - Metric and Dashboard Version Enforcement
 
-Implements a system that:
-- Resolves metric versions per dashboard + tenant
-- Prevents use of sunset metrics
-- Emits warnings when deprecated metrics are queried
-- Provides merchant-facing alert hooks
-
-IMPORTANT CONSTRAINTS:
-- Version resolution must be deterministic
-- No auto-migration unless explicitly approved
-- Must surface affected dashboards + merchants
+Deterministic version resolution. No auto-migration without approval.
 """
 
 import logging
@@ -20,7 +11,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-import yaml
+from .base import load_yaml_config, serialize_dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -69,17 +60,7 @@ class DeprecationWarning:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
-            "metric_name": self.metric_name,
-            "current_version": self.current_version,
-            "recommended_version": self.recommended_version,
-            "level": self.level.value,
-            "message": self.message,
-            "days_until_sunset": self.days_until_sunset,
-            "affected_dashboards": self.affected_dashboards,
-            "migration_guide": self.migration_guide,
-            "timestamp": self.timestamp.isoformat(),
-        }
+        return serialize_dataclass(self)
 
 
 @dataclass
@@ -105,14 +86,7 @@ class MetricResolution:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
-            "metric_name": self.metric_name,
-            "resolved_version": self.resolved_version,
-            "dbt_model": self.dbt_model,
-            "definition": self.definition,
-            "status": self.status.value,
-            "warnings": [w.to_dict() for w in self.warnings],
-        }
+        return serialize_dataclass(self)
 
 
 @dataclass
@@ -128,14 +102,7 @@ class MerchantAlert:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "tenant_id": self.tenant_id,
-            "alert_type": self.alert_type,
-            "metric_name": self.metric_name,
-            "message": self.message,
-            "action_required": self.action_required,
-            "sunset_date": self.sunset_date,
-        }
+        return serialize_dataclass(self)
 
 
 class MetricVersionResolver:
@@ -167,13 +134,7 @@ class MetricVersionResolver:
 
     def _load_config(self) -> None:
         """Load metrics configuration from YAML."""
-        if not self.config_path.exists():
-            raise FileNotFoundError(f"Config not found: {self.config_path}")
-
-        with open(self.config_path) as f:
-            self._config = yaml.safe_load(f)
-
-        logger.info(f"Loaded metrics config from {self.config_path}")
+        self._config = load_yaml_config(self.config_path, logger)
 
     def resolve_metric(
         self,

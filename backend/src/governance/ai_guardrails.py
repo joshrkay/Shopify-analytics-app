@@ -1,17 +1,7 @@
 """
 5.8.5 - AI Guardrails System
 
-Implements AI guardrails that:
-- Explicitly refuse prohibited actions
-- Log refusal reasons
-- Redirect to human approval workflows
-
-The system MUST:
-- Never infer business correctness
-- Never approve changes
-- Always require named human accountability
-
-IMPORTANT: This module enforces boundaries on what AI agents can and cannot do.
+Enforces boundaries on AI agents. Never approve changes, always require human accountability.
 """
 
 import logging
@@ -22,7 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-import yaml
+from .base import load_yaml_config, serialize_dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +52,7 @@ class GuardrailRefusal:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for logging/serialization."""
-        return {
-            "request_id": self.request_id,
-            "action_attempted": self.action_attempted,
-            "reason": self.reason,
-            "reason_category": self.reason_category.value,
-            "redirect_to": self.redirect_to,
-            "timestamp": self.timestamp.isoformat(),
-            "user_context": self.user_context,
-        }
+        return serialize_dataclass(self)
 
     def format_response(self) -> str:
         """Format the refusal as a human-readable response."""
@@ -95,11 +77,7 @@ class GuardrailCheck:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "allowed": self.allowed,
-            "action_id": self.action_id,
-            "refusal": self.refusal.to_dict() if self.refusal else None,
-        }
+        return serialize_dataclass(self)
 
 
 @dataclass
@@ -117,16 +95,7 @@ class AuditEntry:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "entry_id": self.entry_id,
-            "timestamp": self.timestamp.isoformat(),
-            "action_id": self.action_id,
-            "action_type": self.action_type,
-            "allowed": self.allowed,
-            "refusal_reason": self.refusal_reason,
-            "redirect_target": self.redirect_target,
-            "context": self.context,
-        }
+        return serialize_dataclass(self)
 
 
 class AIGuardrails:
@@ -164,11 +133,7 @@ class AIGuardrails:
 
     def _load_config(self) -> None:
         """Load guardrails configuration from YAML."""
-        if not self.config_path.exists():
-            raise FileNotFoundError(f"Config not found: {self.config_path}")
-
-        with open(self.config_path) as f:
-            self._config = yaml.safe_load(f)
+        self._config = load_yaml_config(self.config_path, logger)
 
         # Index prohibited actions for fast lookup
         restrictions = self._config.get("ai_restrictions", {})
@@ -180,11 +145,6 @@ class AIGuardrails:
         for behavior in restrictions.get("required_behaviors", []):
             behavior_id = behavior.get("id", "")
             self._required_behaviors[behavior_id] = behavior
-
-        logger.info(
-            f"Loaded {len(self._prohibited_actions)} prohibited actions, "
-            f"{len(self._required_behaviors)} required behaviors"
-        )
 
     def check_action(
         self,

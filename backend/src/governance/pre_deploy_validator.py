@@ -1,18 +1,7 @@
 """
 5.8.4 - Pre-Deployment Validation Framework
 
-Implements a pre-deployment validator that:
-- Executes all checks defined in pre_deploy_validation config
-- Outputs structured JSON results
-- Clearly distinguishes BLOCK vs WARN
-- Provides deterministic execution
-- No retries without human intervention
-- Exportable validation report
-
-IMPORTANT CONSTRAINTS:
-- Execution must be deterministic
-- No auto-retry on failure
-- Clear BLOCK vs WARN distinction
+Deterministic execution with structured JSON output. No auto-retry.
 """
 
 import json
@@ -26,7 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-import yaml
+from .base import load_yaml_config, serialize_dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -73,16 +62,7 @@ class CheckResult:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON output."""
-        return {
-            "check_name": self.check_name,
-            "status": self.status.value,
-            "measured_value": self.measured_value,
-            "threshold": self.threshold,
-            "blocking": self.blocking,
-            "description": self.description,
-            "error_message": self.error_message,
-            "execution_time_ms": self.execution_time_ms,
-        }
+        return serialize_dataclass(self)
 
 
 @dataclass
@@ -198,13 +178,7 @@ class PreDeployValidator:
 
     def _load_config(self) -> None:
         """Load validation configuration from YAML."""
-        if not self.config_path.exists():
-            raise FileNotFoundError(f"Config not found: {self.config_path}")
-
-        with open(self.config_path) as f:
-            self._config = yaml.safe_load(f)
-
-        logger.info(f"Loaded validation config from {self.config_path}")
+        self._config = load_yaml_config(self.config_path, logger)
 
     def _register_default_handlers(self) -> None:
         """Register default check handlers."""
@@ -557,82 +531,3 @@ class CICDIntegration:
             return result.stdout.strip() if result.returncode == 0 else None
         except Exception:
             return None
-
-
-# Sample Output Documentation
-SAMPLE_OUTPUT = """
-SAMPLE JSON OUTPUT:
-
-{
-  "validation_id": "550e8400-e29b-41d4-a716-446655440000",
-  "overall_status": "BLOCK",
-  "can_deploy": false,
-  "requires_approval": false,
-  "approval_reason": null,
-  "summary": {
-    "total_checks": 15,
-    "passed": 13,
-    "warnings": 1,
-    "blocking_failures": 1
-  },
-  "checks": [
-    {
-      "check_name": "models_compile",
-      "status": "PASS",
-      "measured_value": true,
-      "threshold": null,
-      "blocking": true,
-      "description": "All models compile without error",
-      "error_message": null,
-      "execution_time_ms": 1234
-    },
-    {
-      "check_name": "cross_tenant_isolation",
-      "status": "BLOCK",
-      "measured_value": false,
-      "threshold": true,
-      "blocking": true,
-      "description": "Cross-tenant isolation test passes",
-      "error_message": "Tenant A can see Tenant B data",
-      "execution_time_ms": 5678
-    }
-  ],
-  "blocking_failures": [
-    {
-      "check_name": "cross_tenant_isolation",
-      "status": "BLOCK",
-      "measured_value": false,
-      "threshold": true,
-      "blocking": true,
-      "description": "Cross-tenant isolation test passes",
-      "error_message": "Tenant A can see Tenant B data",
-      "execution_time_ms": 5678
-    }
-  ],
-  "warnings": [],
-  "started_at": "2026-01-26T10:00:00Z",
-  "completed_at": "2026-01-26T10:05:00Z"
-}
-
-FAILURE EXAMPLES:
-
-1. RLS Verification Failure:
-   Check: cross_tenant_isolation
-   Status: BLOCK
-   Reason: "Tenant A can see Tenant B data"
-   Action: BLOCK_DEPLOYMENT
-
-2. Performance Warning:
-   Check: load_time
-   Status: WARN
-   Measured: 7.2 seconds
-   Threshold: 5 seconds
-   Action: WARN_REQUIRE_APPROVAL
-
-3. DBT Test Failure:
-   Check: tests_pass
-   Status: BLOCK
-   Measured: 0.87 (87%)
-   Threshold: 0.95 (95%)
-   Action: BLOCK_DEPLOYMENT
-"""

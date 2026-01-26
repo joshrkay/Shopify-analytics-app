@@ -1,20 +1,10 @@
 """
 5.8.3 - Rollback Orchestrator
 
-Implements a rollback orchestrator that:
-- Supports global, tenant-scoped, and canary rollback
-- Executes rollback actions in defined order
-- Verifies rollback success before continuing
-- Emits audit + incident events
-
-IMPORTANT CONSTRAINTS:
-- Rollback must be reversible
-- Rollback cannot introduce new metric versions
-- AI MUST NOT trigger rollbacks autonomously
+State machine for safe rollback execution. AI MUST NOT trigger autonomously.
 """
 
 import logging
-import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -22,7 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
-import yaml
+from .base import load_yaml_config, serialize_dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -62,17 +52,7 @@ class RollbackAction:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "action": self.action,
-            "target": self.target,
-            "order": self.order,
-            "status": self.status,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat()
-            if self.completed_at
-            else None,
-            "error": self.error,
-        }
+        return serialize_dataclass(self)
 
 
 @dataclass
@@ -90,16 +70,7 @@ class RollbackRequest:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "rollback_id": self.rollback_id,
-            "triggered_by": self.triggered_by,
-            "trigger_role": self.trigger_role,
-            "reason": self.reason,
-            "scope": self.scope.value,
-            "target_tenants": self.target_tenants,
-            "target_version": self.target_version,
-            "incident_ticket": self.incident_ticket,
-        }
+        return serialize_dataclass(self)
 
 
 @dataclass
@@ -120,21 +91,7 @@ class RollbackResult:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "rollback_id": self.rollback_id,
-            "state": self.state.value,
-            "scope": self.scope.value,
-            "actions_completed": [a.to_dict() for a in self.actions_completed],
-            "actions_failed": [a.to_dict() for a in self.actions_failed],
-            "verification_passed": self.verification_passed,
-            "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat()
-            if self.completed_at
-            else None,
-            "error": self.error,
-            "affected_tenants": self.affected_tenants,
-            "reversible": self.reversible,
-        }
+        return serialize_dataclass(self)
 
 
 @dataclass
@@ -147,11 +104,7 @@ class VerificationResult:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
-            "passed": self.passed,
-            "checks": self.checks,
-            "timestamp": self.timestamp.isoformat(),
-        }
+        return serialize_dataclass(self)
 
 
 class RollbackOrchestrator:
@@ -191,13 +144,7 @@ class RollbackOrchestrator:
 
     def _load_config(self) -> None:
         """Load rollback configuration from YAML."""
-        if not self.config_path.exists():
-            raise FileNotFoundError(f"Config not found: {self.config_path}")
-
-        with open(self.config_path) as f:
-            self._config = yaml.safe_load(f)
-
-        logger.info(f"Loaded rollback config from {self.config_path}")
+        self._config = load_yaml_config(self.config_path, logger)
 
     def _register_default_handlers(self) -> None:
         """Register default action handlers (stubs for integration)."""
@@ -618,39 +565,3 @@ class RollbackOrchestrator:
     def get_rollback_history(self) -> list[dict[str, Any]]:
         """Get rollback history."""
         return [r.to_dict() for r in self._rollback_history]
-
-
-# Failure Handling Paths Documentation
-FAILURE_HANDLING_PATHS = """
-FAILURE HANDLING PATHS:
-
-1. Authority Validation Failure:
-   - State: FAILED
-   - Action: Log attempt, return error
-   - Recovery: Request must come from authorized role
-
-2. Action Execution Failure:
-   - State: Continue executing remaining actions
-   - Action: Log failed action, mark in result
-   - Recovery: Manual intervention required
-
-3. Verification Failure:
-   - State: FAILED or PAUSED (gradual)
-   - Action: Log verification failure
-   - Recovery: Investigate and manually verify or retry
-
-4. Gradual Rollback Batch Failure:
-   - State: PAUSED
-   - Action: Stop at current percentage, alert oncall
-   - Recovery: Investigate, then resume or abort
-
-5. Success Criteria Not Met:
-   - State: PAUSED
-   - Action: Stop gradual rollback, alert oncall
-   - Recovery: Wait for metrics to stabilize, then resume
-
-6. Handler Not Found:
-   - State: Action marked failed
-   - Action: Log missing handler
-   - Recovery: Register handler and retry
-"""
