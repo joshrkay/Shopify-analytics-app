@@ -17,10 +17,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 
-# Test tenant identifiers
-TENANT_A = f"test-tenant-alpha-{uuid.uuid4().hex[:8]}"
-TENANT_B = f"test-tenant-beta-{uuid.uuid4().hex[:8]}"
-TENANT_C = f"test-tenant-gamma-{uuid.uuid4().hex[:8]}"
+# Test tenant identifiers - fixed for deterministic tests
+TENANT_A = "test-tenant-alpha-rls"
+TENANT_B = "test-tenant-beta-rls"
+TENANT_C = "test-tenant-gamma-rls"
 
 
 def _get_postgres_url():
@@ -77,9 +77,12 @@ def setup_raw_schema(pg_engine):
         # Create uuid extension
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""))
 
+        # Drop existing test table to ensure clean state
+        conn.execute(text("DROP TABLE IF EXISTS raw.raw_shopify_orders_test CASCADE"))
+
         # Create test table with RLS
         conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS raw.raw_shopify_orders_test (
+            CREATE TABLE raw.raw_shopify_orders_test (
                 id VARCHAR(255) PRIMARY KEY DEFAULT uuid_generate_v4()::TEXT,
                 tenant_id VARCHAR(255) NOT NULL,
                 source_account_id VARCHAR(255) NOT NULL,
@@ -101,9 +104,12 @@ def setup_raw_schema(pg_engine):
             END $$
         """))
 
-        # Grant permissions
+        # Grant the current user ability to switch to test_query_role
+        conn.execute(text("GRANT test_query_role TO CURRENT_USER"))
+
+        # Grant permissions to test_query_role
         conn.execute(text("GRANT USAGE ON SCHEMA raw TO test_query_role"))
-        conn.execute(text("GRANT SELECT, INSERT ON raw.raw_shopify_orders_test TO test_query_role"))
+        conn.execute(text("GRANT SELECT ON raw.raw_shopify_orders_test TO test_query_role"))
 
         # Create tenant context function
         conn.execute(text("""
@@ -120,16 +126,10 @@ def setup_raw_schema(pg_engine):
 
         conn.execute(text("GRANT EXECUTE ON FUNCTION raw.get_test_tenant_id() TO test_query_role"))
 
-        # Enable RLS
+        # Enable RLS on the table
         conn.execute(text("ALTER TABLE raw.raw_shopify_orders_test ENABLE ROW LEVEL SECURITY"))
-        conn.execute(text("ALTER TABLE raw.raw_shopify_orders_test FORCE ROW LEVEL SECURITY"))
 
-        # Drop existing policy if exists
-        conn.execute(text("""
-            DROP POLICY IF EXISTS test_tenant_isolation ON raw.raw_shopify_orders_test
-        """))
-
-        # Create RLS policy
+        # Create RLS policy for test_query_role only
         conn.execute(text("""
             CREATE POLICY test_tenant_isolation
             ON raw.raw_shopify_orders_test
@@ -154,13 +154,17 @@ def db_session(pg_engine, setup_raw_schema):
     Session = sessionmaker(bind=pg_engine)
     session = Session()
 
-    # Clear test data
+    # Clear test data (as admin, not subject to RLS)
     session.execute(text("DELETE FROM raw.raw_shopify_orders_test WHERE tenant_id LIKE 'test-tenant-%'"))
     session.commit()
 
     yield session
 
-    # Cleanup after test
+    # Reset role and cleanup after test
+    try:
+        session.execute(text("RESET ROLE"))
+    except Exception:
+        pass
     session.execute(text("DELETE FROM raw.raw_shopify_orders_test WHERE tenant_id LIKE 'test-tenant-%'"))
     session.commit()
     session.close()
@@ -168,10 +172,10 @@ def db_session(pg_engine, setup_raw_schema):
 
 @pytest.fixture
 def seed_test_data(db_session):
-    """Insert test data for multiple tenants."""
+    """Insert test data for multiple tenants (as admin, bypassing RLS)."""
     now = datetime.now(timezone.utc)
 
-    # Insert data for Tenant A (3 orders)
+    # Insert data for Tenant A (3 orders) - total: 6000 cents
     for i in range(3):
         db_session.execute(text("""
             INSERT INTO raw.raw_shopify_orders_test
@@ -182,11 +186,11 @@ def seed_test_data(db_session):
             "source": "shop-alpha",
             "extracted": now - timedelta(days=i),
             "run_id": "run-test-a",
-            "order_id": f"order-a-{i+1}",
-            "price": (i + 1) * 1000
+            "order_id": f"order-a-{i+1}-{uuid.uuid4().hex[:6]}",
+            "price": (i + 1) * 1000  # 1000 + 2000 + 3000 = 6000
         })
 
-    # Insert data for Tenant B (2 orders)
+    # Insert data for Tenant B (2 orders) - total: 6000 cents
     for i in range(2):
         db_session.execute(text("""
             INSERT INTO raw.raw_shopify_orders_test
@@ -197,11 +201,11 @@ def seed_test_data(db_session):
             "source": "shop-beta",
             "extracted": now - timedelta(days=i),
             "run_id": "run-test-b",
-            "order_id": f"order-b-{i+1}",
-            "price": (i + 1) * 2000
+            "order_id": f"order-b-{i+1}-{uuid.uuid4().hex[:6]}",
+            "price": (i + 1) * 2000  # 2000 + 4000 = 6000
         })
 
-    # Insert data for Tenant C (1 order)
+    # Insert data for Tenant C (1 order) - total: 5000 cents
     db_session.execute(text("""
         INSERT INTO raw.raw_shopify_orders_test
         (tenant_id, source_account_id, extracted_at, run_id, shopify_order_id, total_price_cents)
@@ -211,7 +215,7 @@ def seed_test_data(db_session):
         "source": "shop-gamma",
         "extracted": now,
         "run_id": "run-test-c",
-        "order_id": "order-c-1",
+        "order_id": f"order-c-1-{uuid.uuid4().hex[:6]}",
         "price": 5000
     })
 
@@ -224,6 +228,9 @@ def seed_test_data(db_session):
         "tenant_a_count": 3,
         "tenant_b_count": 2,
         "tenant_c_count": 1,
+        "tenant_a_total": 6000,
+        "tenant_b_total": 6000,
+        "tenant_c_total": 5000,
     }
 
 
@@ -235,46 +242,58 @@ class TestRawWarehouseRLSIsolation:
     1. Tenants see only their own data
     2. Cross-tenant queries return zero rows
     3. Empty/invalid context returns zero rows
+
+    NOTE: Tests use SET ROLE to switch to test_query_role which is subject to RLS.
     """
 
     def test_tenant_a_sees_only_own_data(self, db_session, seed_test_data):
         """Test that Tenant A can only see Tenant A data."""
-        # Set tenant context to A
+        # Set tenant context and switch to RLS-enforced role
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_A})
+        db_session.execute(text("SET ROLE test_query_role"))
 
-        # Query as test_query_role (simulated by RLS policy)
         result = db_session.execute(text(
             "SELECT COUNT(*) as cnt FROM raw.raw_shopify_orders_test"
         ))
         count = result.scalar()
+
+        # Reset role before assertion to allow cleanup
+        db_session.execute(text("RESET ROLE"))
 
         assert count == 3, f"Tenant A should see exactly 3 orders, got {count}"
 
     def test_tenant_b_sees_only_own_data(self, db_session, seed_test_data):
         """Test that Tenant B can only see Tenant B data."""
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_B})
+        db_session.execute(text("SET ROLE test_query_role"))
 
         result = db_session.execute(text(
             "SELECT COUNT(*) as cnt FROM raw.raw_shopify_orders_test"
         ))
         count = result.scalar()
+
+        db_session.execute(text("RESET ROLE"))
 
         assert count == 2, f"Tenant B should see exactly 2 orders, got {count}"
 
     def test_tenant_c_sees_only_own_data(self, db_session, seed_test_data):
         """Test that Tenant C can only see Tenant C data."""
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_C})
+        db_session.execute(text("SET ROLE test_query_role"))
 
         result = db_session.execute(text(
             "SELECT COUNT(*) as cnt FROM raw.raw_shopify_orders_test"
         ))
         count = result.scalar()
 
+        db_session.execute(text("RESET ROLE"))
+
         assert count == 1, f"Tenant C should see exactly 1 order, got {count}"
 
     def test_tenant_a_cannot_see_tenant_b_data(self, db_session, seed_test_data):
         """CRITICAL: Tenant A cannot access Tenant B's data."""
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_A})
+        db_session.execute(text("SET ROLE test_query_role"))
 
         # Attempt to query Tenant B's data directly
         result = db_session.execute(text("""
@@ -283,11 +302,14 @@ class TestRawWarehouseRLSIsolation:
         """), {"tenant_b": TENANT_B})
         count = result.scalar()
 
+        db_session.execute(text("RESET ROLE"))
+
         assert count == 0, f"SECURITY VIOLATION: Tenant A can see {count} Tenant B records!"
 
     def test_tenant_b_cannot_see_tenant_a_data(self, db_session, seed_test_data):
         """CRITICAL: Tenant B cannot access Tenant A's data."""
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_B})
+        db_session.execute(text("SET ROLE test_query_role"))
 
         result = db_session.execute(text("""
             SELECT COUNT(*) as cnt FROM raw.raw_shopify_orders_test
@@ -295,28 +317,36 @@ class TestRawWarehouseRLSIsolation:
         """), {"tenant_a": TENANT_A})
         count = result.scalar()
 
+        db_session.execute(text("RESET ROLE"))
+
         assert count == 0, f"SECURITY VIOLATION: Tenant B can see {count} Tenant A records!"
 
     def test_no_context_returns_zero_rows(self, db_session, seed_test_data):
         """Test that empty tenant context returns no data."""
-        # Clear/reset tenant context
+        # Clear tenant context
         db_session.execute(text("SET app.tenant_id = ''"))
+        db_session.execute(text("SET ROLE test_query_role"))
 
         result = db_session.execute(text(
             "SELECT COUNT(*) as cnt FROM raw.raw_shopify_orders_test"
         ))
         count = result.scalar()
+
+        db_session.execute(text("RESET ROLE"))
 
         assert count == 0, f"SECURITY VIOLATION: {count} records visible without tenant context!"
 
     def test_invalid_tenant_returns_zero_rows(self, db_session, seed_test_data):
         """Test that invalid tenant context returns no data."""
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": "non-existent-tenant-xyz"})
+        db_session.execute(text("SET ROLE test_query_role"))
 
         result = db_session.execute(text(
             "SELECT COUNT(*) as cnt FROM raw.raw_shopify_orders_test"
         ))
         count = result.scalar()
+
+        db_session.execute(text("RESET ROLE"))
 
         assert count == 0, f"SECURITY VIOLATION: {count} records visible with invalid tenant!"
 
@@ -324,11 +354,14 @@ class TestRawWarehouseRLSIsolation:
         """Test that SQL injection in tenant context is blocked."""
         # Attempt SQL injection
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": "' OR '1'='1"})
+        db_session.execute(text("SET ROLE test_query_role"))
 
         result = db_session.execute(text(
             "SELECT COUNT(*) as cnt FROM raw.raw_shopify_orders_test"
         ))
         count = result.scalar()
+
+        db_session.execute(text("RESET ROLE"))
 
         assert count == 0, f"SECURITY VIOLATION: SQL injection returned {count} records!"
 
@@ -336,42 +369,54 @@ class TestRawWarehouseRLSIsolation:
         """Test that switching tenant context updates visible data."""
         # Start as Tenant A
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_A})
+        db_session.execute(text("SET ROLE test_query_role"))
         result = db_session.execute(text("SELECT COUNT(*) FROM raw.raw_shopify_orders_test"))
         count_a = result.scalar()
-        assert count_a == 3
+        db_session.execute(text("RESET ROLE"))
 
         # Switch to Tenant B
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_B})
+        db_session.execute(text("SET ROLE test_query_role"))
         result = db_session.execute(text("SELECT COUNT(*) FROM raw.raw_shopify_orders_test"))
         count_b = result.scalar()
-        assert count_b == 2
+        db_session.execute(text("RESET ROLE"))
 
         # Switch to Tenant C
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_C})
+        db_session.execute(text("SET ROLE test_query_role"))
         result = db_session.execute(text("SELECT COUNT(*) FROM raw.raw_shopify_orders_test"))
         count_c = result.scalar()
-        assert count_c == 1
+        db_session.execute(text("RESET ROLE"))
+
+        assert count_a == 3, f"Tenant A should see 3, got {count_a}"
+        assert count_b == 2, f"Tenant B should see 2, got {count_b}"
+        assert count_c == 1, f"Tenant C should see 1, got {count_c}"
 
     def test_aggregate_isolation(self, db_session, seed_test_data):
         """Test that aggregate queries respect RLS."""
         # Tenant A total
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_A})
+        db_session.execute(text("SET ROLE test_query_role"))
         result = db_session.execute(text(
             "SELECT SUM(total_price_cents) as total FROM raw.raw_shopify_orders_test"
         ))
         total_a = result.scalar()
+        db_session.execute(text("RESET ROLE"))
 
-        # Tenant B total
-        db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_B})
+        # Tenant C total (different from A)
+        db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": TENANT_C})
+        db_session.execute(text("SET ROLE test_query_role"))
         result = db_session.execute(text(
             "SELECT SUM(total_price_cents) as total FROM raw.raw_shopify_orders_test"
         ))
-        total_b = result.scalar()
+        total_c = result.scalar()
+        db_session.execute(text("RESET ROLE"))
 
-        # Totals should be different (proves isolation)
-        assert total_a != total_b, "Aggregates should be different per tenant"
-        assert total_a == 6000, f"Tenant A total should be 6000, got {total_a}"  # 1000+2000+3000
-        assert total_b == 6000, f"Tenant B total should be 6000, got {total_b}"  # 2000+4000
+        # Tenant A: 1000+2000+3000 = 6000
+        # Tenant C: 5000
+        assert total_a == 6000, f"Tenant A total should be 6000, got {total_a}"
+        assert total_c == 5000, f"Tenant C total should be 5000, got {total_c}"
+        assert total_a != total_c, "Aggregates should be different per tenant"
 
 
 class TestRawWarehouseRLSEdgeCases:
@@ -394,38 +439,44 @@ class TestRawWarehouseRLSEdgeCases:
 
         # If insert succeeded (which it shouldn't), verify it's not visible
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": "any-tenant"})
+        db_session.execute(text("SET ROLE test_query_role"))
         result = db_session.execute(text(
             "SELECT COUNT(*) FROM raw.raw_shopify_orders_test WHERE id = 'null-test'"
         ))
         count = result.scalar()
+        db_session.execute(text("RESET ROLE"))
         assert count == 0
 
     def test_special_characters_in_tenant_id(self, db_session, setup_raw_schema):
         """Test that special characters in tenant_id work correctly."""
-        special_tenant = "tenant-with-special_chars.123"
+        special_tenant = f"tenant-special_chars.{uuid.uuid4().hex[:6]}"
         now = datetime.now(timezone.utc)
 
-        # Insert data with special tenant_id
+        # Insert data with special tenant_id (as admin)
         db_session.execute(text("""
             INSERT INTO raw.raw_shopify_orders_test
             (tenant_id, source_account_id, extracted_at, run_id, shopify_order_id)
-            VALUES (:tenant, 'shop', :now, 'run', 'order-special')
-        """), {"tenant": special_tenant, "now": now})
+            VALUES (:tenant, 'shop', :now, 'run', :order_id)
+        """), {"tenant": special_tenant, "now": now, "order_id": f"order-special-{uuid.uuid4().hex[:6]}"})
         db_session.commit()
 
-        # Verify only visible with correct tenant
+        # Verify only visible with correct tenant (as test_query_role)
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": special_tenant})
+        db_session.execute(text("SET ROLE test_query_role"))
         result = db_session.execute(text("SELECT COUNT(*) FROM raw.raw_shopify_orders_test"))
         count = result.scalar()
-        assert count == 1
+        db_session.execute(text("RESET ROLE"))
+        assert count == 1, f"Should see 1 record with matching tenant, got {count}"
 
         # Not visible with different tenant
         db_session.execute(text("SET app.tenant_id = :tenant"), {"tenant": "other-tenant"})
+        db_session.execute(text("SET ROLE test_query_role"))
         result = db_session.execute(text("SELECT COUNT(*) FROM raw.raw_shopify_orders_test"))
         count = result.scalar()
-        assert count == 0
+        db_session.execute(text("RESET ROLE"))
+        assert count == 0, f"Should see 0 records with different tenant, got {count}"
 
-        # Cleanup
+        # Cleanup (as admin)
         db_session.execute(text("DELETE FROM raw.raw_shopify_orders_test WHERE tenant_id = :t"),
                           {"t": special_tenant})
         db_session.commit()
