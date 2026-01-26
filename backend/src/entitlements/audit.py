@@ -5,8 +5,8 @@ Provides:
 - AccessDenialEvent: Structured event for access denials
 - EntitlementAuditLogger: Async-safe audit logger
 - Database and log file persistence
-- log_entitlement_denied: Category-based denial logging
-- log_degraded_access_used: Degraded access audit logging
+- log_entitlement_denied: Async function for audit logging
+- log_degraded_access_used: Async function for degraded access logging
 
 Required fields for each denial:
 - feature_name
@@ -499,10 +499,9 @@ def reset_audit_logger() -> None:
     EntitlementAuditLogger._instance = None
 
 
-# =============================================================================
-# Category-based audit functions (for middleware integration)
-# =============================================================================
-
+# ============================================================================
+# Category-based audit functions (for category enforcement)
+# ============================================================================
 
 async def log_entitlement_denied(
     db: Union[Session, AsyncSession],
@@ -530,13 +529,9 @@ async def log_entitlement_denied(
     try:
         from src.platform.audit import AuditAction, log_system_audit_event
 
-        # Get string values from enums
-        category_value = category.value if hasattr(category, 'value') else str(category)
-        billing_state_value = billing_state.value if hasattr(billing_state, 'value') else str(billing_state)
-
         metadata = {
-            "category": category_value,
-            "billing_state": billing_state_value,
+            "category": category.value if hasattr(category, 'value') else str(category),
+            "billing_state": billing_state.value if hasattr(billing_state, 'value') else str(billing_state),
             "plan_id": plan_id,
             "reason": reason,
         }
@@ -547,7 +542,7 @@ async def log_entitlement_denied(
                 tenant_id=tenant_id,
                 action=AuditAction.ENTITLEMENT_DENIED,
                 resource_type="entitlement",
-                resource_id=category_value,
+                resource_id=category.value if hasattr(category, 'value') else str(category),
                 metadata=metadata,
                 correlation_id=correlation_id,
             )
@@ -558,27 +553,15 @@ async def log_entitlement_denied(
                 extra={
                     "tenant_id": tenant_id,
                     "user_id": user_id,
-                    "action": AuditAction.ENTITLEMENT_DENIED.value,
-                    "category": category_value,
-                    "billing_state": billing_state_value,
+                    "action": "entitlement.denied",
+                    "category": category.value if hasattr(category, 'value') else str(category),
+                    "billing_state": billing_state.value if hasattr(billing_state, 'value') else str(billing_state),
                     "plan_id": plan_id,
                     "reason": reason,
                     "resource_type": "entitlement",
-                    "resource_id": category_value,
                     "correlation_id": correlation_id,
                 }
             )
-
-        # Also log via EntitlementAuditLogger for consistency
-        log_access_denial(
-            tenant_id=tenant_id,
-            feature_name=category_value,
-            billing_state=billing_state_value,
-            plan_id=plan_id,
-            user_id=user_id,
-            reason=reason,
-        )
-
     except Exception as e:
         logger.error(
             "Failed to log entitlement denied audit event",
@@ -617,13 +600,9 @@ async def log_degraded_access_used(
     try:
         from src.platform.audit import AuditAction, log_system_audit_event
 
-        # Get string values from enums
-        category_value = category.value if hasattr(category, 'value') else str(category)
-        billing_state_value = billing_state.value if hasattr(billing_state, 'value') else str(billing_state)
-
         metadata = {
-            "category": category_value,
-            "billing_state": billing_state_value,
+            "category": category.value if hasattr(category, 'value') else str(category),
+            "billing_state": billing_state.value if hasattr(billing_state, 'value') else str(billing_state),
             "plan_id": plan_id,
             "degraded_mode": True,
         }
@@ -634,7 +613,7 @@ async def log_degraded_access_used(
                 tenant_id=tenant_id,
                 action=AuditAction.ENTITLEMENT_DEGRADED_ACCESS_USED,
                 resource_type="entitlement",
-                resource_id=category_value,
+                resource_id=category.value if hasattr(category, 'value') else str(category),
                 metadata=metadata,
                 correlation_id=correlation_id,
             )
@@ -646,11 +625,10 @@ async def log_degraded_access_used(
                     "tenant_id": tenant_id,
                     "user_id": user_id,
                     "action": "entitlement.degraded_access_used",
-                    "category": category_value,
-                    "billing_state": billing_state_value,
+                    "category": category.value if hasattr(category, 'value') else str(category),
+                    "billing_state": billing_state.value if hasattr(billing_state, 'value') else str(billing_state),
                     "plan_id": plan_id,
                     "resource_type": "entitlement",
-                    "resource_id": category_value,
                     "correlation_id": correlation_id,
                 }
             )
