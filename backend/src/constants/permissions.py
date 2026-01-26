@@ -185,7 +185,7 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
     ]),
 
     Role.ADMIN: frozenset([
-        # All permissions including admin
+        # All permissions including admin and agency
         Permission.ANALYTICS_VIEW,
         Permission.ANALYTICS_EXPORT,
         Permission.ANALYTICS_EXPLORE,  # Superset Explore mode
@@ -211,6 +211,11 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.ADMIN_AUDIT_VIEW,
         Permission.SETTINGS_VIEW,
         Permission.SETTINGS_MANAGE,
+        # Agency permissions (admin has full access)
+        Permission.AGENCY_STORES_VIEW,
+        Permission.AGENCY_STORES_SWITCH,
+        Permission.AGENCY_REPORTS_VIEW,
+        Permission.MULTI_TENANT_ACCESS,
     ]),
 
     # --- Merchant Roles (single tenant access) ---
