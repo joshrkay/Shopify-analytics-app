@@ -472,12 +472,14 @@ def check_billing_entitlement_decorator(feature: str):
             # Get DB session from request state or app state
             db_session = getattr(request.state, 'db', None)
             if not db_session:
-                # If no session, allow through (entitlement check skipped)
-                logger.warning(
-                    "DB session not available for entitlement check",
-                    extra={"feature": feature}
+                logger.error(
+                    "DB session not available for entitlement check. Denying access.",
+                    extra={"feature": feature, "tenant_id": tenant_context.tenant_id}
                 )
-                return await func(*args, **kwargs)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Could not verify feature entitlement."
+                )
 
             service = BillingEntitlementsService(db_session, tenant_context.tenant_id)
             result = service.check_feature_entitlement(feature)
