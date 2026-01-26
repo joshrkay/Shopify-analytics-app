@@ -134,7 +134,7 @@ def calculate_backoff(
     """
     if retry_after is not None and retry_after > 0:
         # Respect server-specified Retry-After with small jitter
-        jitter = random.uniform(-5, 10)  # -5 to +10 seconds jitter
+        jitter = random.uniform(-policy.jitter_factor * retry_after, policy.jitter_factor * retry_after) if policy.jitter_factor else 0
         return max(retry_after + jitter, 1.0)
 
     # Exponential backoff: base * 2^attempt
