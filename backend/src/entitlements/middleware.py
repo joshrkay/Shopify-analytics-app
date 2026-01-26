@@ -673,3 +673,57 @@ class BackgroundJobEntitlementChecker:
         rules = self._get_access_rules()
         decision = rules.check_limit(limit_key, current_usage)
         return decision.allowed
+
+
+# =============================================================================
+# Category-based enforcement (for use with PremiumCategory enum)
+# =============================================================================
+
+def require_category(category):
+    """
+    Decorator to mark a route as requiring a premium category.
+
+    Usage:
+        from src.entitlements.categories import PremiumCategory
+
+        @router.get("/export")
+        @require_category(PremiumCategory.EXPORTS)
+        async def export_handler(request: Request):
+            ...
+    """
+    def decorator(func):
+        # Store category requirement in function metadata
+        category_value = category.value if hasattr(category, 'value') else str(category)
+        func.__required_category__ = category_value
+        return func
+
+    return decorator
+
+
+def require_category_dependency(category):
+    """
+    FastAPI dependency to require a premium category.
+
+    Usage:
+        from src.entitlements.categories import PremiumCategory
+        from fastapi import Depends
+
+        @router.get("/export")
+        async def export_handler(
+            request: Request,
+            _: None = Depends(require_category_dependency(PremiumCategory.EXPORTS))
+        ):
+            ...
+    """
+
+    async def check_category(request: Request):
+        # This will be called by FastAPI dependency system
+        # The middleware will handle the actual enforcement
+        # This dependency just marks the route
+        return None
+
+    # Mark the dependency function with category metadata
+    category_value = category.value if hasattr(category, 'value') else str(category)
+    check_category.__required_category__ = category_value
+
+    return Depends(check_category)
