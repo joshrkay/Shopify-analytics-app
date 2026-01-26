@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 
 from sqlalchemy import (
     Column, String, Integer, DateTime, Enum, Text, JSON,
-    ForeignKey, Index, UniqueConstraint
+    ForeignKey, Index, UniqueConstraint, text
 )
 from sqlalchemy.orm import relationship
 
@@ -20,7 +20,7 @@ from src.models.base import TimestampMixin, TenantScopedMixin
 
 
 class JobStatus(str, PyEnum):
-    """Job status values."""
+    """Job status values for background jobs."""
     PENDING = "pending"  # Job queued, not yet started
     RUNNING = "running"  # Job currently executing
     COMPLETED = "completed"  # Job completed successfully
@@ -36,6 +36,24 @@ class JobCategory(str, PyEnum):
     AI = "ai"
     HEAVY_RECOMPUTE = "heavy_recompute"
     OTHER = "other"  # Non-premium jobs
+
+
+# PostgreSQL enum type names - distinct from ingestion.jobs.models to avoid conflicts
+BACKGROUND_JOB_STATUS_ENUM = Enum(
+    JobStatus,
+    name="background_job_status",  # Unique name to avoid conflict with ingestion JobStatus
+    create_constraint=True,
+    metadata=Base.metadata,
+    validate_strings=True,
+)
+
+BACKGROUND_JOB_CATEGORY_ENUM = Enum(
+    JobCategory,
+    name="background_job_category",
+    create_constraint=True,
+    metadata=Base.metadata,
+    validate_strings=True,
+)
 
 
 class BackgroundJob(Base, TimestampMixin, TenantScopedMixin):
@@ -63,7 +81,7 @@ class BackgroundJob(Base, TimestampMixin, TenantScopedMixin):
     )
     
     category = Column(
-        Enum(JobCategory),
+        BACKGROUND_JOB_CATEGORY_ENUM,
         nullable=False,
         default=JobCategory.OTHER,
         index=True,
@@ -71,7 +89,7 @@ class BackgroundJob(Base, TimestampMixin, TenantScopedMixin):
     )
     
     status = Column(
-        Enum(JobStatus),
+        BACKGROUND_JOB_STATUS_ENUM,
         nullable=False,
         default=JobStatus.PENDING,
         index=True,
@@ -137,7 +155,7 @@ class BackgroundJob(Base, TimestampMixin, TenantScopedMixin):
             "ix_background_jobs_blocked_retry",
             "status",
             "blocked_billing_state",
-            postgresql_where=Column("status") == JobStatus.BLOCKED_DUE_TO_BILLING.value
+            postgresql_where=text("status = 'blocked_due_to_billing'::background_job_status")
         ),
     )
     
