@@ -1,8 +1,8 @@
 """
-FastAPI middleware for entitlement enforcement.
+FastAPI middleware for category-based entitlement enforcement.
 
-Enforces feature access based on billing_state and plan features.
-Emits audit logs for all entitlement checks.
+Enforces premium category access based on billing_state matrix.
+Emits audit logs for all entitlement checks and degraded access usage.
 """
 
 import logging
@@ -12,19 +12,21 @@ from datetime import datetime, timezone
 from fastapi import Request, HTTPException, status
 from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 from sqlalchemy.orm import Session
 
 from src.platform.tenant_context import get_tenant_context, TenantContext
-from src.platform.audit import AuditAction, log_system_audit_event
-from src.entitlements.policy import EntitlementPolicy, BillingState
+from src.entitlements.policy import EntitlementPolicy, BillingState, CategoryEntitlementResult
 from src.entitlements.errors import EntitlementDeniedError
+from src.entitlements.categories import PremiumCategory, get_category_from_route
+from src.entitlements.audit import log_entitlement_denied, log_degraded_access_used
 from src.models.subscription import Subscription
 
 logger = logging.getLogger(__name__)
 
 
-# Metadata key for route feature requirements
+# Metadata keys for route requirements
+REQUIRED_CATEGORY_KEY = "required_category"
 REQUIRED_FEATURE_KEY = "required_feature"
 
 
@@ -37,15 +39,24 @@ def get_db_session_from_request(request: Request) -> Optional[Session]:
     return getattr(request.state, "db", None)
 
 
+def get_correlation_id(request: Request) -> Optional[str]:
+    """Get correlation ID from request state or headers."""
+    if hasattr(request.state, "correlation_id"):
+        return request.state.correlation_id
+    return request.headers.get("X-Correlation-ID")
+
+
 class EntitlementMiddleware(BaseHTTPMiddleware):
     """
-    FastAPI middleware that enforces feature entitlements on protected routes.
+    FastAPI middleware that enforces category-based entitlements on protected routes.
     
-    Routes can be marked with required_feature metadata:
-        @router.get("/premium-endpoint")
-        @router.get("/premium-endpoint").route.required_feature = "premium_feature"
+    Routes can be marked with required_category metadata:
+        @router.get("/export")
+        @require_category("exports")
+        async def export_handler(request: Request):
+            ...
     
-    Or use the require_feature decorator.
+    Or use the require_category dependency/decorator.
     """
     
     def __init__(self, app, db_session_factory: Optional[Callable[[], Session]] = None):
@@ -61,10 +72,10 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
-        Process request and check entitlements for protected routes.
+        Process request and check category entitlements for protected routes.
         
         Skips entitlement check if:
-        - Route has no required_feature metadata
+        - Route has no required_category metadata
         - Route is health check or webhook
         - No database session available (falls back to allowing, with warning)
         """
@@ -72,23 +83,46 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/health" or request.url.path.startswith("/api/webhooks/"):
             return await call_next(request)
         
-        # Get route and check for required_feature metadata
+        # Get route and check for required_category metadata
         route = request.scope.get("route")
         if not route or not isinstance(route, APIRoute):
             return await call_next(request)
         
-        # Check route endpoint for required_feature
-        required_feature = None
+        # Check route endpoint for required_category
+        required_category: Optional[PremiumCategory] = None
         if hasattr(route, "endpoint"):
-            # Check function metadata (set by @require_feature decorator)
-            required_feature = getattr(route.endpoint, "__required_feature__", None)
+            # Check function metadata (set by @require_category decorator)
+            category_value = getattr(route.endpoint, "__required_category__", None)
+            if category_value:
+                try:
+                    required_category = PremiumCategory(category_value)
+                except ValueError:
+                    logger.warning(
+                        f"Invalid category value: {category_value}",
+                        extra={"path": request.url.path}
+                    )
         
         # Also check route object metadata
-        if not required_feature:
-            required_feature = getattr(route, REQUIRED_FEATURE_KEY, None)
+        if not required_category:
+            category_value = getattr(route, REQUIRED_CATEGORY_KEY, None)
+            if category_value:
+                try:
+                    required_category = PremiumCategory(category_value)
+                except ValueError:
+                    logger.warning(
+                        f"Invalid category value: {category_value}",
+                        extra={"path": request.url.path}
+                    )
         
-        if not required_feature:
-            # No feature requirement - allow
+        # Fallback: infer category from route path
+        if not required_category:
+            inferred = get_category_from_route(request.url.path, request.method)
+            # Only enforce if it's a premium category (not OTHER)
+            if inferred != PremiumCategory.OTHER:
+                required_category = inferred
+        
+        if not required_category:
+            # No category requirement - allow
             return await call_next(request)
         
         # Get tenant context (must exist from TenantContextMiddleware)
@@ -114,17 +148,17 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
                 "No DB session available for entitlement check - allowing request",
                 extra={
                     "tenant_id": tenant_context.tenant_id,
-                    "feature": required_feature,
+                    "category": required_category.value,
                     "path": request.url.path,
                 }
             )
             # Allow request but log warning (fail-open for availability)
             return await call_next(request)
         
-        # Evaluate entitlement
+        # Evaluate category entitlement
         policy = EntitlementPolicy(db_session)
         
-        # Fetch subscription (check multiple statuses)
+        # Fetch subscription
         subscription = db_session.query(Subscription).filter(
             Subscription.tenant_id == tenant_context.tenant_id
         ).order_by(Subscription.created_at.desc()).first()
@@ -135,39 +169,94 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
                 Subscription.tenant_id == tenant_context.tenant_id
             ).first()
         
-        result = policy.check_feature_entitlement(
+        result = policy.check_category_entitlement(
             tenant_id=tenant_context.tenant_id,
-            feature=required_feature,
+            category=required_category,
+            method=request.method,
             subscription=subscription,
         )
         
-        # Emit audit log
-        await self._emit_audit_log(
-            request=request,
-            tenant_context=tenant_context,
-            feature=required_feature,
-            result=result,
-            db_session=db_session,
-        )
+        correlation_id = get_correlation_id(request)
+        
+        # Emit audit logs
+        if not result.is_entitled:
+            await log_entitlement_denied(
+                db=db_session,
+                tenant_id=tenant_context.tenant_id,
+                user_id=tenant_context.user_id,
+                category=required_category,
+                billing_state=result.billing_state,
+                plan_id=result.plan_id,
+                reason=result.reason,
+                correlation_id=correlation_id,
+            )
+        elif result.is_degraded_access:
+            await log_degraded_access_used(
+                db=db_session,
+                tenant_id=tenant_context.tenant_id,
+                user_id=tenant_context.user_id,
+                category=required_category,
+                billing_state=result.billing_state,
+                plan_id=result.plan_id,
+                correlation_id=correlation_id,
+            )
         
         # Check entitlement result
         if not result.is_entitled:
             # Determine HTTP status based on billing_state
             http_status = status.HTTP_402_PAYMENT_REQUIRED
             
-            if result.billing_state == BillingState.EXPIRED:
-                http_status = status.HTTP_402_PAYMENT_REQUIRED
-            elif result.billing_state == BillingState.CANCELED:
-                http_status = status.HTTP_402_PAYMENT_REQUIRED
-            elif result.billing_state == BillingState.PAST_DUE:
-                http_status = status.HTTP_402_PAYMENT_REQUIRED
+            # Build response with headers
+            response_headers = {
+                "X-Billing-State": result.billing_state.value,
+            }
             
+            if result.grace_period_remaining_days is not None:
+                response_headers["X-Grace-Period-Remaining"] = str(result.grace_period_remaining_days)
+            
+            if result.action_required:
+                response_headers["X-Billing-Action-Required"] = result.action_required
+            
+            # For expired blocks, return HTTP 402 with BILLING_EXPIRED code
+            if result.billing_state == BillingState.EXPIRED:
+                error_detail = {
+                    "error": "entitlement_denied",
+                    "code": "BILLING_EXPIRED",
+                    "category": required_category.value,
+                    "billing_state": result.billing_state.value,
+                    "plan_id": result.plan_id,
+                    "reason": result.reason,
+                    "machine_readable": {
+                        "code": "BILLING_EXPIRED",
+                        "billing_state": result.billing_state.value,
+                        "category": required_category.value,
+                    }
+                }
+                
+                logger.warning(
+                    "Entitlement check denied - expired",
+                    extra={
+                        "tenant_id": tenant_context.tenant_id,
+                        "user_id": tenant_context.user_id,
+                        "category": required_category.value,
+                        "billing_state": result.billing_state.value,
+                        "plan_id": result.plan_id,
+                        "reason": result.reason,
+                    }
+                )
+                
+                return JSONResponse(
+                    status_code=http_status,
+                    content=error_detail,
+                    headers=response_headers,
+                )
+            
+            # Other denials
             error = EntitlementDeniedError(
-                feature=required_feature,
-                reason=result.reason or "Feature not entitled",
+                feature=required_category.value,  # Using category as feature for compatibility
+                reason=result.reason or "Category access denied",
                 billing_state=result.billing_state.value,
                 plan_id=result.plan_id,
-                required_plan=result.required_plan,
                 http_status=http_status,
             )
             
@@ -176,111 +265,91 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
                 extra={
                     "tenant_id": tenant_context.tenant_id,
                     "user_id": tenant_context.user_id,
-                    "feature": required_feature,
+                    "category": required_category.value,
                     "billing_state": result.billing_state.value,
                     "plan_id": result.plan_id,
                     "reason": result.reason,
                 }
             )
             
-            raise HTTPException(
+            error_dict = error.to_dict()
+            error_dict["category"] = required_category.value
+            error_dict["machine_readable"]["category"] = required_category.value
+            
+            return JSONResponse(
                 status_code=http_status,
-                detail=error.to_dict(),
+                content=error_dict,
+                headers=response_headers,
             )
         
-        # Entitlement granted
-        # Add warning header if in grace period
-        if result.billing_state == BillingState.GRACE_PERIOD and result.grace_period_ends_on:
-            response = await call_next(request)
-            response.headers["X-Billing-Warning"] = "payment_grace_period"
-            response.headers["X-Grace-Period-Ends"] = result.grace_period_ends_on.isoformat()
-            return response
+        # Entitlement granted (possibly in degraded mode)
+        response = await call_next(request)
         
-        return await call_next(request)
-    
-    async def _emit_audit_log(
-        self,
-        request: Request,
-        tenant_context: TenantContext,
-        feature: str,
-        result,
-        db_session: Session,
-    ) -> None:
-        """
-        Emit audit log for entitlement check.
+        # Add response headers
+        response.headers["X-Billing-State"] = result.billing_state.value
         
-        Logs entitlement.denied or entitlement.allowed events.
-        """
-        try:
-            from sqlalchemy.ext.asyncio import AsyncSession
-            
-            # Determine audit action
-            audit_action = AuditAction.ENTITLEMENT_DENIED if not result.is_entitled else AuditAction.ENTITLEMENT_ALLOWED
-            
-            # Try async audit logging
-            if isinstance(db_session, AsyncSession):
-                await log_system_audit_event(
-                    db=db_session,
-                    tenant_id=tenant_context.tenant_id,
-                    action=audit_action,
-                    resource_type="entitlement",
-                    resource_id=feature,
-                    metadata={
-                        "feature": feature,
-                        "is_entitled": result.is_entitled,
-                        "billing_state": result.billing_state.value,
-                        "plan_id": result.plan_id,
-                        "plan_name": result.plan_id,  # Could fetch plan name if needed
-                        "reason": result.reason,
-                        "path": request.url.path,
-                        "method": request.method,
-                    },
-                )
-            else:
-                # For sync sessions, log via structured logging
-                # The audit system will pick this up if configured
-                logger.info(
-                    "Entitlement check",
-                    extra={
-                        "tenant_id": tenant_context.tenant_id,
-                        "user_id": tenant_context.user_id,
-                        "action": audit_action.value,
-                        "feature": feature,
-                        "billing_state": result.billing_state.value,
-                        "plan_id": result.plan_id,
-                        "is_entitled": result.is_entitled,
-                        "reason": result.reason,
-                        "resource_type": "entitlement",
-                        "resource_id": feature,
-                    }
-                )
-        except Exception as e:
-            logger.error(
-                "Failed to emit entitlement audit log",
+        if result.grace_period_remaining_days is not None:
+            response.headers["X-Grace-Period-Remaining"] = str(result.grace_period_remaining_days)
+        
+        if result.action_required:
+            response.headers["X-Billing-Action-Required"] = result.action_required
+        
+        # Log warning if in degraded mode
+        if result.is_degraded_access:
+            logger.info(
+                "Request allowed in degraded access mode",
                 extra={
-                    "error": str(e),
                     "tenant_id": tenant_context.tenant_id,
-                    "feature": feature,
+                    "user_id": tenant_context.user_id,
+                    "category": required_category.value,
+                    "billing_state": result.billing_state.value,
+                    "path": request.url.path,
                 }
             )
+        
+        return response
 
 
-def require_feature(feature: str):
+def require_category(category: PremiumCategory):
     """
-    Decorator to mark a route as requiring a feature.
+    Decorator to mark a route as requiring a premium category.
     
     Usage:
-        @router.get("/premium-endpoint")
-        @require_feature("premium_feature")
-        async def premium_handler(request: Request):
+        @router.get("/export")
+        @require_category(PremiumCategory.EXPORTS)
+        async def export_handler(request: Request):
             ...
     """
     def decorator(func):
-        # Store feature requirement in function metadata
-        func.__required_feature__ = feature
+        # Store category requirement in function metadata
+        func.__required_category__ = category.value
         return func
     
     return decorator
 
 
-# Audit actions are defined in src/platform/audit.py
+def require_category_dependency(category: PremiumCategory):
+    """
+    FastAPI dependency to require a premium category.
+    
+    Usage:
+        @router.get("/export")
+        async def export_handler(
+            request: Request,
+            _: None = Depends(require_category_dependency(PremiumCategory.EXPORTS))
+        ):
+            ...
+    """
+    from fastapi import Depends
+    from functools import wraps
+    
+    async def check_category(request: Request):
+        # This will be called by FastAPI dependency system
+        # The middleware will handle the actual enforcement
+        # This dependency just marks the route
+        return None
+    
+    # Mark the dependency function with category metadata
+    check_category.__required_category__ = category.value
+    
+    return Depends(check_category)

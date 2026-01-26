@@ -65,7 +65,7 @@ class EntitlementDeniedError(EntitlementError):
     def _get_reason_code(self) -> str:
         """Get machine-readable reason code."""
         if self.billing_state == "expired":
-            return "subscription_expired"
+            return "BILLING_EXPIRED"
         elif self.billing_state == "canceled":
             return "subscription_canceled"
         elif self.billing_state == "past_due":
