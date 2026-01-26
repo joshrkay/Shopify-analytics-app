@@ -539,6 +539,7 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "success",             # Boolean: whether access was granted
         "access_method",       # How access was attempted
         "client_ip",
+        "grant_reason",        # Why access was granted (if successful)
     ],
 
     "cross_tenant.access_granted": [
