@@ -1,14 +1,16 @@
-name: 'shopify_analytics'
+name: shopify_analytics
 version: '1.0.0'
 config-version: 2
 
-profile: 'shopify_analytics'
+# Profile configuration
+profile: shopify_analytics
 
+# Model configuration
 model-paths: ["models"]
+macro-paths: ["macros"]
 analysis-paths: ["analyses"]
 test-paths: ["tests"]
 seed-paths: ["seeds"]
-macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
 
 target-path: "target"

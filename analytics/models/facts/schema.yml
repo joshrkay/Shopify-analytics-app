@@ -244,9 +244,10 @@ models:
           config:
             severity: error
       - test_volume_anomaly:
-          date_column: performance_date
-          min_daily_records: 1
-          lookback_days: 7
+          arguments:
+            date_column: performance_date
+            min_daily_records: 1
+            lookback_days: 7
           config:
             severity: warn
     columns:
