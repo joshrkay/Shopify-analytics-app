@@ -9,6 +9,7 @@ Tests cover:
 """
 
 import os
+import time
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
@@ -187,6 +188,9 @@ class TestEmbedTokenService:
             tenant_context=tenant_context,
             dashboard_id="dashboard_1",
         )
+
+        # Wait to ensure different iat timestamp (tokens generated in same second are identical)
+        time.sleep(1.1)
 
         # Refresh token
         refreshed_result = service.refresh_token(
