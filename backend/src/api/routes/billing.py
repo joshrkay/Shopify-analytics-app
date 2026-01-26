@@ -398,7 +398,6 @@ async def get_entitlements(
         ).order_by(Subscription.created_at.desc()).first()
         
         # Create policy and get billing state
-        from src.entitlements.policy import EntitlementPolicy, BillingState
         policy = EntitlementPolicy(db_session)
         billing_state = policy.get_billing_state(subscription)
         
