@@ -1,0 +1,146 @@
+/**
+ * Agency API Service
+ *
+ * Handles API calls for agency user functionality:
+ * - Fetching assigned stores
+ * - Switching active store
+ * - Refreshing JWT with new tenant context
+ */
+
+import type {
+  AssignedStoresResponse,
+  SwitchStoreRequest,
+  SwitchStoreResponse,
+  UserContext,
+} from '../types/agency';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+
+/**
+ * Get the current JWT token from localStorage.
+ */
+function getAuthToken(): string | null {
+  return localStorage.getItem('jwt_token');
+}
+
+/**
+ * Set the JWT token in localStorage.
+ */
+function setAuthToken(token: string): void {
+  localStorage.setItem('jwt_token', token);
+}
+
+/**
+ * Create headers with authentication.
+ */
+function createHeaders(): HeadersInit {
+  const token = getAuthToken();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+/**
+ * Handle API response and throw on error.
+ */
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `API error: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Fetch assigned stores for the current agency user.
+ */
+export async function fetchAssignedStores(): Promise<AssignedStoresResponse> {
+  const response = await fetch(`${API_BASE_URL}/agency/stores`, {
+    method: 'GET',
+    headers: createHeaders(),
+  });
+  return handleResponse<AssignedStoresResponse>(response);
+}
+
+/**
+ * Switch the active store for an agency user.
+ *
+ * This will refresh the JWT token with the new tenant context.
+ */
+export async function switchActiveStore(
+  tenantId: string
+): Promise<SwitchStoreResponse> {
+  const request: SwitchStoreRequest = { tenant_id: tenantId };
+
+  const response = await fetch(`${API_BASE_URL}/agency/stores/switch`, {
+    method: 'POST',
+    headers: createHeaders(),
+    body: JSON.stringify(request),
+  });
+
+  const result = await handleResponse<SwitchStoreResponse>(response);
+
+  // Update stored JWT token with new tenant context
+  if (result.success && result.jwt_token) {
+    setAuthToken(result.jwt_token);
+  }
+
+  return result;
+}
+
+/**
+ * Get the current user context from JWT.
+ */
+export async function fetchUserContext(): Promise<UserContext> {
+  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+    method: 'GET',
+    headers: createHeaders(),
+  });
+  return handleResponse<UserContext>(response);
+}
+
+/**
+ * Refresh the JWT token (e.g., after switching stores).
+ */
+export async function refreshJwtToken(
+  tenantId: string,
+  allowedTenants: string[]
+): Promise<{ jwt_token: string }> {
+  const response = await fetch(`${API_BASE_URL}/auth/refresh-jwt`, {
+    method: 'POST',
+    headers: createHeaders(),
+    body: JSON.stringify({
+      tenant_id: tenantId,
+      allowed_tenants: allowedTenants,
+    }),
+  });
+
+  const result = await handleResponse<{ jwt_token: string }>(response);
+
+  // Update stored JWT token
+  if (result.jwt_token) {
+    setAuthToken(result.jwt_token);
+  }
+
+  return result;
+}
+
+/**
+ * Check if user has access to a specific store.
+ */
+export async function checkStoreAccess(
+  tenantId: string
+): Promise<{ has_access: boolean; reason?: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/agency/stores/${tenantId}/access`,
+    {
+      method: 'GET',
+      headers: createHeaders(),
+    }
+  );
+  return handleResponse<{ has_access: boolean; reason?: string }>(response);
+}

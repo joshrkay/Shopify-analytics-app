@@ -6,6 +6,14 @@ All permission checks MUST reference these constants.
 UI permission gating is UX only - server-side enforcement is security.
 
 Roles are defined in Frontegg and mapped here.
+
+Role Hierarchy:
+- Merchant roles: MERCHANT_ADMIN > MERCHANT_VIEWER (single tenant access)
+- Agency roles: AGENCY_ADMIN > AGENCY_VIEWER (multi-tenant access)
+- Platform roles: ADMIN > OWNER > EDITOR > VIEWER (legacy, backward compatible)
+
+Agency users have access to multiple tenant_ids via JWT allowed_tenants[] claim.
+All queries are filtered via RLS: tenant_id IN ({{ current_user.allowed_tenants }})
 """
 
 from enum import Enum
@@ -17,11 +25,51 @@ class Role(str, Enum):
     User roles from Frontegg.
 
     Keep in sync with Frontegg role configuration.
+
+    Role Categories:
+    - Merchant roles: Single-tenant access for store owners/staff
+    - Agency roles: Multi-tenant access for agencies managing multiple stores
+    - Platform roles: Legacy roles maintained for backward compatibility
     """
+    # Platform roles (legacy, backward compatible)
     ADMIN = "admin"
     OWNER = "owner"
     EDITOR = "editor"
     VIEWER = "viewer"
+
+    # Merchant roles (single tenant)
+    MERCHANT_ADMIN = "merchant_admin"
+    MERCHANT_VIEWER = "merchant_viewer"
+
+    # Agency roles (multi-tenant)
+    AGENCY_ADMIN = "agency_admin"
+    AGENCY_VIEWER = "agency_viewer"
+
+    # Super admin (platform-level)
+    SUPER_ADMIN = "super_admin"
+
+
+class RoleCategory(str, Enum):
+    """
+    Role categories for determining tenant access scope.
+    """
+    MERCHANT = "merchant"  # Single tenant_id access
+    AGENCY = "agency"      # Multiple tenant_ids via allowed_tenants[]
+    PLATFORM = "platform"  # Legacy platform roles
+
+
+# Map roles to their categories
+ROLE_CATEGORIES = {
+    Role.MERCHANT_ADMIN: RoleCategory.MERCHANT,
+    Role.MERCHANT_VIEWER: RoleCategory.MERCHANT,
+    Role.AGENCY_ADMIN: RoleCategory.AGENCY,
+    Role.AGENCY_VIEWER: RoleCategory.AGENCY,
+    Role.ADMIN: RoleCategory.PLATFORM,
+    Role.OWNER: RoleCategory.PLATFORM,
+    Role.EDITOR: RoleCategory.PLATFORM,
+    Role.VIEWER: RoleCategory.PLATFORM,
+    Role.SUPER_ADMIN: RoleCategory.PLATFORM,
+}
 
 
 class Permission(str, Enum):
@@ -71,10 +119,19 @@ class Permission(str, Enum):
     SETTINGS_VIEW = "settings:view"
     SETTINGS_MANAGE = "settings:manage"
 
+    # Agency-specific permissions
+    AGENCY_STORES_VIEW = "agency:stores:view"       # View assigned client stores
+    AGENCY_STORES_SWITCH = "agency:stores:switch"   # Switch between client stores
+    AGENCY_REPORTS_VIEW = "agency:reports:view"     # View cross-store reports
+
+    # Multi-tenant access permission
+    MULTI_TENANT_ACCESS = "multi_tenant:access"     # Access multiple tenant_ids
+
 
 # Permission matrix: Role -> Set of Permissions
 # This is the canonical source of truth for RBAC
 ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
+    # --- Legacy Platform Roles (backward compatible) ---
     Role.VIEWER: frozenset([
         Permission.ANALYTICS_VIEW,
         Permission.STORE_VIEW,
@@ -155,6 +212,103 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.SETTINGS_VIEW,
         Permission.SETTINGS_MANAGE,
     ]),
+
+    # --- Merchant Roles (single tenant access) ---
+    Role.MERCHANT_ADMIN: frozenset([
+        # Full access to own store
+        Permission.ANALYTICS_VIEW,
+        Permission.ANALYTICS_EXPLORE,  # Superset Explore mode
+        Permission.STORE_VIEW,
+        Permission.STORE_UPDATE,
+        Permission.BILLING_VIEW,
+        Permission.BILLING_MANAGE,
+        Permission.TEAM_VIEW,
+        Permission.TEAM_MANAGE,
+        Permission.TEAM_INVITE,
+        Permission.AI_INSIGHTS_VIEW,
+        Permission.AI_ACTIONS_EXECUTE,
+        Permission.AI_CONFIG_MANAGE,
+        Permission.AUTOMATION_VIEW,
+        Permission.AUTOMATION_CREATE,
+        Permission.AUTOMATION_APPROVE,
+        Permission.AUTOMATION_EXECUTE,
+        Permission.SETTINGS_VIEW,
+        Permission.SETTINGS_MANAGE,
+    ]),
+
+    Role.MERCHANT_VIEWER: frozenset([
+        # Read-only dashboards only
+        Permission.ANALYTICS_VIEW,
+        Permission.STORE_VIEW,
+        Permission.BILLING_VIEW,
+        Permission.TEAM_VIEW,
+        Permission.AI_INSIGHTS_VIEW,
+        Permission.AUTOMATION_VIEW,
+        Permission.SETTINGS_VIEW,
+    ]),
+
+    # --- Agency Roles (multi-tenant access via allowed_tenants[]) ---
+    Role.AGENCY_ADMIN: frozenset([
+        # View multiple stores with editing capabilities
+        Permission.ANALYTICS_VIEW,
+        Permission.ANALYTICS_EXPLORE,  # Superset Explore mode
+        Permission.STORE_VIEW,
+        Permission.TEAM_VIEW,
+        Permission.AI_INSIGHTS_VIEW,
+        Permission.AUTOMATION_VIEW,
+        Permission.SETTINGS_VIEW,
+        # Agency-specific permissions
+        Permission.AGENCY_STORES_VIEW,
+        Permission.AGENCY_STORES_SWITCH,
+        Permission.AGENCY_REPORTS_VIEW,
+        Permission.MULTI_TENANT_ACCESS,
+    ]),
+
+    Role.AGENCY_VIEWER: frozenset([
+        # Limited dashboards across assigned stores
+        Permission.ANALYTICS_VIEW,
+        Permission.STORE_VIEW,
+        Permission.AI_INSIGHTS_VIEW,
+        Permission.SETTINGS_VIEW,
+        # Agency-specific permissions (limited)
+        Permission.AGENCY_STORES_VIEW,
+        Permission.AGENCY_STORES_SWITCH,
+        Permission.MULTI_TENANT_ACCESS,
+    ]),
+
+    # --- Super Admin (platform-level, all access) ---
+    Role.SUPER_ADMIN: frozenset([
+        # All permissions including multi-tenant
+        Permission.ANALYTICS_VIEW,
+        Permission.ANALYTICS_EXPORT,
+        Permission.ANALYTICS_EXPLORE,
+        Permission.STORE_VIEW,
+        Permission.STORE_CREATE,
+        Permission.STORE_UPDATE,
+        Permission.STORE_DELETE,
+        Permission.BILLING_VIEW,
+        Permission.BILLING_MANAGE,
+        Permission.TEAM_VIEW,
+        Permission.TEAM_MANAGE,
+        Permission.TEAM_INVITE,
+        Permission.AI_INSIGHTS_VIEW,
+        Permission.AI_ACTIONS_EXECUTE,
+        Permission.AI_CONFIG_MANAGE,
+        Permission.AUTOMATION_VIEW,
+        Permission.AUTOMATION_CREATE,
+        Permission.AUTOMATION_APPROVE,
+        Permission.AUTOMATION_EXECUTE,
+        Permission.ADMIN_PLANS_VIEW,
+        Permission.ADMIN_PLANS_MANAGE,
+        Permission.ADMIN_SYSTEM_CONFIG,
+        Permission.ADMIN_AUDIT_VIEW,
+        Permission.SETTINGS_VIEW,
+        Permission.SETTINGS_MANAGE,
+        Permission.AGENCY_STORES_VIEW,
+        Permission.AGENCY_STORES_SWITCH,
+        Permission.AGENCY_REPORTS_VIEW,
+        Permission.MULTI_TENANT_ACCESS,
+    ]),
 }
 
 
@@ -195,3 +349,138 @@ def roles_have_permission(roles: list[str], permission: Permission) -> bool:
         except ValueError:
             continue
     return False
+
+
+def get_role_category(role: Role) -> RoleCategory:
+    """Get the category for a given role."""
+    return ROLE_CATEGORIES.get(role, RoleCategory.PLATFORM)
+
+
+def is_agency_role(role_name: str) -> bool:
+    """Check if a role name is an agency role (multi-tenant access)."""
+    try:
+        role = Role(role_name.lower())
+        return ROLE_CATEGORIES.get(role) == RoleCategory.AGENCY
+    except ValueError:
+        return False
+
+
+def is_merchant_role(role_name: str) -> bool:
+    """Check if a role name is a merchant role (single tenant access)."""
+    try:
+        role = Role(role_name.lower())
+        return ROLE_CATEGORIES.get(role) == RoleCategory.MERCHANT
+    except ValueError:
+        return False
+
+
+def has_multi_tenant_access(roles: list[str]) -> bool:
+    """
+    Check if any of the given roles has multi-tenant access.
+
+    Agency roles and super_admin have multi-tenant access via allowed_tenants[].
+    """
+    for role_name in roles:
+        try:
+            role = Role(role_name.lower())
+            if Permission.MULTI_TENANT_ACCESS in ROLE_PERMISSIONS.get(role, frozenset()):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def get_primary_role_category(roles: list[str]) -> RoleCategory:
+    """
+    Determine the primary role category for a list of roles.
+
+    Priority: AGENCY > MERCHANT > PLATFORM (to ensure multi-tenant access is respected)
+    """
+    has_agency = False
+    has_merchant = False
+
+    for role_name in roles:
+        try:
+            role = Role(role_name.lower())
+            category = ROLE_CATEGORIES.get(role, RoleCategory.PLATFORM)
+            if category == RoleCategory.AGENCY:
+                has_agency = True
+            elif category == RoleCategory.MERCHANT:
+                has_merchant = True
+        except ValueError:
+            continue
+
+    if has_agency:
+        return RoleCategory.AGENCY
+    if has_merchant:
+        return RoleCategory.MERCHANT
+    return RoleCategory.PLATFORM
+
+
+# Billing tier to allowed roles mapping
+# Agency access requires paid tier (Growth or Enterprise)
+BILLING_TIER_ALLOWED_ROLES = {
+    'free': frozenset([
+        Role.MERCHANT_ADMIN,
+        Role.MERCHANT_VIEWER,
+        # Legacy roles
+        Role.VIEWER,
+        Role.EDITOR,
+    ]),
+    'growth': frozenset([
+        Role.MERCHANT_ADMIN,
+        Role.MERCHANT_VIEWER,
+        Role.AGENCY_VIEWER,  # Limited agency access
+        # Legacy roles
+        Role.VIEWER,
+        Role.EDITOR,
+        Role.OWNER,
+    ]),
+    'enterprise': frozenset([
+        Role.MERCHANT_ADMIN,
+        Role.MERCHANT_VIEWER,
+        Role.AGENCY_ADMIN,
+        Role.AGENCY_VIEWER,
+        # Legacy roles
+        Role.VIEWER,
+        Role.EDITOR,
+        Role.OWNER,
+        Role.ADMIN,
+    ]),
+}
+
+
+def is_role_allowed_for_billing_tier(role_name: str, billing_tier: str) -> bool:
+    """
+    Check if a role is allowed for a given billing tier.
+
+    Agency roles require paid tiers (Growth or Enterprise).
+
+    Args:
+        role_name: The role name to check
+        billing_tier: The billing tier ('free', 'growth', 'enterprise')
+
+    Returns:
+        True if the role is allowed for the billing tier
+    """
+    try:
+        role = Role(role_name.lower())
+    except ValueError:
+        return False
+
+    allowed_roles = BILLING_TIER_ALLOWED_ROLES.get(billing_tier.lower(), frozenset())
+    return role in allowed_roles
+
+
+def get_allowed_roles_for_billing_tier(billing_tier: str) -> list[str]:
+    """
+    Get list of role names allowed for a billing tier.
+
+    Args:
+        billing_tier: The billing tier ('free', 'growth', 'enterprise')
+
+    Returns:
+        List of allowed role names
+    """
+    allowed_roles = BILLING_TIER_ALLOWED_ROLES.get(billing_tier.lower(), frozenset())
+    return [role.value for role in allowed_roles]
