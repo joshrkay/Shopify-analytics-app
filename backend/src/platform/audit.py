@@ -29,7 +29,7 @@ from fastapi import Request
 from sqlalchemy import Column, String, DateTime, Text, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 
 # Use separate Base to avoid circular imports
 # This model will need to be registered with the main Base during app initialization
