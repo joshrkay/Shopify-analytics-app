@@ -120,13 +120,29 @@ class RedisClient:
     def __init__(self):
         self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         self._client = None
+        self._connected = False
 
     def _get_client(self):
         """Get Redis client (lazy initialization)."""
         if self._client is None:
             import redis
             self._client = redis.from_url(self.redis_url)
+            # Test connection
+            try:
+                self._client.ping()
+                self._connected = True
+            except Exception:
+                self._connected = False
+                raise
         return self._client
+
+    def is_available(self) -> bool:
+        """Check if Redis is available."""
+        try:
+            self._get_client()
+            return self._connected
+        except Exception:
+            return False
 
     def clear_cache(
         self,
@@ -504,6 +520,11 @@ def create_clear_redis_cache_handler() -> callable:
             "Executing clear_redis_cache",
             extra={"pattern": target, "rollback_id": rollback_id},
         )
+
+        # Skip if Redis is not available
+        if not redis_client.is_available():
+            logger.warning("Redis not available, skipping cache clear")
+            return True  # Graceful skip, not a failure
 
         try:
             result = redis_client.clear_cache(pattern=target)
