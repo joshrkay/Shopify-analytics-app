@@ -2,7 +2,7 @@
     config(
         materialized='incremental',
         schema='staging',
-        unique_key=['tenant_id', 'report_date', 'ad_account_id', 'campaign_id'],
+        unique_key=['tenant_id', 'report_date', 'ad_account_id', 'campaign_id', 'adset_id', 'ad_id'],
         incremental_strategy='delete+insert'
     )
 }}
