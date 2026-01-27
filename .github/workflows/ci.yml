@@ -364,12 +364,14 @@ jobs:
           -- Create required schemas
           -- ============================================================================
           create schema if not exists raw;
+          create schema if not exists platform;
 
           -- ============================================================================
-          -- Platform source tables (public schema)
+          -- Platform source tables (platform schema)
           -- Source: platform.tenant_airbyte_connections
+          -- When no schema is specified in dbt source, it defaults to source name
           -- ============================================================================
-          create table if not exists public.tenant_airbyte_connections (
+          create table if not exists platform.tenant_airbyte_connections (
             airbyte_connection_id text not null,
             tenant_id text not null,
             source_type text not null,

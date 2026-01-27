@@ -9,19 +9,21 @@
 -- IMPORTANT: Schema mappings must match analytics/models/staging/schema.yml:
 --   - airbyte_raw source → public schema
 --   - raw_sources source → raw schema
---   - platform source → public schema
+--   - platform source → platform schema (dbt defaults to source name)
 -- ============================================================================
 
 -- ============================================================================
 -- Create required schemas
 -- ============================================================================
 CREATE SCHEMA IF NOT EXISTS raw;
+CREATE SCHEMA IF NOT EXISTS platform;
 
 -- ============================================================================
--- Platform source tables (public schema)
+-- Platform source tables (platform schema)
 -- Source: platform.tenant_airbyte_connections
+-- When no schema is specified in dbt source, it defaults to source name
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS public.tenant_airbyte_connections (
+CREATE TABLE IF NOT EXISTS platform.tenant_airbyte_connections (
     id VARCHAR(255) PRIMARY KEY DEFAULT gen_random_uuid()::text,
     airbyte_connection_id VARCHAR(255) NOT NULL,
     tenant_id VARCHAR(255) NOT NULL,
@@ -110,7 +112,7 @@ CREATE TABLE IF NOT EXISTS raw.raw_recharge_subscriptions (
 -- ============================================================================
 -- Insert test tenant for development (optional)
 -- ============================================================================
-INSERT INTO public.tenant_airbyte_connections (
+INSERT INTO platform.tenant_airbyte_connections (
     airbyte_connection_id,
     tenant_id,
     source_type,
