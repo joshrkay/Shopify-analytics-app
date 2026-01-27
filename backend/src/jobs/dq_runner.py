@@ -277,7 +277,7 @@ class DQRunner:
                         service.create_incident(
                             check=check,
                             connector_id=result.connector_id,
-                            result_id=None,  # Would need to get result ID
+                            result_id=result.id,
                             run_id=self.run_id,
                             correlation_id=correlation_id,
                             severity=result.severity,
