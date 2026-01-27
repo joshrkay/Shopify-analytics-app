@@ -136,29 +136,19 @@ def _generate_jwt_token(
     """
     Generate a new JWT token with updated tenant context.
 
-    NOTE: In production, this should call your auth service (e.g., Frontegg)
-    to issue a new token. This is a placeholder implementation.
+    Uses the Frontegg API client to generate a properly signed token.
+    Falls back to local token generation if Frontegg is unavailable.
     """
-    import jwt
-    import os
+    from src.platform.frontegg_client import generate_tenant_switch_token
 
-    # Get JWT secret from environment
-    jwt_secret = os.getenv("JWT_SECRET", "development-secret-change-in-prod")
-
-    payload = {
-        "sub": user_id,
-        "user_id": user_id,
-        "org_id": org_id,
-        "tenant_id": tenant_id,
-        "active_tenant_id": tenant_id,
-        "roles": roles,
-        "allowed_tenants": allowed_tenants,
-        "billing_tier": billing_tier,
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
-    }
-
-    return jwt.encode(payload, jwt_secret, algorithm="HS256")
+    return generate_tenant_switch_token(
+        user_id=user_id,
+        target_tenant_id=tenant_id,
+        allowed_tenants=allowed_tenants,
+        roles=roles,
+        billing_tier=billing_tier,
+        org_id=org_id,
+    )
 
 
 def _get_store_info_from_tenant(

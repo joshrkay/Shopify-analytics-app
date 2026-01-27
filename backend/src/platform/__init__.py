@@ -80,6 +80,14 @@ from src.platform.secrets import (
     validate_encryption_configured,
 )
 
+from src.platform.frontegg_client import (
+    FronteggClient,
+    FronteggConfig,
+    FronteggTokenError,
+    get_frontegg_client,
+    generate_tenant_switch_token,
+)
+
 __all__ = [
     # Tenant context
     "TenantContext",
@@ -139,4 +147,10 @@ __all__ = [
     "SecretRedactingFilter",
     "get_env_secret",
     "validate_encryption_configured",
+    # Frontegg client
+    "FronteggClient",
+    "FronteggConfig",
+    "FronteggTokenError",
+    "get_frontegg_client",
+    "generate_tenant_switch_token",
 ]

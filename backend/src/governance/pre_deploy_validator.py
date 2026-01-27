@@ -181,24 +181,24 @@ class PreDeployValidator:
         self._config = load_yaml_config(self.config_path, logger)
 
     def _register_default_handlers(self) -> None:
-        """Register default check handlers."""
-        # These would be implemented with actual validation logic
-        default_checks = [
-            "models_compile",
-            "tests_pass",
-            "no_deprecation_warnings",
+        """Register default check handlers with real implementations."""
+        from .validation_handlers import get_default_check_handlers
+
+        # Get real implementations for available handlers
+        real_handlers = get_default_check_handlers()
+
+        # Register real handlers
+        for check_name, handler in real_handlers.items():
+            if check_name not in self.check_handlers:
+                self.check_handlers[check_name] = handler
+
+        # For checks without real implementations yet, use stubs
+        stub_checks = [
             "docs_generated",
             "lineage_acyclic",
             "sync_time",
             "row_count_match",
-            "schema_match",
-            "cache_freshness",
-            "cross_tenant_isolation",
-            "multi_tenant_access",
-            "merchant_data_isolation",
-            "agency_client_isolation",
             "super_admin_access",
-            "load_time",
             "network_conditions",
             "empty_cache_test",
             "no_console_errors",
@@ -206,7 +206,7 @@ class PreDeployValidator:
             "historical_comparison",
         ]
 
-        for check in default_checks:
+        for check in stub_checks:
             if check not in self.check_handlers:
                 self.check_handlers[check] = self._create_stub_handler(check)
 
