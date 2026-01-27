@@ -48,12 +48,12 @@ having count(*) > 0
 union all
 
 -- Test 5: Verify no duplicate ad records across different tenants (Meta Ads)
--- Composite key: ad_account_id, campaign_id, date
+-- Composite key: ad_account_id, campaign_id, report_date
 select 'duplicate_meta_ads_across_tenants' as test_name, count(*) as failure_count
 from (
-    select ad_account_id, campaign_id, date
-    from {{ ref('stg_meta_ads') }}
-    group by ad_account_id, campaign_id, date
+    select platform_account_id, platform_campaign_id, report_date
+    from {{ ref('stg_meta_ads_daily') }}
+    group by platform_account_id, platform_campaign_id, report_date
     having count(distinct tenant_id) > 1
 ) duplicates
 having count(*) > 0
@@ -61,12 +61,12 @@ having count(*) > 0
 union all
 
 -- Test 6: Verify no duplicate ad records across different tenants (Google Ads)
--- Composite key: ad_account_id, campaign_id, date
+-- Composite key: ad_account_id, campaign_id, report_date
 select 'duplicate_google_ads_across_tenants' as test_name, count(*) as failure_count
 from (
-    select ad_account_id, campaign_id, date
-    from {{ ref('stg_google_ads') }}
-    group by ad_account_id, campaign_id, date
+    select platform_account_id, platform_campaign_id, report_date
+    from {{ ref('stg_google_ads_daily') }}
+    group by platform_account_id, platform_campaign_id, report_date
     having count(distinct tenant_id) > 1
 ) duplicates
 having count(*) > 0
