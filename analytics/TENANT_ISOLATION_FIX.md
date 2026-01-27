@@ -67,9 +67,10 @@ If connection ID is in the table name (e.g., `_airbyte_raw_conn123_shopify_order
 orders_with_connection as (
     select
         ord.*,
-        -- Extract from table name via pg_catalog
+        -- Extract from current table name via pg_catalog
         split_part(
-            (select relname from pg_class where oid = 'raw_orders'::regclass),
+            (select relname from pg_class 
+             where oid = (select tableoid from raw_orders limit 1)),
             '_',
             4
         ) as connection_identifier

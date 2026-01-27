@@ -208,26 +208,12 @@ orders_normalized as (
 -- If you've configured Airbyte to include connection_id in _airbyte_data
 --
 -- NOTE: This implementation uses Strategy 1 (schema-based) as the default.
--- If your setup is different, adjust the connection_id_from_source CTE below.
+-- If your setup is different, adjust the connection_id extraction below.
 orders_with_connection as (
     select
         ord.*,
-        -- Extract connection identifier from source
-        -- Adjust this based on your Airbyte configuration:
-        -- 
-        -- For schema-based isolation (default):
-        -- Assumes schema name format: airbyte_raw_<connection_id> or <connection_id>_raw
-        case
-            when current_schema() ~ '^airbyte_raw_[a-zA-Z0-9-]+$'
-                then regexp_replace(current_schema(), '^airbyte_raw_', '')
-            when current_schema() ~ '^[a-zA-Z0-9-]+_raw$'
-                then regexp_replace(current_schema(), '_raw$', '')
-            -- For connection-specific schemas with tenant prefix
-            when current_schema() ~ '^[a-zA-Z0-9-]+_[a-zA-Z0-9-]+_raw$'
-                then split_part(current_schema(), '_', 2)
-            -- Fallback: use full schema name as identifier
-            else current_schema()
-        end as connection_identifier
+        -- Extract connection identifier from source using shared macro
+        {{ extract_connection_identifier() }} as connection_identifier
     from orders_normalized ord
 ),
 
