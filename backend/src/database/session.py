@@ -16,7 +16,7 @@ import os
 import logging
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 from fastapi import HTTPException, status
@@ -45,7 +45,7 @@ def _get_database_url() -> str:
     return database_url
 
 
-def get_engine():
+def get_engine() -> Engine:
     """
     Get or create the database engine singleton.
 

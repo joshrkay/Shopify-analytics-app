@@ -441,75 +441,132 @@ async def check_billing_health(db_session) -> BillingHealthStatus:
     issues = 0
 
     # Check 1: Pending subscriptions
-    pending_count = db_session.query(Subscription).filter(
-        Subscription.status == SubscriptionStatus.PENDING.value
-    ).count()
-
-    old_pending = db_session.query(Subscription).filter(
-        Subscription.status == SubscriptionStatus.PENDING.value,
-        Subscription.created_at < datetime.now(timezone.utc) - timedelta(days=7)
-    ).count()
-
-    checks.append({
-        "name": "pending_subscriptions",
-        "status": "warning" if old_pending > 0 else "ok",
-        "message": f"{pending_count} pending ({old_pending} older than 7 days)"
-    })
-    if old_pending > 0:
+    try:
+        pending_count = db_session.query(Subscription).filter(
+            Subscription.status == SubscriptionStatus.PENDING.value
+        ).count()
+    except Exception as e:
+        logger.error("Failed to query pending subscriptions", extra={"error": str(e)})
+        pending_count = -1
+        checks.append({
+            "name": "pending_subscriptions",
+            "status": "error",
+            "message": f"Query failed: {e}"
+        })
         issues += 1
 
-    # Check 2: Frozen subscriptions
-    frozen_count = db_session.query(Subscription).filter(
-        Subscription.status == SubscriptionStatus.FROZEN.value
-    ).count()
+    # Continue Check 1: Old pending subscriptions
+    if pending_count >= 0:
+        try:
+            old_pending = db_session.query(Subscription).filter(
+                Subscription.status == SubscriptionStatus.PENDING.value,
+                Subscription.created_at < datetime.now(timezone.utc) - timedelta(days=7)
+            ).count()
 
-    checks.append({
-        "name": "frozen_subscriptions",
-        "status": "warning" if frozen_count > 10 else "ok",
-        "message": f"{frozen_count} frozen subscriptions"
-    })
-    if frozen_count > 10:
+            checks.append({
+                "name": "pending_subscriptions",
+                "status": "warning" if old_pending > 0 else "ok",
+                "message": f"{pending_count} pending ({old_pending} older than 7 days)"
+            })
+            if old_pending > 0:
+                issues += 1
+        except Exception as e:
+            logger.error("Failed to query old pending subscriptions", extra={"error": str(e)})
+            checks.append({
+                "name": "pending_subscriptions",
+                "status": "error",
+                "message": f"Query failed: {e}"
+            })
+            issues += 1
+            old_pending = 0
+    else:
+        old_pending = 0
+
+    # Check 2: Frozen subscriptions
+    try:
+        frozen_count = db_session.query(Subscription).filter(
+            Subscription.status == SubscriptionStatus.FROZEN.value
+        ).count()
+
+        checks.append({
+            "name": "frozen_subscriptions",
+            "status": "warning" if frozen_count > 10 else "ok",
+            "message": f"{frozen_count} frozen subscriptions"
+        })
+        if frozen_count > 10:
+            issues += 1
+    except Exception as e:
+        logger.error("Failed to query frozen subscriptions", extra={"error": str(e)})
+        frozen_count = -1
+        checks.append({
+            "name": "frozen_subscriptions",
+            "status": "error",
+            "message": f"Query failed: {e}"
+        })
         issues += 1
 
     # Check 3: Recent reconciliation
-    last_reconciliation_event = db_session.query(BillingEvent).filter(
-        BillingEvent.extra_metadata.contains({"source": "reconciliation"})
-    ).order_by(BillingEvent.created_at.desc()).first()
+    try:
+        last_reconciliation_event = db_session.query(BillingEvent).filter(
+            BillingEvent.extra_metadata.contains({"source": "reconciliation"})
+        ).order_by(BillingEvent.created_at.desc()).first()
 
-    last_recon_time = last_reconciliation_event.created_at if last_reconciliation_event else None
-    recon_stale = False
+        last_recon_time = last_reconciliation_event.created_at if last_reconciliation_event else None
+        recon_stale = False
 
-    if last_recon_time:
-        hours_since = (datetime.now(timezone.utc) - last_recon_time).total_seconds() / 3600
-        recon_stale = hours_since > 4
+        if last_recon_time:
+            hours_since = (datetime.now(timezone.utc) - last_recon_time).total_seconds() / 3600
+            recon_stale = hours_since > 4
 
-    checks.append({
-        "name": "reconciliation",
-        "status": "warning" if recon_stale else "ok",
-        "message": f"Last run: {last_recon_time.isoformat() if last_recon_time else 'never'}"
-    })
-    if recon_stale:
+        checks.append({
+            "name": "reconciliation",
+            "status": "warning" if recon_stale else "ok",
+            "message": f"Last run: {last_recon_time.isoformat() if last_recon_time else 'never'}"
+        })
+        if recon_stale:
+            issues += 1
+    except Exception as e:
+        logger.error("Failed to query reconciliation events", extra={"error": str(e)})
+        last_recon_time = None
+        checks.append({
+            "name": "reconciliation",
+            "status": "error",
+            "message": f"Query failed: {e}"
+        })
         issues += 1
 
     # Check 4: Recent errors
-    error_count = db_session.query(BillingEvent).filter(
-        BillingEvent.event_type == "charge_failed",
-        BillingEvent.created_at > datetime.now(timezone.utc) - timedelta(hours=24)
-    ).count()
+    try:
+        error_count = db_session.query(BillingEvent).filter(
+            BillingEvent.event_type == "charge_failed",
+            BillingEvent.created_at > datetime.now(timezone.utc) - timedelta(hours=24)
+        ).count()
 
-    checks.append({
-        "name": "recent_errors",
-        "status": "warning" if error_count > 5 else "ok",
-        "message": f"{error_count} payment failures in last 24h"
-    })
-    if error_count > 5:
+        checks.append({
+            "name": "recent_errors",
+            "status": "warning" if error_count > 5 else "ok",
+            "message": f"{error_count} payment failures in last 24h"
+        })
+        if error_count > 5:
+            issues += 1
+    except Exception as e:
+        logger.error("Failed to query recent errors", extra={"error": str(e)})
+        checks.append({
+            "name": "recent_errors",
+            "status": "error",
+            "message": f"Query failed: {e}"
+        })
         issues += 1
 
     # Calculate drift count (approximation)
-    drift_events = db_session.query(BillingEvent).filter(
-        BillingEvent.extra_metadata.contains({"source": "reconciliation"}),
-        BillingEvent.created_at > datetime.now(timezone.utc) - timedelta(hours=24)
-    ).count()
+    try:
+        drift_events = db_session.query(BillingEvent).filter(
+            BillingEvent.extra_metadata.contains({"source": "reconciliation"}),
+            BillingEvent.created_at > datetime.now(timezone.utc) - timedelta(hours=24)
+        ).count()
+    except Exception as e:
+        logger.error("Failed to query drift events", extra={"error": str(e)})
+        drift_events = 0
 
     return BillingHealthStatus(
         healthy=issues == 0,
