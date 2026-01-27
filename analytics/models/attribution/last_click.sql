@@ -84,7 +84,7 @@ orders_fact as (
         order_id,
         order_name,
         order_number,
-        customer_email,
+        customer_id,  -- Using customer_id instead of customer_email (PII removed)
         order_created_at,
         revenue,
         currency,
@@ -120,7 +120,7 @@ attribution_joined as (
         ord.order_id,
         ord.order_name,
         ord.order_number,
-        ord.customer_email,
+        ord.customer_id,
         ord.order_created_at,
         ord.revenue,
         ord.currency,
@@ -186,12 +186,12 @@ attribution_raw as (
 select
     -- Primary key: deterministic hash of order_id + tenant_id
     md5(concat(order_id, '|', tenant_id, '|', 'last_click')) as id,
-    
+
     -- Order identifiers
     order_id,
     order_name,
     order_number,
-    customer_email,
+    customer_id,
     order_created_at,
     
     -- Financial metrics

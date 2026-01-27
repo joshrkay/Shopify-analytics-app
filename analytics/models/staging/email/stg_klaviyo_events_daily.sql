@@ -44,6 +44,13 @@ klaviyo_events_extracted as (
         -- Event details
         raw.event_data->>'event_name' as event_name,
         raw.event_data->>'timestamp' as timestamp_raw,
+        -- Report date derived from timestamp (computed here so it can be used in WHERE)
+        case
+            when raw.event_data->>'timestamp' is null or trim(raw.event_data->>'timestamp') = '' then null
+            when raw.event_data->>'timestamp' ~ '^\d{4}-\d{2}-\d{2}'
+                then ((raw.event_data->>'timestamp')::timestamp with time zone)::date
+            else null
+        end as report_date,
         -- Metrics from event properties
         raw.event_data->'event_properties'->>'value' as revenue_raw,
         raw.event_data->'event_properties'->>'currency' as currency_code,
@@ -76,13 +83,8 @@ klaviyo_daily_aggregated as (
         -- Channel type
         coalesce(lower(trim(channel_type)), 'email') as platform_channel,
 
-        -- Report date
-        case
-            when timestamp_raw is null or trim(timestamp_raw) = '' then null
-            when timestamp_raw ~ '^\d{4}-\d{2}-\d{2}'
-                then (timestamp_raw::timestamp with time zone)::date
-            else null
-        end as report_date,
+        -- Report date from klaviyo_events_extracted
+        report_date,
 
         -- Event counts by type
         count(*) filter (where lower(event_name) in ('received email', 'sent sms', 'received sms')) as sends,

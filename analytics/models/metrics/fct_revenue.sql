@@ -39,8 +39,8 @@ with orders_base as (
         order_id,
         order_name,
         order_number,
-        customer_email,
-        customer_id_raw,
+        -- customer_email removed - PII not stored
+        customer_id,
         order_created_at,
         order_updated_at,
         order_cancelled_at,
@@ -52,7 +52,7 @@ with orders_base as (
         financial_status,
         fulfillment_status,
         tags,
-        note,
+        -- note removed - not in fact_orders
         ingested_at
     from {{ ref('fact_orders') }}
 
@@ -117,8 +117,7 @@ revenue_events as (
         order_id,
         order_name,
         order_number,
-        customer_email,
-        customer_id_raw,
+        customer_id,
         order_created_at as revenue_date,
         order_created_at,
         order_cancelled_at,
@@ -138,7 +137,6 @@ revenue_events as (
 
         -- Metadata
         tags,
-        note,
         ingested_at,
         current_timestamp as dbt_updated_at
 
@@ -155,8 +153,7 @@ revenue_events as (
         order_id,
         order_name,
         order_number,
-        customer_email,
-        customer_id_raw,
+        customer_id,
         order_cancelled_at as revenue_date,  -- Record refund on cancellation date
         order_created_at,
         order_cancelled_at,
@@ -175,7 +172,6 @@ revenue_events as (
 
         -- Metadata
         tags,
-        note,
         ingested_at,
         current_timestamp as dbt_updated_at
 
@@ -193,8 +189,7 @@ revenue_events as (
         order_id,
         order_name,
         order_number,
-        customer_email,
-        customer_id_raw,
+        customer_id,
         order_cancelled_at as revenue_date,  -- Record cancellation on cancellation date
         order_created_at,
         order_cancelled_at,
@@ -213,7 +208,6 @@ revenue_events as (
 
         -- Metadata
         tags,
-        note,
         ingested_at,
         current_timestamp as dbt_updated_at
 
@@ -229,8 +223,7 @@ select
     order_id,
     order_name,
     order_number,
-    customer_email,
-    customer_id_raw,
+    customer_id,
     revenue_date,
     order_created_at,
     order_cancelled_at,
@@ -252,7 +245,6 @@ select
 
     -- Metadata
     tags,
-    note,
     ingested_at,
     dbt_updated_at
 
