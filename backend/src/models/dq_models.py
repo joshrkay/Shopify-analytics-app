@@ -18,9 +18,8 @@ from typing import Optional, List, Any
 
 from sqlalchemy import (
     Column, String, Integer, Boolean, Text, DateTime,
-    ForeignKey, Numeric, BigInteger, Index
+    ForeignKey, Numeric, BigInteger, Index, JSON
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from src.db_base import Base
@@ -163,7 +162,7 @@ class DQCheck(Base, TimestampMixin):
     description = Column(Text, nullable=True)
     merchant_message = Column(Text, nullable=True)
     support_message = Column(Text, nullable=True)
-    recommended_actions = Column(JSONB, nullable=False, default=list)
+    recommended_actions = Column(JSON, nullable=False, default=list)
 
     # Relationships
     results = relationship("DQResult", back_populates="check")
@@ -201,7 +200,7 @@ class DQResult(Base, TenantScopedMixin):
     support_details = Column(Text, nullable=True)
 
     # Context
-    context_metadata = Column(JSONB, nullable=False, default=dict)
+    context_metadata = Column(JSON, nullable=False, default=dict)
 
     # Timestamps
     executed_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
@@ -244,7 +243,7 @@ class DQIncident(Base, TenantScopedMixin, TimestampMixin):
     # Messages
     merchant_message = Column(Text, nullable=True)
     support_details = Column(Text, nullable=True)
-    recommended_actions = Column(JSONB, nullable=False, default=list)
+    recommended_actions = Column(JSON, nullable=False, default=list)
 
     # Resolution tracking
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
@@ -294,7 +293,7 @@ class SyncRun(Base, TenantScopedMixin, TimestampMixin):
     error_code = Column(String(50), nullable=True)
 
     # Metadata
-    run_metadata = Column(JSONB, nullable=False, default=dict)
+    run_metadata = Column(JSON, nullable=False, default=dict)
 
     __table_args__ = (
         Index("ix_sync_runs_tenant_connector", "tenant_id", "connector_id"),
