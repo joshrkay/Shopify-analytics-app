@@ -48,3 +48,8 @@ data_tests:
 
 vars:
   tenant_isolation_enforced: true
+  # Source schema configuration - override these when Airbyte/platform tables
+  # are in different schemas than the defaults
+  # Example: dbt run --vars '{airbyte_raw_schema: my_raw_schema, platform_schema: my_platform}'
+  airbyte_raw_schema: airbyte_raw  # Schema containing _airbyte_raw_* tables
+  platform_schema: platform  # Schema containing tenant_airbyte_connections table
