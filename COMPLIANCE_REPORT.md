@@ -1,28 +1,51 @@
 # Codebase Standards Compliance Report
 
-**Generated:** 2026-01-26
+**Generated:** 2026-01-27
 **Reviewer:** Senior Principal Engineer
 **Priority Order:** Security > Tests > CI/CD > Simplicity > Performance
+**Status:** ✅ COMPLIANT (after remediation)
 
 ---
 
 ## Executive Summary
 
-| Category | Status | Violations |
-|----------|--------|------------|
-| **0) Non-Negotiables** | FAIL | 17 TODO comments in committed code |
-| **1) Scope Control** | WARN | 5x duplicated `get_db_session` functions |
-| **2) Code Quality** | PASS | Good readability, proper error handling |
-| **3) Testing** | PASS | Comprehensive test coverage |
-| **4) CI/CD** | PASS | Proper pipeline with quality gates |
-| **5) API & Data Contracts** | PASS | Schema validation in place |
-| **6) Security** | PASS | Excellent tenant isolation, RBAC, secrets |
-| **7) Performance** | PASS | Connection pooling, indexed queries |
-| **8) File Hygiene** | WARN | Some code duplication |
+| Category | Status | Notes |
+|----------|--------|-------|
+| **0) Non-Negotiables** | ✅ PASS | All 17 TODOs resolved |
+| **1) Scope Control** | ✅ PASS | Consolidated to shared db module |
+| **2) Code Quality** | ✅ PASS | Good readability, proper error handling |
+| **3) Testing** | ✅ PASS | Comprehensive test coverage |
+| **4) CI/CD** | ✅ PASS | Proper pipeline with quality gates |
+| **5) API & Data Contracts** | ✅ PASS | Schema validation in place |
+| **6) Security** | ✅ PASS | Excellent tenant isolation, RBAC, secrets |
+| **7) Performance** | ✅ PASS | Connection pooling, indexed queries |
+| **8) File Hygiene** | ✅ PASS | Code duplication removed |
 
 ---
 
-## CRITICAL VIOLATIONS (Must Fix)
+## REMEDIATION SUMMARY
+
+All violations from the initial review have been fixed:
+
+### TODO Comments (17 → 0)
+| Category | Action Taken |
+|----------|--------------|
+| Example endpoints (`main.py`) | Deleted - placeholder code removed |
+| Token decryption (3 files) | Implemented using `src/platform/secrets.py` |
+| GDPR webhooks (3 handlers) | Implemented with proper data deletion |
+| Agency routes (4 TODOs) | Implemented store queries from database |
+| Entitlements (3 TODOs) | Documented as log-aggregation based monitoring |
+| Embed config (1 TODO) | Documented environment variable pattern |
+
+### Code Duplication (5 → 0)
+Created `src/database/session.py` with:
+- Connection pooling (QueuePool)
+- Proper URL normalization
+- Shared dependency for all routes
+
+---
+
+## ORIGINAL VIOLATIONS (Now Fixed)
 
 ### 0.1) TODO Comments in Committed Code
 
