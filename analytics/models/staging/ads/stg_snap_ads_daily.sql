@@ -147,6 +147,7 @@ snap_ads_with_tenant as (
             (select tenant_id
              from {{ ref('_tenant_airbyte_connections') }}
              where source_type = 'source-snapchat-marketing'
+               and platform_account_id = s.platform_account_id
                and status = 'active'
                and is_enabled = true
              limit 1),

@@ -165,6 +165,7 @@ pinterest_ads_with_tenant as (
             (select tenant_id
              from {{ ref('_tenant_airbyte_connections') }}
              where source_type = 'source-pinterest-ads'
+               and platform_account_id = p.platform_account_id
                and status = 'active'
                and is_enabled = true
              limit 1),
