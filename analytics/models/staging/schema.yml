@@ -326,6 +326,10 @@ models:
 sources:
   - name: airbyte_raw
     description: Raw Airbyte data tables
+    # Schema where Airbyte writes raw tables - configurable via dbt vars
+    # Default: 'airbyte_raw' (matches CI and typical Airbyte setup)
+    # Override with: dbt run --vars '{airbyte_raw_schema: your_schema}'
+    schema: "{{ var('airbyte_raw_schema', 'airbyte_raw') }}"
     freshness:
       warn_after: {count: 24, period: hour}
       error_after: {count: 48, period: hour}
@@ -400,6 +404,10 @@ sources:
 
   - name: platform
     description: Platform tables for tenant mapping and configuration
+    # Schema where platform tables live - configurable via dbt vars
+    # Default: 'platform' (matches CI and typical deployment setup)
+    # Override with: dbt run --vars '{platform_schema: your_schema}'
+    schema: "{{ var('platform_schema', 'platform') }}"
     tables:
       - name: tenant_airbyte_connections
         description: Maps Airbyte connections to tenants for data isolation
