@@ -43,7 +43,7 @@
     -- Insert test tenant connections
     INSERT INTO test_airbyte.tenant_airbyte_connections VALUES
     ('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'shopify', 'test-shop-12345', 'active', true, NOW(), NOW()),
-    ('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'source-facebook-marketing', 'act_123456789', 'active', true, NOW(), NOW()),
+    ('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'source-facebook-marketing', 'act_123456', 'active', true, NOW(), NOW()),
     ('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'source-google-ads', '1234567890', 'active', true, NOW(), NOW())
     ON CONFLICT (id) DO NOTHING;
   {% endset %}

@@ -25,12 +25,12 @@ where source_type in (
         'source-facebook-marketing',
         'source-google-ads',
         'source-tiktok-marketing',
-        'source-pinterest',
+        'source-pinterest-ads',
         'source-amazon-ads',
         'source-snapchat-marketing',
         'source-recharge',
         'source-klaviyo',
-        'source-ga4'
+        'source-google-analytics-data-api'
     )
     and status = 'active'
     and is_enabled = true
