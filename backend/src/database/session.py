@@ -23,6 +23,11 @@ from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 
+# Database connection pool settings
+DB_POOL_SIZE = 5  # Number of persistent connections
+DB_POOL_MAX_OVERFLOW = 10  # Additional connections allowed under load
+DB_POOL_RECYCLE_SECONDS = 1800  # Recycle connections after 30 minutes
+
 # Module-level engine singleton
 _engine = None
 _SessionLocal = None
@@ -61,10 +66,10 @@ def get_engine() -> Engine:
             _engine = create_engine(
                 database_url,
                 poolclass=QueuePool,
-                pool_size=5,
-                max_overflow=10,
+                pool_size=DB_POOL_SIZE,
+                max_overflow=DB_POOL_MAX_OVERFLOW,
                 pool_pre_ping=True,  # Verify connection health
-                pool_recycle=1800,   # Recycle connections after 30 minutes
+                pool_recycle=DB_POOL_RECYCLE_SECONDS,
             )
             logger.info("Database engine created with connection pooling")
         except ValueError as e:

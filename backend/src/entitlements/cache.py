@@ -440,8 +440,11 @@ class EntitlementCache:
             if data:
                 try:
                     return json.loads(data)
-                except Exception:
-                    pass
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "Failed to parse feature flags from cache",
+                        extra={"tenant_id": tenant_id, "error": str(e)}
+                    )
 
         return {}
 

@@ -589,7 +589,8 @@ class RollbackOrchestrator:
             response = httpx.get(f"{api_url}/health", timeout=5.0)
             # If health check passes, assume low error rate
             return 0.0 if response.status_code == 200 else 0.05
-        except Exception:
+        except httpx.RequestError as e:
+            logger.debug("Health check unavailable for error rate", extra={"error": str(e)})
             return 0.0  # Default to passing if monitoring unavailable
 
     def _get_latency_p99(self) -> float | None:
@@ -606,12 +607,12 @@ class RollbackOrchestrator:
         """Run application health check."""
         try:
             import httpx
-            import os
 
             api_url = os.getenv("API_BASE_URL", "http://localhost:8000")
             response = httpx.get(f"{api_url}/health", timeout=5.0)
             return response.status_code == 200
-        except Exception:
+        except httpx.RequestError as e:
+            logger.debug("Health check failed", extra={"error": str(e)})
             return False
 
     def _verify_rollback(self, request: RollbackRequest) -> VerificationResult:
