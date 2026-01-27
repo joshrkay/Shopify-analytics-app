@@ -3,7 +3,8 @@
         materialized='incremental',
         unique_key='row_surrogate_key',
         schema='staging',
-        incremental_strategy='merge'
+        incremental_strategy='merge',
+        enabled=var('enable_amazon_ads', true)
     )
 }}
 

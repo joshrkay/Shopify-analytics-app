@@ -67,6 +67,20 @@ vars:
   # Tenant isolation enforcement
   tenant_isolation_enforced: true
 
+  # ============================================================================
+  # Optional Source Enablement
+  # ============================================================================
+  # Set to false to disable models for sources that don't exist in your database.
+  # Override via CLI: --vars '{"enable_tiktok_ads": false}'
+  # ============================================================================
+  enable_tiktok_ads: true
+  enable_pinterest_ads: true
+  enable_snap_ads: true
+  enable_amazon_ads: true
+  enable_klaviyo: true
+  enable_ga4: true
+  enable_recharge: true
+
   # Default lookback window for incremental models (in days)
   # This handles late-arriving data and conversion attribution windows
   default_lookback_days: 3
