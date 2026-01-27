@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS platform.tenant_airbyte_connections (
     airbyte_connection_id VARCHAR(255) NOT NULL,
     tenant_id VARCHAR(255) NOT NULL,
     source_type VARCHAR(100) NOT NULL,
+    platform_account_id VARCHAR(255),
     connection_name VARCHAR(255),
     status VARCHAR(50) NOT NULL DEFAULT 'active',
     is_enabled BOOLEAN NOT NULL DEFAULT true,

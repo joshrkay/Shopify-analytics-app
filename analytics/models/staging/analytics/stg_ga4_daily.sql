@@ -152,6 +152,7 @@ ga4_with_tenant as (
             (select tenant_id
              from {{ ref('_tenant_airbyte_connections') }}
              where source_type = 'source-google-analytics-data-api'
+               and platform_account_id = g.platform_account_id
                and status = 'active'
                and is_enabled = true
              limit 1),

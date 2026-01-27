@@ -117,6 +117,8 @@ sources:
           - name: source_type
             data_tests:
               - not_null
+          - name: platform_account_id
+            description: Platform-specific account identifier (e.g., Google Ads customer_id, Meta Ads account_id, Shopify shop_id) used to map raw data to the correct tenant connection
           - name: status
             data_tests:
               - not_null
@@ -147,6 +149,8 @@ models:
         description: Type of data source
         data_tests:
           - not_null
+      - name: platform_account_id
+        description: Platform-specific account identifier for deterministic tenant mapping
 
   # ==========================================================================
   # Shopify Staging Models

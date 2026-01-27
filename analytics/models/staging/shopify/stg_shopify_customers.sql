@@ -146,29 +146,22 @@ customers_normalized as (
 -- 
 -- CRITICAL: See stg_shopify_orders.sql for tenant mapping configuration.
 -- Same security warning applies - must properly map each customer to its tenant.
+-- TODO: Extract shop_id from customer data and use it for deterministic tenant mapping
+-- Currently using non-deterministic LIMIT 1 approach until shop_id is added
 customers_with_tenant as (
     select
         cust.*,
         coalesce(
-            -- Option 1: Extract connection_id from schema name (if Airbyte uses connection-specific schemas)
+            -- Ideally: Use shop_id to map to tenant (once shop_id field is added)
             -- (select tenant_id 
-            --  from {{ ref('_tenant_airbyte_connections') }} t
-            --  where t.airbyte_connection_id = split_part(current_schema(), '_', 3)
-            --    and t.source_type = 'shopify'
-            --    and t.status = 'active'
-            --    and t.is_enabled = true
+            --  from {{ ref('_tenant_airbyte_connections') }}
+            --  where source_type = 'shopify'
+            --    and platform_account_id = cust.platform_account_id
+            --    and status = 'active'
+            --    and is_enabled = true
             --  limit 1),
             
-            -- Option 2: Extract connection_id from table metadata
-            -- (select tenant_id 
-            --  from {{ ref('_tenant_airbyte_connections') }} t
-            --  where t.airbyte_connection_id = cust.airbyte_connection_id_from_metadata
-            --    and t.source_type = 'shopify'
-            --    and t.status = 'active'
-            --    and t.is_enabled = true
-            --  limit 1),
-            
-            -- Option 3: Single connection per tenant (CURRENT - USE WITH CAUTION)
+            -- Current: Single connection per tenant (NON-DETERMINISTIC - NEEDS FIX)
             (select tenant_id 
              from {{ ref('_tenant_airbyte_connections') }}
              where source_type = 'shopify'

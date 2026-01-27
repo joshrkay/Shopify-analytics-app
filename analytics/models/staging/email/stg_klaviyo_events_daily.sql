@@ -119,6 +119,7 @@ klaviyo_with_tenant as (
             (select tenant_id
              from {{ ref('_tenant_airbyte_connections') }}
              where source_type = 'source-klaviyo'
+               and platform_account_id = k.platform_account_id
                and status = 'active'
                and is_enabled = true
              limit 1),

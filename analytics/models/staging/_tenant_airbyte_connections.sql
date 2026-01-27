@@ -15,10 +15,22 @@ select
     airbyte_connection_id,
     tenant_id,
     source_type,
+    platform_account_id,
     connection_name,
     status,
     is_enabled
 from {{ source('platform', 'tenant_airbyte_connections') }}
-where source_type in ('shopify', 'source-facebook-marketing', 'source-google-ads')
+where source_type in (
+        'shopify',
+        'source-facebook-marketing',
+        'source-google-ads',
+        'source-tiktok-marketing',
+        'source-pinterest',
+        'source-amazon-ads',
+        'source-snapchat-marketing',
+        'source-recharge',
+        'source-klaviyo',
+        'source-ga4'
+    )
     and status = 'active'
     and is_enabled = true

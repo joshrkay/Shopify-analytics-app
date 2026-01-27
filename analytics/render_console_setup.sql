@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS test_airbyte.tenant_airbyte_connections (
     tenant_id VARCHAR(255) NOT NULL,
     airbyte_connection_id VARCHAR(255) NOT NULL,
     source_type VARCHAR(100),
+    platform_account_id VARCHAR(255),
     connection_name VARCHAR(255),
     status VARCHAR(50),
     is_enabled BOOLEAN,
@@ -230,9 +231,9 @@ INSERT INTO test_airbyte._airbyte_raw_google_ads VALUES
 
 -- Insert Tenant Connections
 INSERT INTO test_airbyte.tenant_airbyte_connections VALUES
-('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'shopify', 'Shopify Test Connection', 'active', true, NOW(), NOW()),
-('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'source-facebook-marketing', 'Meta Ads Test Connection', 'active', true, NOW(), NOW()),
-('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'source-google-ads', 'Google Ads Test Connection', 'active', true, NOW(), NOW());
+('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'shopify', 'test-shop-12345', 'Shopify Test Connection', 'active', true, NOW(), NOW()),
+('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'source-facebook-marketing', 'act_123456789', 'Meta Ads Test Connection', 'active', true, NOW(), NOW()),
+('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'source-google-ads', '1234567890', 'Google Ads Test Connection', 'active', true, NOW(), NOW());
 
 -- Step 4: Verify test data was created
 SELECT 'Shopify Orders' as table_name, COUNT(*) as record_count FROM test_airbyte._airbyte_raw_shopify_orders
