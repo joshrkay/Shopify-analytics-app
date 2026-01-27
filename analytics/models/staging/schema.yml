@@ -1,331 +1,17 @@
 version: 2
 
-models:
-  - name: _tenant_airbyte_connections
-    description: Helper model that exposes tenant_airbyte_connections for staging models
-    columns:
-      - name: airbyte_connection_id
-        description: Airbyte connection ID
-        tests:
-          - not_null
-      - name: tenant_id
-        description: Tenant identifier
-        tests:
-          - not_null
-      - name: source_type
-        description: Type of data source
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['shopify']
-
-  - name: stg_shopify_orders
-    description: Staging model for Shopify orders with normalized fields and tenant isolation
-    columns:
-      - name: order_id
-        description: Normalized order ID (primary key)
-        tests:
-          - not_null
-          - unique
-      - name: order_name
-        description: Order name/number from Shopify
-      - name: order_number
-        description: Order number as integer
-      - name: customer_email
-        description: Customer email address
-      - name: customer_id_raw
-        description: Raw customer ID from Shopify (may need normalization)
-      - name: created_at
-        description: Order creation timestamp (UTC)
-        tests:
-          - not_null
-      - name: updated_at
-        description: Order last update timestamp (UTC)
-      - name: cancelled_at
-        description: Order cancellation timestamp (UTC, nullable)
-      - name: closed_at
-        description: Order closure timestamp (UTC, nullable)
-      - name: total_price
-        description: Total order price (numeric)
-        tests:
-          - not_null
-      - name: subtotal_price
-        description: Subtotal price (numeric)
-      - name: total_tax
-        description: Total tax amount (numeric)
-      - name: currency
-        description: Currency code (uppercase)
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
-              config:
-                where: "currency is not null"
-      - name: financial_status
-        description: Financial status of the order
-      - name: fulfillment_status
-        description: Fulfillment status of the order
-      - name: tags
-        description: Order tags
-      - name: note
-        description: Order notes
-      - name: tenant_id
-        description: Tenant identifier for data isolation
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('_tenant_airbyte_connections')
-                field: tenant_id
-              config:
-                where: "tenant_id is not null"
-      - name: airbyte_record_id
-        description: Airbyte record ID
-      - name: airbyte_emitted_at
-        description: Airbyte emission timestamp
-
-  - name: stg_shopify_customers
-    description: Staging model for Shopify customers with normalized fields and tenant isolation
-    columns:
-      - name: customer_id
-        description: Normalized customer ID (primary key)
-        tests:
-          - not_null
-          - unique
-      - name: email
-        description: Customer email address
-        tests:
-          - not_null
-      - name: first_name
-        description: Customer first name
-      - name: last_name
-        description: Customer last name
-      - name: full_name
-        description: Full name (first + last or email)
-      - name: phone
-        description: Customer phone number
-      - name: created_at
-        description: Customer creation timestamp (UTC)
-        tests:
-          - not_null
-      - name: updated_at
-        description: Customer last update timestamp (UTC)
-      - name: accepts_marketing
-        description: Whether customer accepts marketing (boolean)
-      - name: verified_email
-        description: Whether email is verified (boolean)
-      - name: orders_count
-        description: Number of orders (integer)
-        tests:
-          - not_null
-      - name: total_spent
-        description: Total amount spent (numeric)
-        tests:
-          - not_null
-      - name: currency
-        description: Currency code (uppercase)
-        tests:
-          - not_null
-      - name: state
-        description: Customer state
-      - name: country_code
-        description: Country code from default address
-      - name: city
-        description: City from default address
-      - name: tags
-        description: Customer tags
-      - name: note
-        description: Customer notes
-      - name: tenant_id
-        description: Tenant identifier for data isolation
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('_tenant_airbyte_connections')
-                field: tenant_id
-              config:
-                where: "tenant_id is not null"
-      - name: airbyte_record_id
-        description: Airbyte record ID
-      - name: airbyte_emitted_at
-        description: Airbyte emission timestamp
-
-  - name: stg_meta_ads
-    description: Staging model for Meta Ads with normalized fields and tenant isolation
-    columns:
-      - name: ad_account_id
-        description: Meta Ads account ID (primary key component)
-        tests:
-          - not_null
-      - name: campaign_id
-        description: Campaign ID (primary key component)
-        tests:
-          - not_null
-      - name: adset_id
-        description: Ad set ID
-      - name: ad_id
-        description: Ad ID
-      - name: date
-        description: Date of the ad performance (primary key component)
-        tests:
-          - not_null
-      - name: date_stop
-        description: End date of the ad performance period
-      - name: spend
-        description: Amount spent (numeric, normalized currency)
-        tests:
-          - not_null
-      - name: impressions
-        description: Number of impressions (integer)
-        tests:
-          - not_null
-      - name: clicks
-        description: Number of clicks (integer)
-        tests:
-          - not_null
-      - name: conversions
-        description: Number of conversions (numeric)
-        tests:
-          - not_null
-      - name: currency
-        description: Currency code (uppercase, 3-letter)
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
-              config:
-                where: "currency is not null"
-      - name: campaign_name
-        description: Campaign name
-      - name: adset_name
-        description: Ad set name
-      - name: ad_name
-        description: Ad name
-      - name: objective
-        description: Campaign objective
-      - name: reach
-        description: Number of unique people reached
-      - name: frequency
-        description: Average frequency
-      - name: cpm
-        description: Cost per mille (thousand impressions)
-      - name: cpp
-        description: Cost per purchase
-      - name: ctr
-        description: Click-through rate (percentage)
-      - name: platform
-        description: Platform identifier
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['meta_ads']
-      - name: tenant_id
-        description: Tenant identifier for data isolation
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('_tenant_airbyte_connections')
-                field: tenant_id
-              config:
-                where: "tenant_id is not null"
-      - name: airbyte_record_id
-        description: Airbyte record ID
-      - name: airbyte_emitted_at
-        description: Airbyte emission timestamp
-
-  - name: stg_google_ads
-    description: Staging model for Google Ads with normalized fields and tenant isolation
-    columns:
-      - name: ad_account_id
-        description: Google Ads customer ID (primary key component)
-        tests:
-          - not_null
-      - name: campaign_id
-        description: Campaign ID (primary key component)
-        tests:
-          - not_null
-      - name: ad_group_id
-        description: Ad group ID
-      - name: ad_id
-        description: Ad ID
-      - name: date
-        description: Date of the ad performance (primary key component)
-        tests:
-          - not_null
-      - name: spend
-        description: Amount spent (numeric, normalized from micros or decimal)
-        tests:
-          - not_null
-      - name: impressions
-        description: Number of impressions (integer)
-        tests:
-          - not_null
-      - name: clicks
-        description: Number of clicks (integer)
-        tests:
-          - not_null
-      - name: conversions
-        description: Number of conversions (numeric)
-        tests:
-          - not_null
-      - name: conversion_value
-        description: Value of conversions (numeric)
-      - name: currency
-        description: Currency code (uppercase, 3-letter)
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
-              config:
-                where: "currency is not null"
-      - name: campaign_name
-        description: Campaign name
-      - name: ad_group_name
-        description: Ad group name
-      - name: ad_type
-        description: Type of ad
-      - name: device
-        description: Device type
-      - name: network
-        description: Network type
-      - name: ctr
-        description: Click-through rate (percentage)
-      - name: average_cpc
-        description: Average cost per click
-      - name: cost_per_conversion
-        description: Cost per conversion
-      - name: platform
-        description: Platform identifier
-        tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['google_ads']
-      - name: tenant_id
-        description: Tenant identifier for data isolation
-        tests:
-          - not_null
-          - relationships:
-              arguments:
-                to: ref('_tenant_airbyte_connections')
-                field: tenant_id
-              config:
-                where: "tenant_id is not null"
-      - name: airbyte_record_id
-        description: Airbyte record ID
-      - name: airbyte_emitted_at
-        description: Airbyte emission timestamp
+# ============================================================================
+# Sources Configuration
+# ============================================================================
+# Raw data sources with freshness monitoring.
+# Thresholds are placeholders - update from Story 7.6 config.
+# ============================================================================
 
 sources:
   - name: airbyte_raw
-    description: Raw Airbyte data tables
+    description: Raw Airbyte data tables (existing sources)
+    database: "{{ target.database }}"
+    schema: public
     freshness:
       warn_after: {count: 24, period: hour}
       error_after: {count: 48, period: hour}
@@ -336,67 +22,85 @@ sources:
         columns:
           - name: _airbyte_ab_id
             description: Airbyte record ID
-            tests:
+            data_tests:
               - not_null
           - name: _airbyte_emitted_at
             description: Timestamp when record was emitted by Airbyte
-            tests:
+            data_tests:
               - not_null
           - name: _airbyte_data
             description: JSONB column containing the actual order data
-            tests:
+            data_tests:
               - not_null
-      
+
       - name: _airbyte_raw_shopify_customers
         description: Raw Shopify customers data from Airbyte
         loaded_at_field: _airbyte_emitted_at
-        columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
-            tests:
-              - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
-            tests:
-              - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual customer data
-            tests:
-              - not_null
-      
+
       - name: _airbyte_raw_meta_ads
         description: Raw Meta Ads data from Airbyte
         loaded_at_field: _airbyte_emitted_at
-        columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
-            tests:
-              - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
-            tests:
-              - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual ad data
-            tests:
-              - not_null
-      
+
       - name: _airbyte_raw_google_ads
         description: Raw Google Ads data from Airbyte
         loaded_at_field: _airbyte_emitted_at
-        columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
-            tests:
-              - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
-            tests:
-              - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual ad data
-            tests:
-              - not_null
+
+  - name: raw_sources
+    description: Additional raw data sources for multi-platform analytics
+    database: "{{ target.database }}"
+    schema: raw
+    freshness:
+      warn_after: {count: 24, period: hour}
+      error_after: {count: 48, period: hour}
+    tables:
+      - name: raw_tiktok_ads_metrics
+        description: Raw TikTok Ads performance data
+        loaded_at_field: _airbyte_emitted_at
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 48, period: hour}
+
+      - name: raw_pinterest_ads_insights
+        description: Raw Pinterest Ads performance data
+        loaded_at_field: _airbyte_emitted_at
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 48, period: hour}
+
+      - name: raw_snap_ads_metrics
+        description: Raw Snapchat Ads performance data
+        loaded_at_field: _airbyte_emitted_at
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 48, period: hour}
+
+      - name: raw_amazon_ads_reports
+        description: Raw Amazon Ads performance data
+        loaded_at_field: _airbyte_emitted_at
+        freshness:
+          warn_after: {count: 48, period: hour}
+          error_after: {count: 72, period: hour}
+
+      - name: raw_klaviyo_events
+        description: Raw Klaviyo email/SMS events
+        loaded_at_field: _airbyte_emitted_at
+        freshness:
+          warn_after: {count: 12, period: hour}
+          error_after: {count: 24, period: hour}
+
+      - name: raw_ga4_events
+        description: Raw Google Analytics 4 events
+        loaded_at_field: _airbyte_emitted_at
+        freshness:
+          warn_after: {count: 12, period: hour}
+          error_after: {count: 24, period: hour}
+
+      - name: raw_recharge_subscriptions
+        description: Raw ReCharge subscription data
+        loaded_at_field: _airbyte_emitted_at
+        freshness:
+          warn_after: {count: 12, period: hour}
+          error_after: {count: 24, period: hour}
 
   - name: platform
     description: Platform tables for tenant mapping and configuration
@@ -405,22 +109,633 @@ sources:
         description: Maps Airbyte connections to tenants for data isolation
         columns:
           - name: airbyte_connection_id
-            description: Airbyte connection ID
-            tests:
+            data_tests:
               - not_null
           - name: tenant_id
-            description: Tenant identifier
-            tests:
+            data_tests:
               - not_null
           - name: source_type
-            description: Type of data source (e.g., shopify)
-            tests:
+            data_tests:
               - not_null
           - name: status
-            description: Connection status
-            tests:
+            data_tests:
               - not_null
           - name: is_enabled
-            description: Whether connection is enabled
-            tests:
+            data_tests:
               - not_null
+
+# ============================================================================
+# Models Configuration
+# ============================================================================
+
+models:
+  # ==========================================================================
+  # Tenant Connection Helper
+  # ==========================================================================
+  - name: _tenant_airbyte_connections
+    description: Helper model that exposes tenant_airbyte_connections for staging models
+    columns:
+      - name: airbyte_connection_id
+        description: Airbyte connection ID
+        data_tests:
+          - not_null
+      - name: tenant_id
+        description: Tenant identifier
+        data_tests:
+          - not_null
+      - name: source_type
+        description: Type of data source
+        data_tests:
+          - not_null
+
+  # ==========================================================================
+  # Shopify Staging Models
+  # ==========================================================================
+  - name: stg_shopify_orders
+    description: |
+      Staging model for Shopify orders with normalized fields and tenant isolation.
+      PII has been removed - contains only IDs and metrics.
+    config:
+      meta:
+        owner: analytics-team
+        contains_pii: false
+    columns:
+      - name: order_surrogate_key
+        description: Deterministic surrogate key for incremental merge
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        data_tests:
+          - not_null
+      - name: order_id
+        description: Shopify order ID (normalized)
+        data_tests:
+          - not_null
+      - name: report_date
+        description: Date grain for reporting (from created_at)
+        data_tests:
+          - not_null
+      - name: source
+        description: Source platform identifier
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['shopify']
+      - name: platform_channel
+        description: Platform-specific channel value
+        data_tests:
+          - not_null
+      - name: canonical_channel
+        description: Normalized channel from taxonomy
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        description: Shopify shop ID
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        description: Deterministic internal account ID
+        data_tests:
+          - not_null
+      - name: revenue_gross
+        description: Gross order revenue
+        data_tests:
+          - not_null
+      - name: revenue_net
+        description: Net order revenue (gross - discounts)
+        data_tests:
+          - not_null
+      - name: currency
+        description: Currency code (3-letter ISO)
+        data_tests:
+          - not_null
+
+  - name: stg_shopify_refunds
+    description: |
+      Staging model for Shopify refunds extracted from orders.
+      Used for accurate revenue_net calculations.
+    columns:
+      - name: refund_surrogate_key
+        description: Deterministic surrogate key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        description: Tenant identifier
+        data_tests:
+          - not_null
+      - name: refund_id
+        description: Shopify refund ID
+        data_tests:
+          - not_null
+      - name: order_id
+        description: Related order ID
+        data_tests:
+          - not_null
+      - name: report_date
+        description: Date grain (refund date)
+        data_tests:
+          - not_null
+      - name: refund_amount
+        description: Total refund amount
+        data_tests:
+          - not_null
+
+  # ==========================================================================
+  # Advertising Staging Models
+  # ==========================================================================
+  - name: stg_meta_ads_daily
+    description: |
+      Staging model for Meta (Facebook/Instagram) Ads daily performance.
+      Aggregated to date + account + campaign + ad group + ad grain.
+    config:
+      meta:
+        owner: analytics-team
+        contains_pii: false
+    columns:
+      - name: row_surrogate_key
+        description: Deterministic surrogate key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        description: Tenant identifier
+        data_tests:
+          - not_null
+      - name: report_date
+        description: Date grain
+        data_tests:
+          - not_null
+      - name: source
+        description: Source platform
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads']
+      - name: canonical_channel
+        description: Normalized channel
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        description: Meta ad account ID
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        description: Deterministic internal account ID
+        data_tests:
+          - not_null
+      - name: platform_campaign_id
+        description: Meta campaign ID
+        data_tests:
+          - not_null
+      - name: internal_campaign_id
+        description: Deterministic internal campaign ID
+        data_tests:
+          - not_null
+      - name: spend
+        description: Ad spend
+        data_tests:
+          - not_null
+      - name: impressions
+        description: Impression count
+        data_tests:
+          - not_null
+      - name: clicks
+        description: Click count
+        data_tests:
+          - not_null
+      - name: conversions
+        description: Conversion count
+        data_tests:
+          - not_null
+      - name: conversion_value
+        description: Total conversion value
+        data_tests:
+          - not_null
+
+  - name: stg_google_ads_daily
+    description: |
+      Staging model for Google Ads daily performance.
+      Cost is converted from micros to dollars.
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - accepted_values:
+              values: ['google_ads']
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        data_tests:
+          - not_null
+      - name: platform_campaign_id
+        data_tests:
+          - not_null
+      - name: internal_campaign_id
+        data_tests:
+          - not_null
+      - name: spend
+        data_tests:
+          - not_null
+      - name: impressions
+        data_tests:
+          - not_null
+      - name: clicks
+        data_tests:
+          - not_null
+      - name: conversions
+        data_tests:
+          - not_null
+      - name: conversion_value
+        data_tests:
+          - not_null
+
+  - name: stg_tiktok_ads_daily
+    description: Staging model for TikTok Ads daily performance
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - accepted_values:
+              values: ['tiktok_ads']
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        data_tests:
+          - not_null
+      - name: platform_campaign_id
+        data_tests:
+          - not_null
+      - name: internal_campaign_id
+        data_tests:
+          - not_null
+      - name: spend
+        data_tests:
+          - not_null
+      - name: impressions
+        data_tests:
+          - not_null
+      - name: clicks
+        data_tests:
+          - not_null
+
+  - name: stg_pinterest_ads_daily
+    description: Staging model for Pinterest Ads daily performance
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - accepted_values:
+              values: ['pinterest_ads']
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        data_tests:
+          - not_null
+      - name: platform_campaign_id
+        data_tests:
+          - not_null
+      - name: internal_campaign_id
+        data_tests:
+          - not_null
+
+  - name: stg_snap_ads_daily
+    description: Staging model for Snapchat Ads daily performance
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - accepted_values:
+              values: ['snap_ads']
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        data_tests:
+          - not_null
+      - name: platform_campaign_id
+        data_tests:
+          - not_null
+      - name: internal_campaign_id
+        data_tests:
+          - not_null
+
+  - name: stg_amazon_ads_daily
+    description: |
+      Staging model for Amazon Ads daily performance.
+      Supports Sponsored Products, Brands, and Display.
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - accepted_values:
+              values: ['amazon_ads']
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        data_tests:
+          - not_null
+      - name: platform_campaign_id
+        data_tests:
+          - not_null
+      - name: internal_campaign_id
+        data_tests:
+          - not_null
+
+  # ==========================================================================
+  # Unified Ads Staging
+  # ==========================================================================
+  - name: stg_ads_daily_union
+    description: |
+      Unified staging model for all advertising platforms.
+      Provides a consistent schema for downstream fact tables.
+
+      Contract columns:
+      - tenant_id, report_date, source
+      - platform_channel, canonical_channel
+      - internal_account_id, internal_campaign_id
+      - spend, impressions, clicks, conversions, conversion_value
+      - cpm, cpc, ctr, cpa, roas_platform
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads', 'google_ads', 'tiktok_ads', 'pinterest_ads', 'snap_ads', 'amazon_ads']
+      - name: canonical_channel
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: internal_account_id
+        data_tests:
+          - not_null
+      - name: internal_campaign_id
+        data_tests:
+          - not_null
+      - name: spend
+        data_tests:
+          - not_null
+      - name: impressions
+        data_tests:
+          - not_null
+      - name: clicks
+        data_tests:
+          - not_null
+
+  # ==========================================================================
+  # Email/SMS Staging
+  # ==========================================================================
+  - name: stg_klaviyo_events_daily
+    description: |
+      Staging model for Klaviyo events aggregated to daily grain.
+      Covers email and SMS campaigns/flows.
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - accepted_values:
+              values: ['klaviyo']
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        data_tests:
+          - not_null
+
+  # ==========================================================================
+  # Analytics Staging
+  # ==========================================================================
+  - name: stg_ga4_daily
+    description: |
+      Staging model for Google Analytics 4 traffic data.
+      Provides session and conversion metrics by source/medium.
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - accepted_values:
+              values: ['ga4']
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        data_tests:
+          - not_null
+
+  # ==========================================================================
+  # Subscription Staging
+  # ==========================================================================
+  - name: stg_recharge_daily
+    description: |
+      Staging model for ReCharge subscription data.
+      Aggregated to daily shop-level metrics.
+    columns:
+      - name: row_surrogate_key
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: report_date
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - accepted_values:
+              values: ['recharge']
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"
+      - name: platform_account_id
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        data_tests:
+          - not_null
+      - name: revenue_gross
+        data_tests:
+          - not_null
+      - name: revenue_net
+        data_tests:
+          - not_null
+
+  # ==========================================================================
+  # Dimension Tables
+  # ==========================================================================
+  - name: dim_ad_accounts
+    description: |
+      Dimension table for ad accounts across all platforms.
+      Provides deterministic internal IDs for cross-platform analysis.
+    columns:
+      - name: account_surrogate_key
+        description: Surrogate key for this dimension row
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads', 'google_ads', 'tiktok_ads', 'pinterest_ads', 'snap_ads', 'amazon_ads', 'shopify']
+      - name: platform_account_id
+        description: Platform-specific account ID
+        data_tests:
+          - not_null
+      - name: internal_account_id
+        description: Deterministic internal account ID
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_campaigns
+    description: |
+      Dimension table for campaigns across all advertising platforms.
+      Provides deterministic internal IDs for cross-platform analysis.
+    columns:
+      - name: campaign_surrogate_key
+        description: Surrogate key for this dimension row
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: source
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads', 'google_ads', 'tiktok_ads', 'pinterest_ads', 'snap_ads', 'amazon_ads']
+      - name: platform_campaign_id
+        description: Platform-specific campaign ID
+        data_tests:
+          - not_null
+      - name: internal_campaign_id
+        description: Deterministic internal campaign ID
+        data_tests:
+          - unique
+          - not_null
+      - name: internal_account_id
+        description: Link to parent account
+        data_tests:
+          - not_null
+      - name: canonical_channel
+        data_tests:
+          - accepted_values:
+              values: "{{ var('canonical_channels') }}"

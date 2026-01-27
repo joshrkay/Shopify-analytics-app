@@ -24,6 +24,15 @@ models:
         +schema: staging
       ads:
         +schema: staging
+      email:
+        +schema: staging
+      analytics:
+        +schema: staging
+      subscriptions:
+        +schema: staging
+      dimensions:
+        +materialized: table
+        +schema: staging
     facts:
       +materialized: incremental
       +unique_key: id
@@ -46,5 +55,88 @@ data_tests:
     # All data tests should fail the build by default
     +severity: error
 
+# ============================================================================
+# Variables Configuration
+# ============================================================================
+# These variables control incremental processing, freshness checks, and
+# other configurable behaviors across staging models.
+#
+# Override in profiles.yml or via CLI: --vars '{"default_lookback_days": 7}'
+# ============================================================================
 vars:
+  # Tenant isolation enforcement
   tenant_isolation_enforced: true
+
+  # Default lookback window for incremental models (in days)
+  # This handles late-arriving data and conversion attribution windows
+  default_lookback_days: 3
+
+  # Source-specific lookback windows (override defaults)
+  # Set higher for sources with known delayed reporting
+  lookback_days:
+    shopify: 3
+    meta_ads: 7          # Meta has 7-day attribution window
+    google_ads: 7        # Google has delayed conversion reporting
+    tiktok_ads: 7        # TikTok attribution can be delayed
+    pinterest_ads: 7     # Pinterest has 30-day click window
+    snap_ads: 7          # Snapchat attribution window
+    amazon_ads: 14       # Amazon has longer reporting delays
+    klaviyo: 3           # Email events are near real-time
+    ga4: 3               # GA4 has minimal delays
+    recharge: 3          # Subscription data is near real-time
+
+  # ============================================================================
+  # Freshness Thresholds (hours)
+  # ============================================================================
+  # These are PLACEHOLDERS - actual values should be loaded from Story 7.6 config
+  # Format: {warn_hours: X, error_hours: Y}
+  # ============================================================================
+  freshness_thresholds:
+    shopify:
+      warn_hours: 12
+      error_hours: 24
+    meta_ads:
+      warn_hours: 24
+      error_hours: 48
+    google_ads:
+      warn_hours: 24
+      error_hours: 48
+    tiktok_ads:
+      warn_hours: 24
+      error_hours: 48
+    pinterest_ads:
+      warn_hours: 24
+      error_hours: 48
+    snap_ads:
+      warn_hours: 24
+      error_hours: 48
+    amazon_ads:
+      warn_hours: 48
+      error_hours: 72
+    klaviyo:
+      warn_hours: 12
+      error_hours: 24
+    ga4:
+      warn_hours: 12
+      error_hours: 24
+    recharge:
+      warn_hours: 12
+      error_hours: 24
+
+  # Canonical channel values (for accepted_values tests)
+  canonical_channels:
+    - paid_social
+    - paid_search
+    - display
+    - video
+    - shopping
+    - email
+    - organic_social
+    - organic_search
+    - direct
+    - referral
+    - affiliate
+    - sms
+    - push
+    - marketplace
+    - other
