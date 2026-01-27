@@ -24,6 +24,15 @@ models:
         +schema: staging
       ads:
         +schema: staging
+      klaviyo:
+        +schema: staging
+      ga4:
+        +schema: staging
+      recharge:
+        +schema: staging
+    dimensions:
+      +materialized: table
+      +schema: dimensions
     facts:
       +materialized: incremental
       +unique_key: id
@@ -48,3 +57,75 @@ data_tests:
 
 vars:
   tenant_isolation_enforced: true
+
+  # Default lookback days for incremental models (handles late-arriving data)
+  default_lookback_days: 3
+
+  # Source-specific lookback days (override defaults)
+  lookback_days:
+    shopify_orders: 3
+    shopify_refunds: 3
+    meta_ads: 7
+    google_ads: 7
+    tiktok_ads: 7
+    pinterest_ads: 7
+    snap_ads: 7
+    amazon_ads: 7
+    klaviyo: 3
+    ga4: 3
+    recharge: 3
+
+  # Freshness thresholds in minutes (per source)
+  # Values from Story 7.6 / dq_models.py
+  freshness_thresholds:
+    # 2-hour SLA sources
+    shopify_orders:
+      warn: 120
+      error: 480
+    shopify_refunds:
+      warn: 120
+      error: 480
+    recharge:
+      warn: 120
+      error: 480
+    # 24-hour SLA sources
+    meta_ads:
+      warn: 1440
+      error: 5760
+    google_ads:
+      warn: 1440
+      error: 5760
+    tiktok_ads:
+      warn: 1440
+      error: 5760
+    pinterest_ads:
+      warn: 1440
+      error: 5760
+    snap_ads:
+      warn: 1440
+      error: 5760
+    amazon_ads:
+      warn: 1440
+      error: 5760
+    klaviyo:
+      warn: 1440
+      error: 5760
+    ga4:
+      warn: 1440
+      error: 5760
+
+  # Canonical channel values
+  canonical_channels:
+    - paid_social
+    - paid_search
+    - organic_social
+    - organic_search
+    - email
+    - sms
+    - affiliate
+    - referral
+    - direct
+    - display
+    - video
+    - shopping
+    - other

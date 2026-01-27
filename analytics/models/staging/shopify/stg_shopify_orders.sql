@@ -1,9 +1,23 @@
 {{
     config(
-        materialized='view',
-        schema='staging'
+        materialized='incremental',
+        schema='staging',
+        unique_key='order_id',
+        incremental_strategy='delete+insert'
     )
 }}
+
+{#
+    Staging model for Shopify orders.
+
+    PII Policy: No PII fields (names, emails, phones, addresses) are exposed.
+    Only IDs and metrics are included.
+
+    Required contract fields:
+    - tenant_id
+    - report_date (date grain)
+    - order_id (primary key)
+#}
 
 with raw_orders as (
     select
@@ -30,7 +44,7 @@ orders_extracted as (
         raw.airbyte_emitted_at,
         raw.order_data->>'id' as order_id_raw,
         raw.order_data->>'name' as order_name,
-        raw.order_data->>'email' as customer_email,
+        -- PII EXCLUDED: email, name, phone, address fields are not extracted
         raw.order_data->>'created_at' as created_at_raw,
         raw.order_data->>'updated_at' as updated_at_raw,
         raw.order_data->>'cancelled_at' as cancelled_at_raw,
@@ -40,51 +54,49 @@ orders_extracted as (
         raw.order_data->>'total_price' as total_price_raw,
         raw.order_data->>'subtotal_price' as subtotal_price_raw,
         raw.order_data->>'total_tax' as total_tax_raw,
+        raw.order_data->>'total_shipping_price_set' as total_shipping_raw,
+        raw.order_data->>'total_discounts' as total_discounts_raw,
         raw.order_data->>'currency' as currency_code,
-        raw.order_data->>'customer' as customer_json,
-        raw.order_data->>'line_items' as line_items_json,
-        raw.order_data->>'billing_address' as billing_address_json,
-        raw.order_data->>'shipping_address' as shipping_address_json,
+        -- Extract customer ID only (no PII)
+        raw.order_data->'customer'->>'id' as customer_id_raw,
         raw.order_data->>'tags' as tags_raw,
-        raw.order_data->>'note' as note,
         raw.order_data->>'order_number' as order_number_raw,
-        raw.order_data->'refunds' as refunds_json
+        raw.order_data->'refunds' as refunds_json,
+        -- Line items count for units_sold
+        jsonb_array_length(coalesce(raw.order_data->'line_items', '[]'::jsonb)) as line_items_count,
+        -- Source info for channel mapping
+        raw.order_data->>'source_name' as source_name,
+        raw.order_data->>'landing_site' as landing_site
     from raw_orders raw
 ),
 
 orders_normalized as (
     select
         -- Primary key: normalize order ID (remove gid:// prefix if present)
-        -- Edge case: Handle null, empty, and various GID formats
         case
             when order_id_raw is null or trim(order_id_raw) = '' then null
-            when order_id_raw like 'gid://shopify/Order/%' 
+            when order_id_raw like 'gid://shopify/Order/%'
                 then replace(order_id_raw, 'gid://shopify/Order/', '')
-            when order_id_raw like 'gid://shopify/Order%' 
+            when order_id_raw like 'gid://shopify/Order%'
                 then regexp_replace(order_id_raw, '^gid://shopify/Order/?', '', 'g')
             else trim(order_id_raw)
         end as order_id,
-        
+
         -- Order identifiers
         order_name,
-        -- Edge case: Handle invalid integers, nulls, empty strings
         case
             when order_number_raw is null or trim(order_number_raw) = '' then null
-            when order_number_raw ~ '^[0-9]+$' 
+            when order_number_raw ~ '^[0-9]+$'
                 then order_number_raw::integer
             else null
         end as order_number,
-        
-        -- Customer information
-        customer_email,
-        -- Edge case: Validate JSON before extraction to prevent casting errors
+
+        -- Customer ID only (PII excluded)
         case
-            when customer_json is null or trim(customer_json) = '' then null
-            when customer_json::text ~ '^\s*\{' 
-                then (customer_json::json->>'id')
-            else null
-        end as customer_id_raw,
-        
+            when customer_id_raw is null or trim(customer_id_raw) = '' then null
+            else trim(customer_id_raw)
+        end as customer_id,
+
         -- Timestamps: normalize to UTC
         -- Edge case: Handle invalid timestamp formats gracefully
         case
@@ -115,51 +127,67 @@ orders_normalized as (
             else null
         end as closed_at,
         
-        -- Financial fields: convert to numeric, handle nulls and invalid values
-        -- Edge case: Validate numeric format, handle negative, scientific notation
+        -- Financial fields: convert to numeric
         case
             when total_price_raw is null or trim(total_price_raw) = '' then 0.0
-            when trim(total_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' 
+            when trim(total_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
                 then least(greatest(trim(total_price_raw)::numeric, -999999999.99), 999999999.99)
             else 0.0
         end as total_price,
-        
+
         case
             when subtotal_price_raw is null or trim(subtotal_price_raw) = '' then 0.0
-            when trim(subtotal_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' 
+            when trim(subtotal_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
                 then least(greatest(trim(subtotal_price_raw)::numeric, -999999999.99), 999999999.99)
             else 0.0
         end as subtotal_price,
-        
+
         case
             when total_tax_raw is null or trim(total_tax_raw) = '' then 0.0
-            when trim(total_tax_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' 
+            when trim(total_tax_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
                 then least(greatest(trim(total_tax_raw)::numeric, -999999999.99), 999999999.99)
             else 0.0
         end as total_tax,
-        
-        -- Currency: standardize to uppercase, validate format
-        -- Edge case: Handle null, empty, invalid currency codes
+
+        case
+            when total_shipping_raw is null or trim(total_shipping_raw) = '' then 0.0
+            when trim(total_shipping_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
+                then least(greatest(trim(total_shipping_raw)::numeric, -999999999.99), 999999999.99)
+            else 0.0
+        end as total_shipping,
+
+        case
+            when total_discounts_raw is null or trim(total_discounts_raw) = '' then 0.0
+            when trim(total_discounts_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
+                then least(greatest(trim(total_discounts_raw)::numeric, -999999999.99), 999999999.99)
+            else 0.0
+        end as total_discounts,
+
+        -- Currency: standardize to uppercase
         case
             when currency_code is null or trim(currency_code) = '' then 'USD'
-            when upper(trim(currency_code)) ~ '^[A-Z]{3}$' 
+            when upper(trim(currency_code)) ~ '^[A-Z]{3}$'
                 then upper(trim(currency_code))
             else 'USD'
         end as currency,
-        
+
         -- Status fields
         coalesce(financial_status, 'unknown') as financial_status,
         coalesce(fulfillment_status, 'unfulfilled') as fulfillment_status,
-        
+
         -- Additional fields
         tags_raw as tags,
-        note,
         refunds_json,
-        
+        coalesce(line_items_count, 0) as units_sold,
+
+        -- Source info for channel mapping
+        source_name,
+        landing_site,
+
         -- Metadata
         airbyte_record_id,
         airbyte_emitted_at
-        
+
     from orders_extracted
 ),
 
@@ -218,28 +246,59 @@ orders_with_tenant as (
 )
 
 select
+    -- Primary keys
     order_id,
+    tenant_id,
+
+    -- Date grain (required contract field)
+    created_at::date as report_date,
+
+    -- Order identifiers
     order_name,
     order_number,
-    customer_email,
-    customer_id_raw,
+
+    -- Customer (ID only, no PII)
+    customer_id,
+
+    -- Timestamps
     created_at,
     updated_at,
     cancelled_at,
     closed_at,
-    total_price,
+
+    -- Financial metrics (gross revenue)
+    total_price as revenue_gross,
     subtotal_price,
     total_tax,
+    total_shipping,
+    total_discounts,
+    -- Net revenue = gross - discounts (refunds handled separately)
+    total_price - total_discounts as revenue_net,
     currency,
+
+    -- Units
+    units_sold,
+
+    -- Status
     financial_status,
     fulfillment_status,
+
+    -- Tags
     tags,
-    note,
+
+    -- Refunds JSON for downstream processing
     refunds_json,
+
+    -- Source/channel info
+    source_name as platform_channel,
+
+    -- Metadata
     airbyte_record_id,
-    airbyte_emitted_at,
-    tenant_id
+    airbyte_emitted_at
+
 from orders_with_tenant
 where tenant_id is not null
-    and order_id is not null  -- Edge case: Filter out null primary keys
-    and trim(order_id) != ''  -- Edge case: Filter out empty primary keys
+    and order_id is not null
+    and trim(order_id) != ''
+
+{{ incremental_filter_timestamp('airbyte_emitted_at', 'shopify_orders') }}
