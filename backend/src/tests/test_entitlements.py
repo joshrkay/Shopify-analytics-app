@@ -1126,7 +1126,8 @@ class TestEntitlementMiddleware:
         async def test_endpoint(request):
             return {"success": True}
 
-        result = await test_endpoint(request)
+        # Pass request as keyword argument to work with isinstance check
+        result = await test_endpoint(request=request)
         assert result["success"] is True
 
         reset_entitlement_loader()
@@ -1163,7 +1164,8 @@ class TestEntitlementMiddleware:
             return {"success": True}
 
         with pytest.raises(PaymentRequiredError) as exc_info:
-            await test_endpoint(request)
+            # Pass request as keyword argument to work with isinstance check
+            await test_endpoint(request=request)
 
         assert exc_info.value.status_code == 402
 
@@ -1201,7 +1203,8 @@ class TestEntitlementMiddleware:
             return {"success": True}
 
         with pytest.raises(PaymentRequiredError):
-            await test_endpoint(request)
+            # Pass request as keyword argument to work with isinstance check
+            await test_endpoint(request=request)
 
         reset_entitlement_loader()
         reset_audit_logger()
@@ -1256,6 +1259,7 @@ class TestEntitlementIntegration:
             EntitlementCache,
             CachedEntitlement,
             on_billing_state_change,
+            get_entitlement_cache,
         )
         from src.entitlements.audit import reset_audit_logger
 
@@ -1287,8 +1291,8 @@ class TestEntitlementIntegration:
         assert rules.check_limit("max_dashboards", 5).allowed is True
         assert rules.check_limit("max_dashboards", 15).allowed is False  # Over limit
 
-        # 6. Test cache
-        cache = EntitlementCache()
+        # 6. Test cache - use singleton to match on_billing_state_change behavior
+        cache = get_entitlement_cache()
         cached = CachedEntitlement(
             tenant_id="tenant_int",
             plan_id=rules.plan_id,

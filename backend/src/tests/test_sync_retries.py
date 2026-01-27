@@ -200,7 +200,27 @@ def create_connection(db_session, tenant_id):
 
 
 @pytest.fixture
-def orchestrator(db_session, tenant_id, mock_airbyte_client):
+def mock_job_entitlement(tenant_id):
+    """Mock job entitlement checker to allow all jobs in tests."""
+    from src.jobs.job_entitlements import JobEntitlementResult, BillingState
+
+    mock_result = JobEntitlementResult(
+        is_allowed=True,
+        billing_state=BillingState.ACTIVE,
+        plan_id="plan_growth",
+        job_type="sync",
+    )
+
+    with patch("src.services.sync_orchestrator.JobEntitlementChecker") as mock_checker:
+        instance = mock_checker.return_value
+        instance.check_job_entitlement.return_value = mock_result
+        instance.log_job_allowed = AsyncMock()
+        instance.log_job_skipped = AsyncMock()
+        yield mock_checker
+
+
+@pytest.fixture
+def orchestrator(db_session, tenant_id, mock_airbyte_client, mock_job_entitlement):
     """Create SyncOrchestrator for testing."""
     return SyncOrchestrator(
         db_session=db_session,
@@ -559,7 +579,7 @@ class TestTenantIsolation:
 
     @pytest.mark.asyncio
     async def test_cannot_sync_other_tenant_connection(
-        self, db_session, tenant_id, other_tenant_id, mock_airbyte_client
+        self, db_session, tenant_id, other_tenant_id, mock_airbyte_client, mock_job_entitlement
     ):
         """Cannot sync connection belonging to another tenant."""
         # Create connection for tenant A
@@ -576,7 +596,7 @@ class TestTenantIsolation:
         db_session.add(connection)
         db_session.commit()
 
-        # Try to sync as tenant B
+        # Try to sync as tenant B (mock_job_entitlement ensures entitlements pass)
         orchestrator_b = SyncOrchestrator(
             db_session, other_tenant_id, mock_airbyte_client
         )
