@@ -20,21 +20,20 @@ with staging_orders as (
         order_id,
         order_name,
         order_number,
-        customer_email,
-        customer_id_raw,
+        -- customer_email removed - PII not stored in staging models
+        customer_id,
         created_at,
         updated_at,
         cancelled_at,
         closed_at,
-        total_price,
+        revenue_gross as total_price,
         subtotal_price,
         total_tax,
         currency,
         financial_status,
         fulfillment_status,
         tags,
-        note,
-        refunds_json,
+        -- note column not in stg_shopify_orders
         airbyte_record_id,
         airbyte_emitted_at,
         tenant_id
@@ -65,44 +64,41 @@ select
     -- Primary key: composite of tenant_id and order_id for uniqueness across tenants
     -- Using MD5 hash for deterministic surrogate key generation
     md5(concat(tenant_id, '|', order_id)) as id,
-    
+
     -- Order identifiers
     order_id,
     order_name,
     order_number,
-    
-    -- Customer information
-    customer_email,
-    customer_id_raw,
-    
+
+    -- Customer information (ID only - no PII)
+    customer_id,
+
     -- Timestamps (all UTC)
     created_at as order_created_at,
     updated_at as order_updated_at,
     cancelled_at as order_cancelled_at,
     closed_at as order_closed_at,
-    
+
     -- Financial fields (all numeric, normalized)
     total_price as revenue,
     subtotal_price,
     total_tax,
     currency,
-    
+
     -- Status fields
     financial_status,
     fulfillment_status,
-    
+
     -- Metadata
     tags,
-    note,
-    refunds_json,
-    
+
     -- Tenant isolation (CRITICAL)
     tenant_id,
-    
+
     -- Airbyte metadata for tracking
     airbyte_record_id,
     airbyte_emitted_at as ingested_at,
-    
+
     -- Audit fields
     current_timestamp as dbt_updated_at
 

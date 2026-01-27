@@ -43,6 +43,13 @@ recharge_extracted as (
         raw.charge_data->>'type' as charge_type,
         raw.charge_data->>'processed_at' as processed_at_raw,
         raw.charge_data->>'scheduled_at' as scheduled_at_raw,
+        -- Report date derived from processed_at
+        case
+            when raw.charge_data->>'processed_at' is null or trim(raw.charge_data->>'processed_at') = '' then null
+            when raw.charge_data->>'processed_at' ~ '^\d{4}-\d{2}-\d{2}'
+                then ((raw.charge_data->>'processed_at')::timestamp with time zone)::date
+            else null
+        end as report_date,
         -- Financial data
         raw.charge_data->>'total_price' as total_price_raw,
         raw.charge_data->>'subtotal_price' as subtotal_price_raw,
@@ -65,13 +72,8 @@ recharge_daily_aggregated as (
             else trim(shop_id_raw)
         end as platform_account_id,
 
-        -- Report date from processed_at
-        case
-            when processed_at_raw is null or trim(processed_at_raw) = '' then null
-            when processed_at_raw ~ '^\d{4}-\d{2}-\d{2}'
-                then (processed_at_raw::timestamp with time zone)::date
-            else null
-        end as report_date,
+        -- Report date from recharge_extracted
+        report_date,
 
         -- Count of successful charges
         count(*) filter (where lower(charge_status) in ('success', 'paid')) as successful_charges,

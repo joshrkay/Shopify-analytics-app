@@ -55,14 +55,25 @@ meta_ads_extracted as (
         raw.ad_data->>'reach' as reach_raw,
         raw.ad_data->>'frequency' as frequency_raw,
         -- Conversions (can be in different fields depending on API version)
+        -- actions is a JSONB array, need to extract purchase action properly
         coalesce(
             raw.ad_data->>'conversions',
-            raw.ad_data->>'actions'->>'purchase',
+            (
+                select elem->>'value'
+                from jsonb_array_elements(raw.ad_data->'actions') as elem
+                where elem->>'action_type' = 'purchase'
+                limit 1
+            ),
             '0'
         ) as conversions_raw,
         coalesce(
             raw.ad_data->>'conversion_value',
-            raw.ad_data->>'action_values'->>'purchase',
+            (
+                select elem->>'value'
+                from jsonb_array_elements(raw.ad_data->'action_values') as elem
+                where elem->>'action_type' = 'purchase'
+                limit 1
+            ),
             '0'
         ) as conversion_value_raw,
         -- Platform metrics
