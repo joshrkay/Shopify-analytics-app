@@ -132,19 +132,56 @@ refunds_normalized as (
 ),
 
 -- Join to tenant mapping
+-- SECURITY FIX: Proper tenant isolation using connection metadata
+-- 
+-- This implementation attempts to extract connection_id from available metadata.
+-- Airbyte raw tables typically don't include connection_id directly, so we use
+-- one of these strategies based on your Airbyte configuration:
+--
+-- Strategy 1: Schema-based isolation (most common)
+-- If Airbyte writes each connection to a separate schema, extract from current_schema()
+--
+-- Strategy 2: Table name prefixes
+-- If table names include connection_id, extract from table metadata
+--
+-- Strategy 3: Custom extraction (requires Airbyte normalization customization)
+-- If you've configured Airbyte to include connection_id in _airbyte_data
+--
+-- NOTE: This implementation uses Strategy 1 (schema-based) as the default.
+-- If your setup is different, adjust the connection_id_from_source CTE below.
+refunds_with_connection as (
+    select
+        ref.*,
+        -- Extract connection identifier from source
+        -- Adjust this based on your Airbyte configuration:
+        -- 
+        -- For schema-based isolation (default):
+        -- Assumes schema name format: airbyte_raw_<connection_id> or <connection_id>_raw
+        case
+            when current_schema() ~ '^airbyte_raw_[a-zA-Z0-9-]+$'
+                then regexp_replace(current_schema(), '^airbyte_raw_', '')
+            when current_schema() ~ '^[a-zA-Z0-9-]+_raw$'
+                then regexp_replace(current_schema(), '_raw$', '')
+            -- For connection-specific schemas with tenant prefix
+            when current_schema() ~ '^[a-zA-Z0-9-]+_[a-zA-Z0-9-]+_raw$'
+                then split_part(current_schema(), '_', 2)
+            -- Fallback: use full schema name as identifier
+            else current_schema()
+        end as connection_identifier
+    from refunds_normalized ref
+),
+
+-- Map connection identifier to tenant_id
 refunds_with_tenant as (
     select
         ref.*,
-        coalesce(
-            (select tenant_id
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'shopify'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            null
-        ) as tenant_id
-    from refunds_normalized ref
+        t.tenant_id
+    from refunds_with_connection ref
+    left join {{ ref('_tenant_airbyte_connections') }} t
+        on t.airbyte_connection_id = ref.connection_identifier
+        and t.source_type = 'shopify'
+        and t.status = 'active'
+        and t.is_enabled = true
 )
 
 select

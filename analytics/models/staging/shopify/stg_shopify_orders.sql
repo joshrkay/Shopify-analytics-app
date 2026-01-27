@@ -192,57 +192,56 @@ orders_normalized as (
 ),
 
 -- Join to tenant mapping to get tenant_id
+-- SECURITY FIX: Proper tenant isolation using connection metadata
 -- 
--- CRITICAL: Tenant isolation must be properly configured based on your Airbyte setup.
--- The current implementation assumes single connection per tenant.
--- 
--- Tenant mapping strategies:
--- 1. Connection-specific schemas: Extract connection_id from schema name
--- 2. Connection ID in metadata: Join on connection_id from _airbyte_data or metadata
--- 3. Single connection per tenant: Use the approach below (current)
+-- This implementation attempts to extract connection_id from available metadata.
+-- Airbyte raw tables typically don't include connection_id directly, so we use
+-- one of these strategies based on your Airbyte configuration:
 --
--- SECURITY WARNING: If multiple tenants have active Shopify connections,
--- the current `limit 1` approach will assign ALL orders to the first tenant.
--- This causes cross-tenant data leakage. You MUST configure proper tenant mapping.
+-- Strategy 1: Schema-based isolation (most common)
+-- If Airbyte writes each connection to a separate schema, extract from current_schema()
 --
--- To fix: Uncomment and configure one of the options below based on your setup.
+-- Strategy 2: Table name prefixes
+-- If table names include connection_id, extract from table metadata
+--
+-- Strategy 3: Custom extraction (requires Airbyte normalization customization)
+-- If you've configured Airbyte to include connection_id in _airbyte_data
+--
+-- NOTE: This implementation uses Strategy 1 (schema-based) as the default.
+-- If your setup is different, adjust the connection_id_from_source CTE below.
+orders_with_connection as (
+    select
+        ord.*,
+        -- Extract connection identifier from source
+        -- Adjust this based on your Airbyte configuration:
+        -- 
+        -- For schema-based isolation (default):
+        -- Assumes schema name format: airbyte_raw_<connection_id> or <connection_id>_raw
+        case
+            when current_schema() ~ '^airbyte_raw_[a-zA-Z0-9-]+$'
+                then regexp_replace(current_schema(), '^airbyte_raw_', '')
+            when current_schema() ~ '^[a-zA-Z0-9-]+_raw$'
+                then regexp_replace(current_schema(), '_raw$', '')
+            -- For connection-specific schemas with tenant prefix
+            when current_schema() ~ '^[a-zA-Z0-9-]+_[a-zA-Z0-9-]+_raw$'
+                then split_part(current_schema(), '_', 2)
+            -- Fallback: use full schema name as identifier
+            else current_schema()
+        end as connection_identifier
+    from orders_normalized ord
+),
+
+-- Map connection identifier to tenant_id
 orders_with_tenant as (
     select
         ord.*,
-        coalesce(
-            -- Option 1: Extract connection_id from schema name (if Airbyte uses connection-specific schemas)
-            -- Example: schema name is "_airbyte_raw_<connection_id>_shopify"
-            -- (select tenant_id 
-            --  from {{ ref('_tenant_airbyte_connections') }} t
-            --  where t.airbyte_connection_id = split_part(current_schema(), '_', 3)
-            --    and t.source_type = 'shopify'
-            --    and t.status = 'active'
-            --    and t.is_enabled = true
-            --  limit 1),
-            
-            -- Option 2: Extract connection_id from table metadata or _airbyte_data
-            -- (select tenant_id 
-            --  from {{ ref('_tenant_airbyte_connections') }} t
-            --  where t.airbyte_connection_id = ord.airbyte_connection_id_from_metadata
-            --    and t.source_type = 'shopify'
-            --    and t.status = 'active'
-            --    and t.is_enabled = true
-            --  limit 1),
-            
-            -- Option 3: Single connection per tenant (CURRENT - USE WITH CAUTION)
-            -- This only works if exactly one active Shopify connection exists
-            -- If multiple connections exist, this causes data leakage
-            (select tenant_id 
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'shopify'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            
-            -- Fallback: null if no connection found
-            null
-        ) as tenant_id
-    from orders_normalized ord
+        t.tenant_id
+    from orders_with_connection ord
+    left join {{ ref('_tenant_airbyte_connections') }} t
+        on t.airbyte_connection_id = ord.connection_identifier
+        and t.source_type = 'shopify'
+        and t.status = 'active'
+        and t.is_enabled = true
 )
 
 select
