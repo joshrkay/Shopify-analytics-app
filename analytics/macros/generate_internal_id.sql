@@ -105,7 +105,7 @@
 {% endmacro %}
 
 
-{% macro generate_composite_key(tenant_id, *fields) %}
+{% macro generate_composite_key(tenant_id, fields) %}
     {#
     Generates a deterministic composite key from multiple fields.
 
@@ -114,13 +114,13 @@
 
     Args:
         tenant_id: The tenant identifier (always included first)
-        *fields: Variable number of additional fields to include
+        fields: List of additional field names to include
 
     Returns:
         32-character hexadecimal MD5 hash string
 
     Example:
-        {{ generate_composite_key('tenant_id', 'report_date', 'campaign_id', 'source') }}
+        {{ generate_composite_key('tenant_id', ['report_date', 'campaign_id', 'source']) }}
     #}
 
     md5(

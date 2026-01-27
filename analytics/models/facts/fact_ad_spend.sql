@@ -8,129 +8,100 @@
 }}
 
 -- Canonical fact table for ad spend across all platforms
--- 
--- This table unifies ad spend data from Meta Ads and Google Ads.
+--
+-- This table unifies ad spend data from all advertising platforms.
 -- It provides a single source of truth for all advertising spend.
 --
 -- SECURITY: Tenant isolation is enforced - all rows must have tenant_id
 
-with meta_ads as (
+with unified_ads as (
     select
-        ad_account_id,
-        campaign_id,
-        adset_id,
-        ad_id,
-        date as spend_date,
+        row_surrogate_key,
+        tenant_id,
+        report_date as spend_date,
+        source as platform,
+        platform_account_id as ad_account_id,
+        internal_account_id,
+        platform_campaign_id as campaign_id,
+        internal_campaign_id,
+        platform_adgroup_id as adset_id,
+        internal_adgroup_id,
+        platform_ad_id as ad_id,
+        internal_ad_id,
+        canonical_channel,
         spend,
+        impressions,
+        clicks,
+        conversions,
+        conversion_value,
         currency,
-        platform,
-        airbyte_record_id,
+        cpm,
+        cpc,
+        ctr,
+        cpa,
+        roas_platform,
         airbyte_emitted_at,
-        tenant_id
-    from {{ ref('stg_meta_ads') }}
+        dbt_loaded_at
+    from {{ ref('stg_ads_daily_union') }}
     where tenant_id is not null
-        and ad_account_id is not null
-        and campaign_id is not null
-        and date is not null
+        and platform_account_id is not null
+        and platform_campaign_id is not null
+        and report_date is not null
         and spend is not null
-    
+
     {% if is_incremental() %}
         and airbyte_emitted_at > (
             select coalesce(max(ingested_at), '1970-01-01'::timestamp with time zone)
             from {{ this }}
-            where platform = 'meta_ads'
         )
     {% endif %}
-),
-
-google_ads as (
-    select
-        ad_account_id,
-        campaign_id,
-        ad_group_id as adset_id,  -- Map ad_group_id to adset_id for consistency
-        ad_id,
-        date as spend_date,
-        spend,
-        currency,
-        platform,
-        airbyte_record_id,
-        airbyte_emitted_at,
-        tenant_id
-    from {{ ref('stg_google_ads') }}
-    where tenant_id is not null
-        and ad_account_id is not null
-        and campaign_id is not null
-        and date is not null
-        and spend is not null
-    
-    {% if is_incremental() %}
-        and airbyte_emitted_at > (
-            select coalesce(max(ingested_at), '1970-01-01'::timestamp with time zone)
-            from {{ this }}
-            where platform = 'google_ads'
-        )
-    {% endif %}
-),
-
-unified_ad_spend as (
-    select
-        ad_account_id,
-        campaign_id,
-        adset_id,
-        ad_id,
-        spend_date,
-        spend,
-        currency,
-        platform,
-        airbyte_record_id,
-        airbyte_emitted_at,
-        tenant_id
-    from meta_ads
-    
-    union all
-    
-    select
-        ad_account_id,
-        campaign_id,
-        adset_id,
-        ad_id,
-        spend_date,
-        spend,
-        currency,
-        platform,
-        airbyte_record_id,
-        airbyte_emitted_at,
-        tenant_id
-    from google_ads
 )
 
 select
-    -- Primary key: composite of tenant_id, platform, ad_account_id, campaign_id, ad_id, spend_date
-    -- Using MD5 hash for deterministic surrogate key generation
-    md5(concat(tenant_id, '|', platform, '|', ad_account_id, '|', campaign_id, '|', coalesce(ad_id, ''), '|', spend_date::text)) as id,
-    
-    -- Ad identifiers
+    -- Primary key: use the staging model's surrogate key
+    row_surrogate_key as id,
+
+    -- Ad identifiers (platform)
     ad_account_id,
     campaign_id,
     adset_id,
     ad_id,
-    
+
+    -- Internal identifiers (normalized)
+    internal_account_id,
+    internal_campaign_id,
+    internal_adgroup_id,
+    internal_ad_id,
+
     -- Spend information
     spend_date,
     spend,
     currency,
-    
+
+    -- Channel
+    canonical_channel,
+
+    -- Performance metrics
+    impressions,
+    clicks,
+    conversions,
+    conversion_value,
+    cpm,
+    cpc,
+    ctr,
+    cpa,
+    roas_platform,
+
     -- Platform identifier
     platform,
-    
+
     -- Tenant isolation (CRITICAL)
     tenant_id,
-    
-    -- Airbyte metadata
-    airbyte_record_id,
+
+    -- Metadata
     airbyte_emitted_at as ingested_at,
-    
+
     -- Audit fields
     current_timestamp as dbt_updated_at
 
-from unified_ad_spend
+from unified_ads
