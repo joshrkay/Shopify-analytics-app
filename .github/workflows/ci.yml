@@ -360,10 +360,16 @@ jobs:
           echo "Creating dbt source schemas and tables"
           echo "=========================================="
           psql "postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}" -v ON_ERROR_STOP=1 <<'SQL'
-          create schema if not exists platform;
-          create schema if not exists airbyte_raw;
+          -- ============================================================================
+          -- Create required schemas
+          -- ============================================================================
+          create schema if not exists raw;
 
-          create table if not exists platform.tenant_airbyte_connections (
+          -- ============================================================================
+          -- Platform source tables (public schema)
+          -- Source: platform.tenant_airbyte_connections
+          -- ============================================================================
+          create table if not exists public.tenant_airbyte_connections (
             airbyte_connection_id text not null,
             tenant_id text not null,
             source_type text not null,
@@ -372,25 +378,75 @@ jobs:
             is_enabled boolean not null
           );
 
-          create table if not exists airbyte_raw._airbyte_raw_shopify_orders (
+          -- ============================================================================
+          -- Airbyte raw source tables (public schema)
+          -- Source: airbyte_raw (maps to public schema per schema.yml)
+          -- ============================================================================
+          create table if not exists public._airbyte_raw_shopify_orders (
             _airbyte_ab_id text,
             _airbyte_emitted_at timestamptz,
             _airbyte_data jsonb
           );
 
-          create table if not exists airbyte_raw._airbyte_raw_shopify_customers (
+          create table if not exists public._airbyte_raw_shopify_customers (
             _airbyte_ab_id text,
             _airbyte_emitted_at timestamptz,
             _airbyte_data jsonb
           );
 
-          create table if not exists airbyte_raw._airbyte_raw_meta_ads (
+          create table if not exists public._airbyte_raw_meta_ads (
             _airbyte_ab_id text,
             _airbyte_emitted_at timestamptz,
             _airbyte_data jsonb
           );
 
-          create table if not exists airbyte_raw._airbyte_raw_google_ads (
+          create table if not exists public._airbyte_raw_google_ads (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          -- ============================================================================
+          -- Raw source tables (raw schema)
+          -- Source: raw_sources (maps to raw schema per schema.yml)
+          -- ============================================================================
+          create table if not exists raw.raw_tiktok_ads_metrics (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists raw.raw_pinterest_ads_insights (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists raw.raw_snap_ads_metrics (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists raw.raw_amazon_ads_reports (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists raw.raw_klaviyo_events (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists raw.raw_ga4_events (
+            _airbyte_ab_id text,
+            _airbyte_emitted_at timestamptz,
+            _airbyte_data jsonb
+          );
+
+          create table if not exists raw.raw_recharge_subscriptions (
             _airbyte_ab_id text,
             _airbyte_emitted_at timestamptz,
             _airbyte_data jsonb
