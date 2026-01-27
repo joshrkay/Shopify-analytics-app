@@ -375,6 +375,7 @@ jobs:
             airbyte_connection_id text not null,
             tenant_id text not null,
             source_type text not null,
+            platform_account_id text,
             connection_name text,
             status text not null,
             is_enabled boolean not null
