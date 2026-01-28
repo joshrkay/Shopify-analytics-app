@@ -620,6 +620,127 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "export_format",
         "destination",
     ],
+
+    # =========================================================================
+    # AI SAFETY EVENTS (Story 8.6)
+    # =========================================================================
+    # Track all safety guardrail activations for compliance and debugging.
+
+    "ai.safety.rate_limit_hit": [
+        "tenant_id",
+        "operation_type",      # action_execution, insight_generation, etc.
+        "count",               # Current count
+        "limit",               # Configured limit
+        "window_type",         # hourly, daily, monthly
+    ],
+
+    "ai.safety.cooldown_enforced": [
+        "tenant_id",
+        "platform",
+        "entity_type",
+        "entity_id",
+        "action_type",
+        "cooldown_remaining_seconds",
+    ],
+
+    "ai.safety.action_blocked": [
+        "tenant_id",
+        "action_id",
+        "blocked_by",          # rate_limit, cooldown, kill_switch, guardrail
+        "reason",
+    ],
+
+    "ai.safety.action_suppressed": [
+        "tenant_id",
+        "reason",
+        "operation_type",
+    ],
+
+    "ai.safety.kill_switch_activated": [
+        "tenant_id",
+        "flag_name",
+        "activated_by",        # user_id or "system"
+    ],
+
+    # =========================================================================
+    # AI LIFECYCLE EVENTS (Story 8.7)
+    # =========================================================================
+    # Track complete AI action lifecycle for audit and compliance.
+
+    "ai.insight.generated": [
+        "tenant_id",
+        "insight_id",
+        "insight_type",
+        "severity",
+        "job_id",
+    ],
+
+    "ai.recommendation.created": [
+        "tenant_id",
+        "recommendation_id",
+        "recommendation_type",
+        "insight_id",
+        "priority",
+    ],
+
+    "ai.action.created": [
+        "tenant_id",
+        "action_id",
+        "action_type",
+        "recommendation_id",
+        "platform",
+        "entity_id",
+    ],
+
+    "ai.action.approved": [
+        "tenant_id",
+        "action_id",
+        "approved_by",
+        "approval_timestamp",
+    ],
+
+    "ai.action.execution_started": [
+        "tenant_id",
+        "action_id",
+        "job_id",
+        "idempotency_key",
+    ],
+
+    "ai.action.execution_succeeded": [
+        "tenant_id",
+        "action_id",
+        "duration_ms",
+        "platform",
+        "entity_id",
+    ],
+
+    "ai.action.execution_failed": [
+        "tenant_id",
+        "action_id",
+        "error_code",
+        "error_message",
+        "platform",
+    ],
+
+    "ai.rollback.requested": [
+        "tenant_id",
+        "action_id",
+        "triggered_by",
+        "reason",
+    ],
+
+    "ai.rollback.succeeded": [
+        "tenant_id",
+        "action_id",
+        "duration_ms",
+    ],
+
+    "ai.rollback.failed": [
+        "tenant_id",
+        "action_id",
+        "error_code",
+        "error_message",
+    ],
 }
 
 
@@ -704,6 +825,25 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "admin.data_export_requested",
         "admin.audit_log_exported",
     ],
+    "ai_safety": [
+        "ai.safety.rate_limit_hit",
+        "ai.safety.cooldown_enforced",
+        "ai.safety.action_blocked",
+        "ai.safety.action_suppressed",
+        "ai.safety.kill_switch_activated",
+    ],
+    "ai_lifecycle": [
+        "ai.insight.generated",
+        "ai.recommendation.created",
+        "ai.action.created",
+        "ai.action.approved",
+        "ai.action.execution_started",
+        "ai.action.execution_succeeded",
+        "ai.action.execution_failed",
+        "ai.rollback.requested",
+        "ai.rollback.succeeded",
+        "ai.rollback.failed",
+    ],
 }
 
 
@@ -740,6 +880,25 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
     "dashboard.exported": "low",
     "explore.query_executed": "low",
     "cache.cleared": "low",
+
+    # AI Safety events
+    "ai.safety.rate_limit_hit": "medium",
+    "ai.safety.cooldown_enforced": "low",
+    "ai.safety.action_blocked": "high",
+    "ai.safety.action_suppressed": "medium",
+    "ai.safety.kill_switch_activated": "critical",
+
+    # AI Lifecycle events
+    "ai.insight.generated": "low",
+    "ai.recommendation.created": "low",
+    "ai.action.created": "medium",
+    "ai.action.approved": "medium",
+    "ai.action.execution_started": "medium",
+    "ai.action.execution_succeeded": "low",
+    "ai.action.execution_failed": "high",
+    "ai.rollback.requested": "high",
+    "ai.rollback.succeeded": "medium",
+    "ai.rollback.failed": "critical",
 }
 
 
