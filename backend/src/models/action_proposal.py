@@ -289,7 +289,7 @@ class ActionProposal(Base, TimestampMixin, TenantScopedMixin):
     )
 
     # Extensible metadata
-    metadata = Column(
+    proposal_metadata = Column(
         JSONType,
         nullable=False,
         default=dict,

@@ -101,7 +101,7 @@ def sample_proposal(tenant_id):
         generated_at=datetime.now(timezone.utc),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
-        metadata={},
+        proposal_metadata={},
     )
 
 

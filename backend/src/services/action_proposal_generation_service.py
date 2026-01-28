@@ -470,7 +470,7 @@ class ActionProposalGenerationService:
             content_hash=content_hash,
             generated_at=datetime.now(timezone.utc),
             job_id=job_id,
-            metadata={},
+            proposal_metadata={},
         )
 
         try:

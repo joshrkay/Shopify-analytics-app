@@ -64,7 +64,7 @@ def sample_proposal(tenant_id):
         expires_at=get_default_expiration(),
         content_hash="abc123def456",
         generated_at=datetime.now(timezone.utc),
-        metadata={},
+        proposal_metadata={},
     )
 
 
