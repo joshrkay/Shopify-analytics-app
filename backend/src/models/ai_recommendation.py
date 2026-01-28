@@ -234,6 +234,10 @@ class AIRecommendation(Base, TimestampMixin, TenantScopedMixin):
         comment="SHA256 hash of input data for deduplication"
     )
 
+    # Note: Relationship to AIAction is defined on the AIAction model
+    # to avoid circular import issues. Query actions via:
+    # session.query(AIAction).filter(AIAction.recommendation_id == rec.id)
+
     # Indexes for efficient querying
     __table_args__ = (
         # Tenant + generated_at for listing recent recommendations

@@ -39,6 +39,7 @@
         "max_users": 1,
         "api_calls_per_month": 0,
         "ai_insights_per_month": 0,
+        "ai_actions_per_month": 0,
         "data_retention_days": 30,
         "export_rows_per_request": 100
       },
@@ -81,6 +82,7 @@
         "max_users": 5,
         "api_calls_per_month": 10000,
         "ai_insights_per_month": 50,
+        "ai_actions_per_month": 0,
         "data_retention_days": 90,
         "export_rows_per_request": 10000
       },
@@ -123,6 +125,7 @@
         "max_users": 20,
         "api_calls_per_month": 100000,
         "ai_insights_per_month": 500,
+        "ai_actions_per_month": 100,
         "data_retention_days": 365,
         "export_rows_per_request": 100000
       },
@@ -166,6 +169,7 @@
         "max_users": -1,
         "api_calls_per_month": -1,
         "ai_insights_per_month": -1,
+        "ai_actions_per_month": -1,
         "data_retention_days": -1,
         "export_rows_per_request": -1
       },
@@ -239,5 +243,28 @@
     "api_access": "REST API access",
     "priority_support": "Priority customer support",
     "dedicated_support": "Dedicated account manager"
+  },
+  "premium_jobs": {
+    "sync": {
+      "required_feature": "dashboard_basic",
+      "skip_on_deny": true
+    },
+    "export": {
+      "required_feature": "data_export_api",
+      "skip_on_deny": true
+    },
+    "ai_action": {
+      "required_feature": "ai_actions",
+      "skip_on_deny": true,
+      "monthly_limit_key": "ai_actions_per_month"
+    },
+    "backfill": {
+      "required_feature": "dashboard_advanced",
+      "skip_on_deny": true
+    },
+    "attribution_model": {
+      "required_feature": "dashboard_advanced",
+      "skip_on_deny": true
+    }
   }
 }

@@ -103,6 +103,15 @@ __all__ = [
     "RecommendationJob",
     "RecommendationJobStatus",
     "RecommendationJobCadence",
+    # AI Action models (Story 8.5)
+    "AIAction",
+    "ActionType",
+    "ActionStatus",
+    "ActionTargetEntityType",
+    "ActionExecutionLog",
+    "ActionLogEventType",
+    "ActionJob",
+    "ActionJobStatus",
     # Action Proposal models (Story 8.4)
     "ActionProposal",
     "ActionType",
