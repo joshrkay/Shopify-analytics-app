@@ -13,7 +13,15 @@ from src.models.usage import UsageRecord, UsageAggregate
 from src.models.billing_event import BillingEvent
 from src.models.airbyte_connection import TenantAirbyteConnection, ConnectionStatus, ConnectionType
 from src.models.backfill import BackfillExecution, BackfillStatus
-from src.models.oauth_credential import OAuthCredential, CredentialStatus, CredentialProvider
+from src.models.dq_models import (
+    DQCheck, DQResult, DQIncident, SyncRun, BackfillJob,
+    DQCheckType, DQSeverity, DQResultStatus, DQIncidentStatus,
+    SyncRunStatus, ConnectorSourceType, BackfillJobStatus,
+    FRESHNESS_THRESHOLDS, get_freshness_threshold, is_critical_source,
+    MAX_MERCHANT_BACKFILL_DAYS,
+)
+from src.models.ai_insight import AIInsight, InsightType, InsightSeverity
+from src.models.insight_job import InsightJob, InsightJobStatus, InsightJobCadence
 
 __all__ = [
     "TimestampMixin",
@@ -30,7 +38,28 @@ __all__ = [
     "ConnectionType",
     "BackfillExecution",
     "BackfillStatus",
-    "OAuthCredential",
-    "CredentialStatus",
-    "CredentialProvider",
+    # Data Quality models
+    "DQCheck",
+    "DQResult",
+    "DQIncident",
+    "SyncRun",
+    "BackfillJob",
+    "DQCheckType",
+    "DQSeverity",
+    "DQResultStatus",
+    "DQIncidentStatus",
+    "SyncRunStatus",
+    "ConnectorSourceType",
+    "BackfillJobStatus",
+    "FRESHNESS_THRESHOLDS",
+    "get_freshness_threshold",
+    "is_critical_source",
+    "MAX_MERCHANT_BACKFILL_DAYS",
+    # AI Insight models
+    "AIInsight",
+    "InsightType",
+    "InsightSeverity",
+    "InsightJob",
+    "InsightJobStatus",
+    "InsightJobCadence",
 ]
