@@ -46,6 +46,12 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Node.js / Frontend
+node_modules/
+.npm
+*.log
+npm-debug.log*
+
 # dbt Analytics
 analytics/profiles.yml
 analytics/target/
