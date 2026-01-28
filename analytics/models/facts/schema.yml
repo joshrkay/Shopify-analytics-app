@@ -55,6 +55,15 @@ models:
         description: Order name/number from Shopify (e.g., #1001)
       - name: order_number
         description: Order number as integer
+      - name: customer_key
+        description: |
+          Pseudonymized customer identifier (MD5 hash of email or customer_id).
+          Enables customer-level analytics (CAC, LTV, cohorts) without exposing PII.
+          Uses Shopify's internal customer ID pattern.
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
       - name: source_platform
         description: Source platform identifier (canonical column)
         meta:

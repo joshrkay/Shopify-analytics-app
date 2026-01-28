@@ -25,7 +25,9 @@ staging_orders as (
         o.order_id,
         o.order_name,
         o.order_number,
-        -- PII fields removed for compliance (customer_email, customer_id_raw)
+        -- PII fields used only for hashing (not exposed in final output)
+        o.customer_email,
+        o.customer_id_raw,
         o.created_at,
         o.updated_at,
         o.cancelled_at,
@@ -76,7 +78,14 @@ select
     order_name,
     order_number,
 
-    -- Note: PII fields (customer_email, customer_id_raw) intentionally excluded
+    -- Customer identifier (pseudonymized per Shopify pattern)
+    -- Uses hashed email/ID instead of raw PII for customer-level analytics
+    -- Enables: CAC, LTV, cohort analysis without exposing PII
+    md5(lower(trim(coalesce(
+        nullif(customer_email, ''),
+        customer_id_raw::text,
+        ''
+    )))) as customer_key,
 
     -- Source platform (canonical column per user story 7.7.1)
     'shopify' as source_platform,
