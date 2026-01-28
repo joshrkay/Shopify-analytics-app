@@ -22,6 +22,15 @@ from src.models.dq_models import (
 )
 from src.models.ai_insight import AIInsight, InsightType, InsightSeverity
 from src.models.insight_job import InsightJob, InsightJobStatus, InsightJobCadence
+# Import AIAction BEFORE AIRecommendation due to relationship dependency
+from src.models.ai_action import AIAction, ActionType, ActionStatus, ActionTargetEntityType
+from src.models.ai_recommendation import (
+    AIRecommendation, RecommendationType, RecommendationPriority,
+    EstimatedImpact, RiskLevel, AffectedEntityType,
+)
+from src.models.action_execution_log import ActionExecutionLog, ActionLogEventType
+from src.models.action_job import ActionJob, ActionJobStatus
+from src.models.recommendation_job import RecommendationJob, RecommendationJobStatus, RecommendationJobCadence
 
 __all__ = [
     "TimestampMixin",
@@ -62,4 +71,23 @@ __all__ = [
     "InsightJob",
     "InsightJobStatus",
     "InsightJobCadence",
+    # AI Recommendation models
+    "AIRecommendation",
+    "RecommendationType",
+    "RecommendationPriority",
+    "EstimatedImpact",
+    "RiskLevel",
+    "AffectedEntityType",
+    "RecommendationJob",
+    "RecommendationJobStatus",
+    "RecommendationJobCadence",
+    # AI Action models (Story 8.5)
+    "AIAction",
+    "ActionType",
+    "ActionStatus",
+    "ActionTargetEntityType",
+    "ActionExecutionLog",
+    "ActionLogEventType",
+    "ActionJob",
+    "ActionJobStatus",
 ]
