@@ -52,14 +52,75 @@ google_ads_campaigns as (
     group by 1, 2, 3, 4, 5
 ),
 
--- Union all ad platform campaigns
--- Additional platforms will be added here as their staging models are created:
--- tiktok_ads_campaigns, pinterest_ads_campaigns, snap_ads_campaigns, amazon_ads_campaigns
+tiktok_ads_campaigns as (
+    select distinct
+        tenant_id,
+        'tiktok_ads' as source,
+        campaign_id as platform_campaign_id,
+        ad_account_id as platform_account_id,
+        campaign_name,
+        min(airbyte_emitted_at) as first_seen_at,
+        max(airbyte_emitted_at) as last_seen_at
+    from {{ ref('stg_tiktok_ads_daily') }}
+    where campaign_id is not null
+    group by 1, 2, 3, 4, 5
+),
 
+pinterest_ads_campaigns as (
+    select distinct
+        tenant_id,
+        'pinterest_ads' as source,
+        campaign_id as platform_campaign_id,
+        ad_account_id as platform_account_id,
+        campaign_name,
+        min(airbyte_emitted_at) as first_seen_at,
+        max(airbyte_emitted_at) as last_seen_at
+    from {{ ref('stg_pinterest_ads_daily') }}
+    where campaign_id is not null
+    group by 1, 2, 3, 4, 5
+),
+
+snap_ads_campaigns as (
+    select distinct
+        tenant_id,
+        'snap_ads' as source,
+        campaign_id as platform_campaign_id,
+        ad_account_id as platform_account_id,
+        campaign_name,
+        min(airbyte_emitted_at) as first_seen_at,
+        max(airbyte_emitted_at) as last_seen_at
+    from {{ ref('stg_snap_ads_daily') }}
+    where campaign_id is not null
+    group by 1, 2, 3, 4, 5
+),
+
+amazon_ads_campaigns as (
+    select distinct
+        tenant_id,
+        'amazon_ads' as source,
+        campaign_id as platform_campaign_id,
+        ad_account_id as platform_account_id,
+        campaign_name,
+        min(airbyte_emitted_at) as first_seen_at,
+        max(airbyte_emitted_at) as last_seen_at
+    from {{ ref('stg_amazon_ads_daily') }}
+    where campaign_id is not null
+    group by 1, 2, 3, 4, 5
+),
+
+-- Union all ad platform campaigns
 all_campaigns as (
     select * from meta_ads_campaigns
     union all
     select * from google_ads_campaigns
+    union all
+    select * from tiktok_ads_campaigns
+    union all
+    select * from pinterest_ads_campaigns
+    union all
+    select * from snap_ads_campaigns
+    union all
+    select * from amazon_ads_campaigns
 ),
 
 campaigns_with_internal_id as (

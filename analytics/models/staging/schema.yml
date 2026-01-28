@@ -555,6 +555,189 @@ models:
       - name: airbyte_emitted_at
         description: Airbyte emission timestamp
 
+  - name: stg_tiktok_ads_daily
+    description: Staging model for TikTok Ads with normalized fields and tenant isolation
+    columns:
+      - name: tenant_id
+        tests: [not_null]
+      - name: report_date
+        tests: [not_null]
+      - name: ad_account_id
+        tests: [not_null]
+      - name: campaign_id
+        tests: [not_null]
+      - name: internal_account_id
+        tests: [not_null]
+      - name: internal_campaign_id
+        tests: [not_null]
+      - name: canonical_channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'paid_shopping', 'email', 'organic_social', 'organic_search', 'direct', 'referral', 'affiliate', 'other']
+      - name: spend
+        tests: [not_null]
+      - name: impressions
+        tests: [not_null]
+      - name: clicks
+        tests: [not_null]
+      - name: conversions
+        tests: [not_null]
+      - name: conversion_value
+        tests: [not_null]
+
+  - name: stg_pinterest_ads_daily
+    description: Staging model for Pinterest Ads with normalized fields and tenant isolation
+    columns:
+      - name: tenant_id
+        tests: [not_null]
+      - name: report_date
+        tests: [not_null]
+      - name: ad_account_id
+        tests: [not_null]
+      - name: campaign_id
+        tests: [not_null]
+      - name: internal_account_id
+        tests: [not_null]
+      - name: internal_campaign_id
+        tests: [not_null]
+      - name: canonical_channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'paid_shopping', 'email', 'organic_social', 'organic_search', 'direct', 'referral', 'affiliate', 'other']
+      - name: spend
+        tests: [not_null]
+      - name: impressions
+        tests: [not_null]
+      - name: clicks
+        tests: [not_null]
+      - name: conversions
+        tests: [not_null]
+      - name: conversion_value
+        tests: [not_null]
+
+  - name: stg_snap_ads_daily
+    description: Staging model for Snapchat Ads with normalized fields and tenant isolation
+    columns:
+      - name: tenant_id
+        tests: [not_null]
+      - name: report_date
+        tests: [not_null]
+      - name: ad_account_id
+        tests: [not_null]
+      - name: campaign_id
+        tests: [not_null]
+      - name: internal_account_id
+        tests: [not_null]
+      - name: internal_campaign_id
+        tests: [not_null]
+      - name: canonical_channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'paid_shopping', 'email', 'organic_social', 'organic_search', 'direct', 'referral', 'affiliate', 'other']
+      - name: spend
+        tests: [not_null]
+      - name: impressions
+        tests: [not_null]
+      - name: clicks
+        tests: [not_null]
+      - name: conversions
+        tests: [not_null]
+      - name: conversion_value
+        tests: [not_null]
+
+  - name: stg_amazon_ads_daily
+    description: Staging model for Amazon Ads with normalized fields and tenant isolation
+    columns:
+      - name: tenant_id
+        tests: [not_null]
+      - name: report_date
+        tests: [not_null]
+      - name: ad_account_id
+        tests: [not_null]
+      - name: campaign_id
+        tests: [not_null]
+      - name: internal_account_id
+        tests: [not_null]
+      - name: internal_campaign_id
+        tests: [not_null]
+      - name: canonical_channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'paid_shopping', 'email', 'organic_social', 'organic_search', 'direct', 'referral', 'affiliate', 'other']
+      - name: spend
+        tests: [not_null]
+      - name: impressions
+        tests: [not_null]
+      - name: clicks
+        tests: [not_null]
+      - name: conversions
+        tests: [not_null]
+      - name: conversion_value
+        tests: [not_null]
+
+  - name: stg_klaviyo_events_daily
+    description: Staging model for Klaviyo email events aggregated to daily grain
+    columns:
+      - name: tenant_id
+        tests: [not_null]
+      - name: report_date
+        tests: [not_null]
+      - name: canonical_channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'paid_shopping', 'email', 'organic_social', 'organic_search', 'direct', 'referral', 'affiliate', 'other']
+      - name: conversions
+        tests: [not_null]
+      - name: conversion_value
+        tests: [not_null]
+
+  - name: stg_ga4_daily
+    description: Staging model for Google Analytics 4 data aggregated to daily grain
+    columns:
+      - name: tenant_id
+        tests: [not_null]
+      - name: report_date
+        tests: [not_null]
+      - name: canonical_channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'paid_shopping', 'email', 'organic_social', 'organic_search', 'direct', 'referral', 'affiliate', 'other']
+      - name: sessions
+        tests: [not_null]
+      - name: users
+        tests: [not_null]
+      - name: conversions
+        tests: [not_null]
+      - name: conversion_value
+        tests: [not_null]
+
+  - name: stg_recharge_daily
+    description: Staging model for Recharge subscription data
+    columns:
+      - name: tenant_id
+        tests: [not_null]
+      - name: report_date
+        tests: [not_null]
+      - name: subscription_id
+        tests: [not_null]
+      - name: customer_id
+        tests: [not_null]
+      - name: subscription_status
+        tests: [not_null]
+      - name: subscription_price
+        tests: [not_null]
+      - name: canonical_channel
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'paid_shopping', 'email', 'organic_social', 'organic_search', 'direct', 'referral', 'affiliate', 'other']
+
 sources:
   - name: airbyte_raw
     description: Raw Airbyte data tables
@@ -631,6 +814,125 @@ sources:
               - not_null
           - name: _airbyte_data
             description: JSONB column containing the actual ad data
+            tests:
+              - not_null
+
+      - name: _airbyte_raw_tiktok_ads
+        description: Raw TikTok Ads data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+            tests:
+              - not_null
+
+      - name: _airbyte_raw_pinterest_ads
+        description: Raw Pinterest Ads data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+            tests:
+              - not_null
+
+      - name: _airbyte_raw_snapchat_ads
+        description: Raw Snapchat Ads data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+            tests:
+              - not_null
+
+      - name: _airbyte_raw_amazon_ads
+        description: Raw Amazon Ads data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+            tests:
+              - not_null
+
+      - name: _airbyte_raw_klaviyo
+        description: Raw Klaviyo events data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual event data
+            tests:
+              - not_null
+
+      - name: _airbyte_raw_ga4
+        description: Raw Google Analytics 4 data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual analytics data
+            tests:
+              - not_null
+
+      - name: _airbyte_raw_recharge
+        description: Raw Recharge subscription data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual subscription data
             tests:
               - not_null
 
