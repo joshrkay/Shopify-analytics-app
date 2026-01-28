@@ -132,6 +132,12 @@ class Permission(str, Enum):
     ACTION_PROPOSALS_APPROVE = "action_proposals:approve" # Approve/reject proposals
     ACTION_PROPOSALS_AUDIT = "action_proposals:audit"     # View audit trail
 
+    # Action Execution permissions (Story 8.5)
+    ACTIONS_VIEW = "actions:view"           # View actions and their status
+    ACTIONS_EXECUTE = "actions:execute"     # Trigger action execution
+    ACTIONS_ROLLBACK = "actions:rollback"   # Rollback executed actions
+    ACTIONS_AUDIT = "actions:audit"         # View action execution logs
+
 
 # Permission matrix: Role -> Set of Permissions
 # This is the canonical source of truth for RBAC
@@ -191,6 +197,11 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.ACTION_PROPOSALS_VIEW,
         Permission.ACTION_PROPOSALS_APPROVE,
         Permission.ACTION_PROPOSALS_AUDIT,
+        # Action Execution permissions (Story 8.5)
+        Permission.ACTIONS_VIEW,
+        Permission.ACTIONS_EXECUTE,
+        Permission.ACTIONS_ROLLBACK,
+        Permission.ACTIONS_AUDIT,
     ]),
 
     Role.ADMIN: frozenset([
@@ -229,6 +240,11 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.ACTION_PROPOSALS_VIEW,
         Permission.ACTION_PROPOSALS_APPROVE,
         Permission.ACTION_PROPOSALS_AUDIT,
+        # Action Execution permissions (Story 8.5)
+        Permission.ACTIONS_VIEW,
+        Permission.ACTIONS_EXECUTE,
+        Permission.ACTIONS_ROLLBACK,
+        Permission.ACTIONS_AUDIT,
     ]),
 
     # --- Merchant Roles (single tenant access) ---
@@ -256,6 +272,11 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.ACTION_PROPOSALS_VIEW,
         Permission.ACTION_PROPOSALS_APPROVE,
         Permission.ACTION_PROPOSALS_AUDIT,
+        # Action Execution permissions (Story 8.5)
+        Permission.ACTIONS_VIEW,
+        Permission.ACTIONS_EXECUTE,
+        Permission.ACTIONS_ROLLBACK,
+        Permission.ACTIONS_AUDIT,
     ]),
 
     Role.MERCHANT_VIEWER: frozenset([
@@ -269,6 +290,8 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.SETTINGS_VIEW,
         # Action Proposal permissions (view only, no approval)
         Permission.ACTION_PROPOSALS_VIEW,
+        # Action Execution permissions (view only, no execute/rollback)
+        Permission.ACTIONS_VIEW,
     ]),
 
     # --- Agency Roles (multi-tenant access via allowed_tenants[]) ---
@@ -290,6 +313,11 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.ACTION_PROPOSALS_VIEW,
         Permission.ACTION_PROPOSALS_APPROVE,
         Permission.ACTION_PROPOSALS_AUDIT,
+        # Action Execution permissions (Story 8.5)
+        Permission.ACTIONS_VIEW,
+        Permission.ACTIONS_EXECUTE,
+        Permission.ACTIONS_ROLLBACK,
+        Permission.ACTIONS_AUDIT,
     ]),
 
     Role.AGENCY_VIEWER: frozenset([
@@ -304,6 +332,8 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.MULTI_TENANT_ACCESS,
         # Action Proposal permissions (view only, no approval)
         Permission.ACTION_PROPOSALS_VIEW,
+        # Action Execution permissions (view only, no execute/rollback)
+        Permission.ACTIONS_VIEW,
     ]),
 
     # --- Super Admin (platform-level, all access) ---
@@ -342,6 +372,11 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.ACTION_PROPOSALS_VIEW,
         Permission.ACTION_PROPOSALS_APPROVE,
         Permission.ACTION_PROPOSALS_AUDIT,
+        # Action Execution permissions (Story 8.5)
+        Permission.ACTIONS_VIEW,
+        Permission.ACTIONS_EXECUTE,
+        Permission.ACTIONS_ROLLBACK,
+        Permission.ACTIONS_AUDIT,
     ]),
 }
 
@@ -620,3 +655,60 @@ def get_primary_approver_role(roles: list[str]) -> str | None:
         except ValueError:
             continue
     return None
+
+
+# ============================================================================
+# Action Execution Permission Helpers (Story 8.5)
+# ============================================================================
+
+
+def can_view_actions(roles: list[str]) -> bool:
+    """
+    Check if any of the given roles can view actions.
+
+    Args:
+        roles: List of role names from JWT
+
+    Returns:
+        True if user can view actions
+    """
+    return roles_have_permission(roles, Permission.ACTIONS_VIEW)
+
+
+def can_execute_actions(roles: list[str]) -> bool:
+    """
+    Check if any of the given roles can execute actions.
+
+    Args:
+        roles: List of role names from JWT
+
+    Returns:
+        True if user can execute actions
+    """
+    return roles_have_permission(roles, Permission.ACTIONS_EXECUTE)
+
+
+def can_rollback_actions(roles: list[str]) -> bool:
+    """
+    Check if any of the given roles can rollback actions.
+
+    Args:
+        roles: List of role names from JWT
+
+    Returns:
+        True if user can rollback actions
+    """
+    return roles_have_permission(roles, Permission.ACTIONS_ROLLBACK)
+
+
+def can_view_action_audit(roles: list[str]) -> bool:
+    """
+    Check if any of the given roles can view action execution audit logs.
+
+    Args:
+        roles: List of role names from JWT
+
+    Returns:
+        True if user can view action audit logs
+    """
+    return roles_have_permission(roles, Permission.ACTIONS_AUDIT)
