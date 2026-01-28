@@ -53,6 +53,14 @@ from src.models.action_proposal_job import (
     ActionProposalJobStatus,
     ActionProposalJobCadence,
 )
+from src.models.notification import (
+    Notification,
+    NotificationEventType,
+    NotificationImportance,
+    NotificationStatus,
+    EVENT_IMPORTANCE_MAP,
+)
+from src.models.notification_preference import NotificationPreference
 
 __all__ = [
     "TimestampMixin",
@@ -125,4 +133,11 @@ __all__ = [
     "ActionProposalJob",
     "ActionProposalJobStatus",
     "ActionProposalJobCadence",
+    # Notification models (Story 9.1)
+    "Notification",
+    "NotificationEventType",
+    "NotificationImportance",
+    "NotificationStatus",
+    "EVENT_IMPORTANCE_MAP",
+    "NotificationPreference",
 ]
