@@ -36,11 +36,15 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     UniqueConstraint,
+    JSON,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
 from src.db_base import Base
 from src.models.base import TimestampMixin, TenantScopedMixin
+
+# Use JSON for SQLite (tests) and JSONB for PostgreSQL (production)
+JSONType = JSON().with_variant(JSONB(), "postgresql")
 
 
 class LLMResponseStatus(str, enum.Enum):
@@ -120,7 +124,7 @@ class LLMModelRegistry(Base, TimestampMixin):
     )
 
     capabilities = Column(
-        JSONB,
+        JSONType,
         nullable=False,
         default=list,
         comment="Model capabilities: ['chat', 'function_calling', 'vision']"
@@ -219,7 +223,7 @@ class LLMOrgConfig(Base, TimestampMixin):
     )
 
     preferences = Column(
-        JSONB,
+        JSONType,
         nullable=False,
         default=dict,
         comment="Additional configuration preferences"
@@ -282,7 +286,7 @@ class LLMPromptTemplate(Base, TimestampMixin):
     )
 
     variables = Column(
-        JSONB,
+        JSONType,
         nullable=False,
         default=list,
         comment="Expected variables for this template"
@@ -436,7 +440,7 @@ class LLMUsageLog(Base):
     )
 
     request_metadata = Column(
-        JSONB,
+        JSONType,
         nullable=False,
         default=dict,
         comment="Request context: correlation_id, feature, etc."
