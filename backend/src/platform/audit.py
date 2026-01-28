@@ -124,6 +124,25 @@ class AuditAction(str, Enum):
     JOB_SKIPPED_DUE_TO_ENTITLEMENT = "job.skipped_due_to_entitlement"
     JOB_ALLOWED = "job.allowed"
 
+    # AI Safety events (Story 8.6)
+    AI_RATE_LIMIT_HIT = "ai.safety.rate_limit_hit"
+    AI_COOLDOWN_ENFORCED = "ai.safety.cooldown_enforced"
+    AI_ACTION_BLOCKED = "ai.safety.action_blocked"
+    AI_ACTION_SUPPRESSED = "ai.safety.action_suppressed"
+    AI_KILL_SWITCH_ACTIVATED = "ai.safety.kill_switch_activated"
+
+    # AI Lifecycle events (Story 8.7)
+    AI_INSIGHT_GENERATED = "ai.insight.generated"
+    AI_RECOMMENDATION_CREATED = "ai.recommendation.created"
+    AI_ACTION_CREATED = "ai.action.created"
+    AI_ACTION_APPROVED = "ai.action.approved"
+    AI_ACTION_EXECUTION_STARTED = "ai.action.execution_started"
+    AI_ACTION_EXECUTION_SUCCEEDED = "ai.action.execution_succeeded"
+    AI_ACTION_EXECUTION_FAILED = "ai.action.execution_failed"
+    AI_ROLLBACK_REQUESTED = "ai.rollback.requested"
+    AI_ROLLBACK_SUCCEEDED = "ai.rollback.succeeded"
+    AI_ROLLBACK_FAILED = "ai.rollback.failed"
+
 
 class AuditLog(AuditBase):
     """

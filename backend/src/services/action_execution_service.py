@@ -47,6 +47,8 @@ from src.services.platform_executors import (
     StateCapture,
     RetryConfig,
 )
+from src.services.action_safety_service import ActionSafetyService
+from src.platform.feature_flags import is_kill_switch_active, FeatureFlag
 
 
 logger = logging.getLogger(__name__)
@@ -96,6 +98,7 @@ class ActionExecutionService:
         tenant_id: str,
         credentials_service: Optional[PlatformCredentialsService] = None,
         retry_config: Optional[RetryConfig] = None,
+        billing_tier: str = "free",
     ):
         """
         Initialize execution service.
@@ -105,6 +108,7 @@ class ActionExecutionService:
             tenant_id: Tenant identifier (from JWT only)
             credentials_service: Optional credentials service (created if not provided)
             retry_config: Optional retry configuration for executors
+            billing_tier: Tenant's billing tier for safety limits
         """
         if not tenant_id:
             raise ValueError("tenant_id is required")
@@ -112,9 +116,17 @@ class ActionExecutionService:
         self.db = db_session
         self.tenant_id = tenant_id
         self.retry_config = retry_config or RetryConfig()
+        self.billing_tier = billing_tier
 
         # Credentials service (lazy or provided)
         self._credentials_service = credentials_service
+
+        # Safety service for rate limiting and cooldowns (Story 8.6)
+        self._safety_service = ActionSafetyService(
+            db_session=db_session,
+            tenant_id=tenant_id,
+            billing_tier=billing_tier,
+        )
 
     @property
     def credentials_service(self) -> PlatformCredentialsService:
@@ -153,6 +165,39 @@ class ActionExecutionService:
         # 1. Get and validate action
         action = self._get_action(action_id)
         self._validate_action_ready(action)
+
+        # 1.5. Safety checks (Story 8.6)
+        # Check kill switch first
+        if await is_kill_switch_active(FeatureFlag.AI_WRITE_BACK):
+            self._safety_service.log_action_blocked(
+                action_id=action.id,
+                reason="AI write-back kill switch is active",
+                blocked_by="kill_switch",
+            )
+            return ActionExecutionResult(
+                success=False,
+                action_id=action.id,
+                status=action.status,
+                message="AI actions are currently disabled",
+                error_code="KILL_SWITCH_ACTIVE",
+            )
+
+        # Check rate limits and cooldowns
+        safety_result = self._safety_service.check_action_safety(
+            platform=action.platform,
+            entity_type=action.target_entity_type.value,
+            entity_id=action.target_entity_id,
+            action_type=action.action_type.value,
+            action_id=action.id,
+        )
+        if not safety_result.allowed:
+            return ActionExecutionResult(
+                success=False,
+                action_id=action.id,
+                status=action.status,
+                message=safety_result.reason or "Safety check failed",
+                error_code="SAFETY_CHECK_FAILED",
+            )
 
         # 2. Mark as executing
         idempotency_key = self._generate_idempotency_key(action)
@@ -212,6 +257,14 @@ class ActionExecutionService:
                     action_id=action.id,
                     state_snapshot=result.confirmed_state,
                 ))
+
+                # Record successful execution for rate limiting and cooldowns (Story 8.6)
+                self._safety_service.record_action_execution(
+                    platform=action.platform,
+                    entity_type=action.target_entity_type.value,
+                    entity_id=action.target_entity_id,
+                    action_type=action.action_type.value,
+                )
 
                 logger.info(
                     "Action executed successfully",
