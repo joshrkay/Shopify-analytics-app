@@ -1,0 +1,24 @@
+{
+  "thresholds": {
+    "spend_threshold_percent": 15.0,
+    "spend_std_dev_multiplier": 2.0,
+    "roas_threshold_percent": 10.0,
+    "roas_profitability_threshold": 1.5,
+    "divergence_threshold_percent": 20.0,
+    "channel_shift_threshold_pp": 10.0,
+    "aov_threshold_percent": 10.0,
+    "conversion_threshold_percent": 15.0,
+    "cpa_threshold_percent": 20.0
+  },
+  "min_confidence_threshold": 0.5,
+  "max_insights_per_run": 10,
+  "lookback_days": 28,
+  "min_days_with_data": 5,
+  "model_version": "v1.0",
+  "enabled_insight_types": [
+    "spend_anomaly",
+    "roas_change",
+    "revenue_spend_divergence",
+    "channel_mix_shift"
+  ]
+}
