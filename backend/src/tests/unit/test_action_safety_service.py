@@ -499,7 +499,7 @@ class TestSafetyEventLogging:
         """log_action_suppressed should create a safety event."""
         safety_service_growth.log_action_suppressed(
             reason="Max recommendations reached",
-            metadata={"count": 25},
+            event_metadata={"count": 25},
         )
 
         safety_service_growth.db.add.assert_called()

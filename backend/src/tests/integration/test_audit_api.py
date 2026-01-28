@@ -316,7 +316,7 @@ class TestSafetyEvents:
         mock_event.entity_id = None
         mock_event.action_id = None
         mock_event.reason = "Rate limit exceeded"
-        mock_event.metadata = {"count": 50, "limit": 50}
+        mock_event.event_metadata = {"count": 50, "limit": 50}
         mock_event.correlation_id = None
         mock_event.created_at = datetime.now(timezone.utc)
 

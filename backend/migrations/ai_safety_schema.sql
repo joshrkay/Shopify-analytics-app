@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS ai_safety_events (
     entity_id VARCHAR(255),  -- Optional: specific entity affected
     action_id VARCHAR(255),  -- Optional: related action ID
     reason TEXT NOT NULL,
-    metadata JSONB DEFAULT '{}',
+    event_metadata JSONB DEFAULT '{}',
     correlation_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

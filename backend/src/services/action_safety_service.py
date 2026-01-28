@@ -55,6 +55,7 @@ class AIRateLimit(Base, TenantScopedMixin):
     __table_args__ = (
         UniqueConstraint("tenant_id", "operation_type", "window_start", "window_type"),
         Index("ix_ai_rate_limits_tenant_operation", "tenant_id", "operation_type"),
+        {"extend_existing": True},
     )
 
 
@@ -75,6 +76,7 @@ class AICooldown(Base, TenantScopedMixin):
     __table_args__ = (
         UniqueConstraint("tenant_id", "platform", "entity_type", "entity_id", "action_type"),
         Index("ix_ai_cooldowns_tenant_entity", "tenant_id", "platform", "entity_id"),
+        {"extend_existing": True},
     )
 
 
@@ -89,7 +91,7 @@ class AISafetyEvent(Base, TenantScopedMixin):
     entity_id = Column(String(255), nullable=True)
     action_id = Column(String(255), nullable=True)
     reason = Column(Text, nullable=False)
-    metadata = Column(JSONB, nullable=False, default=dict)
+    event_metadata = Column(JSONB, nullable=False, default=dict)
     correlation_id = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -97,6 +99,7 @@ class AISafetyEvent(Base, TenantScopedMixin):
         Index("ix_ai_safety_events_tenant", "tenant_id"),
         Index("ix_ai_safety_events_type", "event_type"),
         Index("ix_ai_safety_events_tenant_created", "tenant_id", "created_at"),
+        {"extend_existing": True},
     )
 
 
@@ -252,7 +255,7 @@ class ActionSafetyService:
                 event_type="rate_limit_hit",
                 operation_type=operation_type,
                 reason=f"Rate limit exceeded: {rate_limit.count}/{limit} per hour",
-                metadata={"count": rate_limit.count, "limit": limit},
+                event_metadata={"count": rate_limit.count, "limit": limit},
                 correlation_id=correlation_id,
             )
             return SafetyCheckResult(
@@ -410,7 +413,7 @@ class ActionSafetyService:
                 operation_type="action_execution",
                 entity_id=entity_id,
                 reason=f"Entity in cooldown until {cooldown.cooldown_until.isoformat()}",
-                metadata={
+                event_metadata={
                     "platform": platform,
                     "entity_type": entity_type,
                     "action_type": action_type,
@@ -572,7 +575,7 @@ class ActionSafetyService:
         reason: str,
         entity_id: Optional[str] = None,
         action_id: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        event_metadata: Optional[dict] = None,
         correlation_id: Optional[str] = None,
     ) -> None:
         """
@@ -584,7 +587,7 @@ class ActionSafetyService:
             reason: Human-readable reason
             entity_id: Optional entity ID
             action_id: Optional action ID
-            metadata: Optional additional data
+            event_metadata: Optional additional data
             correlation_id: Optional correlation ID
         """
         event = AISafetyEvent(
@@ -594,7 +597,7 @@ class ActionSafetyService:
             entity_id=entity_id,
             action_id=action_id,
             reason=reason,
-            metadata=metadata or {},
+            event_metadata=event_metadata or {},
             correlation_id=correlation_id,
         )
         self.db.add(event)
@@ -618,7 +621,7 @@ class ActionSafetyService:
         action_id: str,
         reason: str,
         blocked_by: str,
-        metadata: Optional[dict] = None,
+        event_metadata: Optional[dict] = None,
         correlation_id: Optional[str] = None,
     ) -> None:
         """
@@ -628,7 +631,7 @@ class ActionSafetyService:
             action_id: ID of the blocked action
             reason: Why action was blocked
             blocked_by: What blocked it (rate_limit, cooldown, kill_switch, etc.)
-            metadata: Additional context
+            event_metadata: Additional context
             correlation_id: Optional correlation ID
         """
         self._log_safety_event(
@@ -636,14 +639,14 @@ class ActionSafetyService:
             operation_type="action_execution",
             action_id=action_id,
             reason=reason,
-            metadata={"blocked_by": blocked_by, **(metadata or {})},
+            event_metadata={"blocked_by": blocked_by, **(event_metadata or {})},
             correlation_id=correlation_id,
         )
 
     def log_action_suppressed(
         self,
         reason: str,
-        metadata: Optional[dict] = None,
+        event_metadata: Optional[dict] = None,
         correlation_id: Optional[str] = None,
     ) -> None:
         """
@@ -651,13 +654,13 @@ class ActionSafetyService:
 
         Args:
             reason: Why action was suppressed
-            metadata: Additional context
+            event_metadata: Additional context
             correlation_id: Optional correlation ID
         """
         self._log_safety_event(
             event_type="action_suppressed",
             operation_type="action_execution",
             reason=reason,
-            metadata=metadata,
+            event_metadata=event_metadata,
             correlation_id=correlation_id,
         )

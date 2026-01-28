@@ -395,7 +395,7 @@ async def list_safety_events(
                 entity_id=event.entity_id,
                 action_id=event.action_id,
                 reason=event.reason,
-                metadata=event.metadata or {},
+                metadata=event.event_metadata or {},
                 correlation_id=event.correlation_id,
                 created_at=event.created_at,
             )
