@@ -163,7 +163,10 @@ subtotal_price as revenue_net,         -- Net revenue (before tax, approximation
    ```sql
    {% if is_incremental() %}
        and airbyte_emitted_at >= (
-           current_date - interval '{{ var("fact_orders_lookback_days", 7) }} days'
+           select coalesce(
+               max(ingested_at) - interval '{{ var("fact_orders_lookback_days", 7) }} days',
+               '1970-01-01'::timestamp with time zone
+           ) from {{ this }}
        )
    {% endif %}
    ```
