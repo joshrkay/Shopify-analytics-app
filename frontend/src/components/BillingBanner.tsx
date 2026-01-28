@@ -4,6 +4,7 @@
  * Displays banners for different billing states:
  * - past_due: Payment issue warning
  * - grace_period: Countdown banner with days remaining
+ * - canceled: Shows access ends at date
  * - expired: Paywall redirect
  */
 
@@ -31,6 +32,24 @@ interface BillingBannerProps {
    * Callback when payment update button is clicked.
    */
   onUpdatePayment?: () => void;
+}
+
+/**
+ * Format date for display.
+ */
+function formatDate(dateString: string | null): string {
+  if (!dateString) return '';
+  
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  } catch {
+    return dateString;
+  }
 }
 
 /**
@@ -100,6 +119,36 @@ export function BillingBanner({
     );
   }
 
+  // Canceled - show banner explaining access ends at date
+  if (billingState === 'canceled') {
+    const periodEnd = entitlements?.current_period_end;
+    const periodEndFormatted = periodEnd ? formatDate(periodEnd) : null;
+
+    return (
+      <Banner
+        title="Subscription Canceled"
+        tone="warning"
+        action={
+          onUpdatePayment
+            ? {
+                content: 'Fix Billing',
+                onAction: onUpdatePayment,
+              }
+            : undefined
+        }
+      >
+        <BlockStack gap="200">
+          <Text as="p">
+            Your subscription has been canceled.
+            {periodEndFormatted
+              ? ` You have read-only access until ${periodEndFormatted}.`
+              : ' You have read-only access until your billing period ends.'}
+          </Text>
+        </BlockStack>
+      </Banner>
+    );
+  }
+
   // Expired - redirect to paywall handled by parent
   if (billingState === 'expired') {
     return (
@@ -118,30 +167,6 @@ export function BillingBanner({
         <BlockStack gap="200">
           <Text as="p">
             Your subscription has expired. Please upgrade to continue using premium features.
-          </Text>
-        </BlockStack>
-      </Banner>
-    );
-  }
-
-  // Canceled - similar to expired
-  if (billingState === 'canceled') {
-    return (
-      <Banner
-        title="Subscription Canceled"
-        tone="warning"
-        action={
-          onUpgrade
-            ? {
-                content: 'Reactivate',
-                onAction: onUpgrade,
-              }
-            : undefined
-        }
-      >
-        <BlockStack gap="200">
-          <Text as="p">
-            Your subscription has been canceled. Upgrade to reactivate premium features.
           </Text>
         </BlockStack>
       </Banner>

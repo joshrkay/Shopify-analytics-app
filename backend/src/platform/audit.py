@@ -119,6 +119,7 @@ class AuditAction(str, Enum):
     # Entitlement events
     ENTITLEMENT_DENIED = "entitlement.denied"
     ENTITLEMENT_ALLOWED = "entitlement.allowed"
+    ENTITLEMENT_DEGRADED_ACCESS_USED = "entitlement.degraded_access_used"
     
     # Job entitlement events
     JOB_SKIPPED_DUE_TO_ENTITLEMENT = "job.skipped_due_to_entitlement"

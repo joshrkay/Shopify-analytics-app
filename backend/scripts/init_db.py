@@ -31,6 +31,7 @@ from src.models.store import ShopifyStore
 from src.models.subscription import Subscription
 from src.models.billing_event import BillingEvent
 from src.models.usage import UsageRecord, UsageAggregate
+from src.models.oauth_credential import OAuthCredential
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
