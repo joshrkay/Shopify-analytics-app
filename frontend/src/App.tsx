@@ -14,6 +14,7 @@ import Analytics from './pages/Analytics';
 import Paywall from './pages/Paywall';
 import InsightsFeed from './pages/InsightsFeed';
 import ApprovalsInbox from './pages/ApprovalsInbox';
+import WhatsNew from './pages/WhatsNew';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
           <Route path="/paywall" element={<Paywall />} />
           <Route path="/insights" element={<InsightsFeed />} />
           <Route path="/approvals" element={<ApprovalsInbox />} />
+          <Route path="/whats-new" element={<WhatsNew />} />
           <Route path="/" element={<Navigate to="/analytics" replace />} />
         </Routes>
       </BrowserRouter>
