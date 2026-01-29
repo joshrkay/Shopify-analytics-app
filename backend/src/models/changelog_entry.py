@@ -150,7 +150,7 @@ class ChangelogEntry(Base, TimestampMixin):
             "is_published", "published_at",
             postgresql_where=(is_published == True)
         ),
-        Index("ix_changelog_entries_release_type", "release_type"),
+        # Note: release_type already has index=True on the column
     )
 
     def __repr__(self) -> str:
