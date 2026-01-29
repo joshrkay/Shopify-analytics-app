@@ -4,6 +4,60 @@ Use these prompts with Claude Code (or claude cowork for parallel execution) to 
 
 ---
 
+## Troubleshooting Guide: When Tests Fail Due to Third-Party Services
+
+When E2E tests fail due to missing API keys or third-party service configuration, use these steps to diagnose and fix:
+
+### Step 1: Identify the Failing Service
+```bash
+# Run tests with verbose output to see which service is failing
+pytest src/tests/e2e/ -v --tb=long 2>&1 | grep -E "Error|Failed|Missing|required"
+```
+
+### Step 2: Look Up API Documentation
+
+**Frontegg (Authentication)**
+- Documentation: https://docs.frontegg.com/
+- API Reference: https://docs.frontegg.com/reference/getting-started-with-your-api
+- Required env vars: `FRONTEGG_CLIENT_ID`, `FRONTEGG_CLIENT_SECRET`, `FRONTEGG_BASE_URL`
+- Get credentials: Frontegg Portal → Settings → API Tokens
+
+**Airbyte (Data Ingestion)**
+- Documentation: https://docs.airbyte.com/
+- API Reference: https://reference.airbyte.com/reference/start
+- Required env vars: `AIRBYTE_API_TOKEN`, `AIRBYTE_WORKSPACE_ID`, `AIRBYTE_BASE_URL`
+- Get credentials: Airbyte Cloud → Settings → API Keys
+
+**Shopify (E-commerce)**
+- Documentation: https://shopify.dev/docs/api
+- Admin API Reference: https://shopify.dev/docs/api/admin-rest
+- Webhooks Guide: https://shopify.dev/docs/apps/webhooks
+- Required env vars: `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`
+- Get credentials: Shopify Partners → Apps → Your App → API credentials
+
+**OpenRouter (LLM/AI)**
+- Documentation: https://openrouter.ai/docs
+- API Reference: https://openrouter.ai/docs/api-reference
+- Required env vars: `OPENROUTER_API_KEY`
+- Get credentials: https://openrouter.ai/keys
+
+### Step 3: Verify Configuration
+```bash
+# Check what env vars are currently set
+env | grep -E "FRONTEGG|AIRBYTE|SHOPIFY|OPENROUTER|ENCRYPTION"
+
+# Verify the app can load with current config
+cd backend && PYTHONPATH=. python -c "from main import app; print('App loaded successfully')"
+```
+
+### Step 4: Update Mock Configuration
+If the real service isn't available, ensure mocks are properly configured:
+1. Check `backend/src/tests/e2e/mocks/` for the relevant mock
+2. Verify the mock handles the endpoints being called
+3. Ensure the mock is injected via `conftest.py` dependency overrides
+
+---
+
 ## Prompt 1: Fix Authentication Mocking (P0 - Blocking)
 
 ```
@@ -369,15 +423,137 @@ For sequential execution, run prompts in this order:
 4. **Prompt 3** - Shopify client injection
 5. **Prompt 4** - Service dependency injection
 6. **Prompt 5** - Webhook simulator
-7. **Prompt 8** - OpenRouter mocking
-8. **Prompt 6** - API-based helpers
-9. **Prompt 7** - Data verification
-10. **Prompt 9** - Full pipeline test
+7. **Prompt 12** - Add missing webhook endpoints (if needed)
+8. **Prompt 8** - OpenRouter mocking
+9. **Prompt 6** - API-based helpers
+10. **Prompt 7** - Data verification
+11. **Prompt 9** - Full pipeline test
+12. **Prompt 11** - Use for any remaining failures (troubleshooting)
 
 For parallel execution with `claude cowork`:
 - Group 1 (can run together): Prompts 1, 2, 3, 8
-- Group 2 (after Group 1): Prompts 4, 5
+- Group 2 (after Group 1): Prompts 4, 5, 12
 - Group 3 (after Group 2): Prompts 6, 7, 9
+- On-demand: Prompt 11 (troubleshooting)
+
+---
+
+## Prompt 11: Diagnose and Fix Third-Party Service Failures (Troubleshooting)
+
+```
+A test is failing due to a third-party service issue. Diagnose and fix it.
+
+Steps:
+
+1. Run the failing test with full output:
+   ```bash
+   cd backend && PYTHONPATH=. pytest src/tests/e2e/<test_file>::<test_name> -v --tb=long 2>&1
+   ```
+
+2. Identify which service is failing by looking for:
+   - Connection errors (service not mocked)
+   - Authentication errors (missing/invalid credentials)
+   - 404 errors (endpoint not mocked)
+   - Timeout errors (mock not responding)
+
+3. Based on the error, take action:
+
+   **If Frontegg/Auth error:**
+   - Check `mock_frontegg.py` issuer matches middleware expectation
+   - Verify `conftest.py` patches `TenantContextMiddleware._get_jwks_client`
+   - Ensure token audience matches `FRONTEGG_CLIENT_ID`
+   - Documentation: https://docs.frontegg.com/reference/getting-started-with-your-api
+
+   **If Airbyte error:**
+   - Check `mock_airbyte.py` has `handle_request()` method
+   - Verify it handles: POST /v1/connections/*/sync, GET /v1/jobs/*
+   - Ensure mock is injected via dependency override
+   - Documentation: https://reference.airbyte.com/reference/start
+
+   **If Shopify error:**
+   - Check `mock_shopify.py` handles the endpoint being called
+   - For webhooks: verify HMAC calculation matches
+   - For API calls: ensure mock returns correct response structure
+   - Documentation: https://shopify.dev/docs/api/admin-rest
+
+   **If OpenRouter/LLM error:**
+   - Check `mock_openrouter.py` handles POST /api/v1/chat/completions
+   - Ensure response format matches OpenAI spec
+   - Documentation: https://openrouter.ai/docs/api-reference
+
+4. If the service needs real credentials (not mocked):
+   - Search for where credentials are loaded: `grep -r "os.getenv.*<SERVICE>" backend/src/`
+   - Check the service's documentation for how to obtain API keys
+   - Add credentials to `.env` file or environment
+   - For tests, prefer mocking over real credentials
+
+5. Verify the fix:
+   ```bash
+   pytest src/tests/e2e/<test_file>::<test_name> -v --tb=short
+   ```
+
+Common issues and solutions:
+- "Connection refused" → Mock not injected, real HTTP call being made
+- "401 Unauthorized" → Token issuer/audience mismatch, or JWKS not mocked
+- "404 Not Found" → Endpoint path doesn't exist or mock doesn't handle it
+- "Missing env var" → Add to conftest.py os.environ.setdefault()
+```
+
+---
+
+## Prompt 12: Add Missing Webhook Endpoints (Feature Gap)
+
+```
+The E2E tests expect webhook endpoints that don't exist. Add them.
+
+Current state:
+- App has: /subscription-update, /app-uninstalled, /customers-redact, /shop-redact
+- Tests expect: /orders-create, /orders-updated (for orders/create, orders/updated topics)
+
+Steps:
+
+1. Read existing webhook handlers:
+   ```bash
+   cat backend/src/api/routes/webhooks_shopify.py
+   ```
+
+2. Add new webhook endpoint for orders:
+   ```python
+   @router.post("/orders-create", response_model=WebhookResponse)
+   async def handle_orders_create(
+       request: Request,
+       x_shopify_hmac_sha256: str = Header(...),
+       x_shopify_shop_domain: str = Header(...),
+       x_shopify_topic: str = Header(...),
+   ):
+       """Handle orders/create webhook from Shopify."""
+       body, shop_domain = await get_verified_webhook_body(request)
+
+       # Process the order data
+       order = body
+       logger.info(f"Received order {order.get('id')} from {shop_domain}")
+
+       # Store in database or queue for processing
+       # ... implementation depends on business logic
+
+       return WebhookResponse(message="Order received")
+   ```
+
+3. Add similar endpoint for orders/updated:
+   - Handle refunds (check for refunds array in payload)
+   - Handle cancellations (check cancelled_at field)
+
+4. Update the webhook simulator path:
+   - In `mock_shopify.py`, change `/api/webhooks/shopify` to `/api/webhooks/shopify/orders-create`
+   - Or add a topic-based router
+
+5. Verify:
+   ```bash
+   pytest src/tests/e2e/test_api_endpoints.py::TestWebhookHandlers -v
+   ```
+
+Shopify webhook payload reference: https://shopify.dev/docs/api/admin-rest/2024-01/resources/webhook
+```
 
 ---
 
