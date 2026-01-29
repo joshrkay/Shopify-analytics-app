@@ -159,6 +159,9 @@ class AuditAction(str, Enum):
     GOVERNANCE_CONFIG_CHANGED = "governance.config_changed"
     GOVERNANCE_RETENTION_APPLIED = "governance.retention_applied"
 
+    # Security events (Story 10.6)
+    SECURITY_CROSS_TENANT_DENIED = "security.cross_tenant_denied"
+
 
 class AuditOutcome(str, Enum):
     """Outcome of the audited action."""

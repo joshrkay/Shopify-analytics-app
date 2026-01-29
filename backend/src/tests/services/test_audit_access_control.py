@@ -232,6 +232,29 @@ class TestAuditAccessControl:
         assert exc_info.value.status_code == 403
         assert "Access denied" in str(exc_info.value.detail)
 
+    def test_validate_access_logs_audit_event_when_db_provided(self):
+        """validate_access should log audit event when db_session provided."""
+        ctx = AuditAccessContext(
+            user_id="user-1",
+            role="merchant_admin",
+            tenant_id="tenant-1",
+            allowed_tenants=set(),
+            is_super_admin=False,
+        )
+        ac = AuditAccessControl(ctx)
+        mock_db = MagicMock()
+
+        with patch(
+            "src.services.audit_access_control.log_system_audit_event_sync"
+        ) as mock_log:
+            with pytest.raises(Exception):
+                ac.validate_access("tenant-2", db_session=mock_db)
+
+            mock_log.assert_called_once()
+            call_kwargs = mock_log.call_args[1]
+            assert call_kwargs["tenant_id"] == "tenant-1"
+            assert call_kwargs["metadata"]["target_tenant"] == "tenant-2"
+
     def test_validate_access_super_admin_never_raises(self):
         """Super admin validate_access should never raise."""
         ctx = AuditAccessContext(

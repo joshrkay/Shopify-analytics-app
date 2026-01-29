@@ -153,7 +153,7 @@ class AuditAccessControl:
         # Multiple tenants - use IN clause
         return query.filter(tenant_id_column.in_(accessible))
 
-    def validate_access(self, target_tenant_id: str) -> None:
+    def validate_access(self, target_tenant_id: str, db_session=None) -> None:
         """
         Validate access and raise HTTPException if denied.
 
@@ -161,6 +161,7 @@ class AuditAccessControl:
 
         Args:
             target_tenant_id: Tenant ID to validate access for
+            db_session: Optional database session for audit logging
 
         Raises:
             HTTPException: 403 if access is denied
@@ -175,6 +176,17 @@ class AuditAccessControl:
                     "role": self.context.role,
                 }
             )
+
+            # Log to audit system if db session provided
+            if db_session is not None:
+                _log_cross_tenant_attempt(
+                    db_session=db_session,
+                    user_id=self.context.user_id,
+                    requesting_tenant=self.context.tenant_id,
+                    target_tenant=target_tenant_id,
+                    role=self.context.role,
+                )
+
             raise HTTPException(
                 status_code=403,
                 detail=f"Access denied to tenant {target_tenant_id}"
@@ -214,3 +226,42 @@ def get_audit_access_control(request: Request) -> AuditAccessControl:
     """
     context = get_audit_access_context(request)
     return AuditAccessControl(context)
+
+
+def _log_cross_tenant_attempt(
+    db_session,
+    user_id: str,
+    requesting_tenant: str,
+    target_tenant: str,
+    role: str,
+) -> None:
+    """
+    Log cross-tenant access attempt to audit system.
+
+    Internal function called by validate_access when db_session is provided.
+    """
+    # Lazy import to avoid circular dependency
+    from src.platform.audit import (
+        AuditAction,
+        AuditOutcome,
+        log_system_audit_event_sync,
+    )
+
+    try:
+        log_system_audit_event_sync(
+            db=db_session,
+            tenant_id=requesting_tenant,
+            action=AuditAction.SECURITY_CROSS_TENANT_DENIED,
+            metadata={
+                "target_tenant": target_tenant,
+                "user_id": user_id,
+                "role": role,
+            },
+            outcome=AuditOutcome.DENIED,
+        )
+    except Exception as e:
+        # Don't fail the request if audit logging fails
+        logger.error(
+            "Failed to log cross-tenant access attempt",
+            extra={"error": str(e), "user_id": user_id},
+        )

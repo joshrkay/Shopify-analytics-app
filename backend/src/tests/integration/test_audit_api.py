@@ -417,18 +417,11 @@ class TestTenantIsolation:
 
     def test_logs_are_tenant_scoped(self, client, tenant_id, user_id):
         """Should only return logs for the authenticated tenant."""
-        other_tenant_log = AuditLog(
-            id=str(uuid.uuid4()),
-            tenant_id="other-tenant",  # Different tenant
-            user_id=user_id,
-            action="ai.action.executed",
-            timestamp=datetime.now(timezone.utc),
-        )
-
         mock_tenant_context = Mock()
         mock_tenant_context.tenant_id = tenant_id
         mock_tenant_context.user_id = user_id
         mock_tenant_context.roles = ["merchant_admin"]
+        mock_tenant_context.allowed_tenants = [tenant_id]
 
         mock_db = Mock()
         mock_query = Mock()
@@ -450,3 +443,144 @@ class TestTenantIsolation:
         # Verify by checking filter was called with tenant_id
         filter_calls = mock_query.filter.call_args_list
         assert len(filter_calls) > 0
+
+
+# =============================================================================
+# RBAC Access Control Tests (Story 10.6)
+# =============================================================================
+
+
+class TestAuditRBAC:
+    """Tests for RBAC enforcement on audit endpoints (Story 10.6)."""
+
+    def test_merchant_cannot_access_other_tenant(self, client, tenant_id, user_id):
+        """Merchant should get 403 when requesting another tenant's logs."""
+        mock_tenant_context = Mock()
+        mock_tenant_context.tenant_id = tenant_id
+        mock_tenant_context.user_id = user_id
+        mock_tenant_context.roles = ["merchant_admin"]
+        mock_tenant_context.allowed_tenants = [tenant_id]
+
+        mock_db = Mock()
+
+        with patch('src.api.routes.audit.get_tenant_context', return_value=mock_tenant_context):
+            with patch('src.api.routes.audit.get_db_session', return_value=mock_db):
+                response = client.get("/api/audit/logs?tenant_id=other-tenant")
+
+        assert response.status_code == 403
+        assert "Access denied" in response.json()["detail"]
+
+    def test_super_admin_can_access_any_tenant(self, client, user_id):
+        """Super admin should access any tenant's logs."""
+        mock_tenant_context = Mock()
+        mock_tenant_context.tenant_id = "admin-tenant"
+        mock_tenant_context.user_id = user_id
+        mock_tenant_context.roles = ["super_admin"]
+        mock_tenant_context.allowed_tenants = []
+
+        mock_db = Mock()
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_query.count.return_value = 0
+        mock_db.query.return_value = mock_query
+
+        with patch('src.api.routes.audit.get_tenant_context', return_value=mock_tenant_context):
+            with patch('src.api.routes.audit.get_db_session', return_value=mock_db):
+                response = client.get("/api/audit/logs?tenant_id=any-tenant")
+
+        assert response.status_code == 200
+
+    def test_agency_can_access_allowed_tenants(self, client, user_id):
+        """Agency user should access allowed_tenants."""
+        mock_tenant_context = Mock()
+        mock_tenant_context.tenant_id = "agency-tenant"
+        mock_tenant_context.user_id = user_id
+        mock_tenant_context.roles = ["agency_admin"]
+        mock_tenant_context.allowed_tenants = ["agency-tenant", "client-tenant-1", "client-tenant-2"]
+
+        mock_db = Mock()
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_query.count.return_value = 0
+        mock_db.query.return_value = mock_query
+
+        with patch('src.api.routes.audit.get_tenant_context', return_value=mock_tenant_context):
+            with patch('src.api.routes.audit.get_db_session', return_value=mock_db):
+                response = client.get("/api/audit/logs?tenant_id=client-tenant-1")
+
+        assert response.status_code == 200
+
+    def test_agency_cannot_access_non_allowed_tenant(self, client, user_id):
+        """Agency user should get 403 for non-allowed tenant."""
+        mock_tenant_context = Mock()
+        mock_tenant_context.tenant_id = "agency-tenant"
+        mock_tenant_context.user_id = user_id
+        mock_tenant_context.roles = ["agency_admin"]
+        mock_tenant_context.allowed_tenants = ["agency-tenant", "client-tenant-1"]
+
+        mock_db = Mock()
+
+        with patch('src.api.routes.audit.get_tenant_context', return_value=mock_tenant_context):
+            with patch('src.api.routes.audit.get_db_session', return_value=mock_db):
+                response = client.get("/api/audit/logs?tenant_id=unauthorized-tenant")
+
+        assert response.status_code == 403
+
+    def test_get_single_log_validates_access(self, client, tenant_id, user_id, sample_audit_log):
+        """GET /logs/{id} should validate tenant access."""
+        # Create a log belonging to another tenant
+        other_tenant_log = AuditLog(
+            id=str(uuid.uuid4()),
+            tenant_id="other-tenant",
+            user_id="other-user",
+            action="ai.action.executed",
+            timestamp=datetime.now(timezone.utc),
+        )
+
+        mock_tenant_context = Mock()
+        mock_tenant_context.tenant_id = tenant_id
+        mock_tenant_context.user_id = user_id
+        mock_tenant_context.roles = ["merchant_admin"]
+        mock_tenant_context.allowed_tenants = [tenant_id]
+
+        mock_db = Mock()
+        mock_query = Mock()
+        mock_query.filter.return_value.first.return_value = other_tenant_log
+        mock_db.query.return_value = mock_query
+
+        with patch('src.api.routes.audit.get_tenant_context', return_value=mock_tenant_context):
+            with patch('src.api.routes.audit.get_db_session', return_value=mock_db):
+                response = client.get(f"/api/audit/logs/{other_tenant_log.id}")
+
+        assert response.status_code == 403
+
+    def test_cross_tenant_attempt_logs_audit_event(self, client, tenant_id, user_id):
+        """Cross-tenant access attempt should log security audit event."""
+        mock_tenant_context = Mock()
+        mock_tenant_context.tenant_id = tenant_id
+        mock_tenant_context.user_id = user_id
+        mock_tenant_context.roles = ["merchant_admin"]
+        mock_tenant_context.allowed_tenants = [tenant_id]
+
+        mock_db = Mock()
+
+        with patch('src.api.routes.audit.get_tenant_context', return_value=mock_tenant_context):
+            with patch('src.api.routes.audit.get_db_session', return_value=mock_db):
+                with patch('src.services.audit_access_control.log_system_audit_event_sync') as mock_log:
+                    response = client.get("/api/audit/logs?tenant_id=other-tenant")
+
+        assert response.status_code == 403
+        # Verify audit log was called
+        mock_log.assert_called_once()
+        call_kwargs = mock_log.call_args[1]
+        assert call_kwargs["tenant_id"] == tenant_id
+        assert "target_tenant" in call_kwargs["metadata"]
+        assert call_kwargs["metadata"]["target_tenant"] == "other-tenant"

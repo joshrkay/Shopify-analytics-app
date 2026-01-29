@@ -24,6 +24,7 @@ from sqlalchemy import func
 
 from src.platform.tenant_context import get_tenant_context
 from src.platform.audit import AuditLog
+from src.services.audit_access_control import get_audit_access_control
 from src.platform.audit_events import get_event_severity, EVENT_CATEGORIES
 from src.platform.feature_flags import is_kill_switch_active, FeatureFlag
 from src.database.session import get_db_session
@@ -56,6 +57,7 @@ router = APIRouter(prefix="/api/audit", tags=["audit"])
 async def list_audit_logs(
     request: Request,
     db_session=Depends(get_db_session),
+    tenant_id: Optional[str] = Query(None, description="Filter by tenant (super admin/agency only)"),
     action: Optional[str] = Query(None, description="Filter by action type"),
     resource_type: Optional[str] = Query(None, description="Filter by resource type"),
     resource_id: Optional[str] = Query(None, description="Filter by resource ID"),
@@ -71,25 +73,35 @@ async def list_audit_logs(
     """
     Query audit logs with filters.
 
-    Returns paginated audit log entries for the authenticated tenant.
+    Returns paginated audit log entries for accessible tenants.
 
-    SECURITY: Only returns logs belonging to the authenticated tenant.
+    SECURITY:
+    - Merchants see only their own tenant
+    - Agency users see their allowed_tenants
+    - Super admins see all tenants
     """
-    tenant_ctx = get_tenant_context(request)
+    access_control = get_audit_access_control(request)
 
     logger.info(
         "Audit logs query",
         extra={
-            "tenant_id": tenant_ctx.tenant_id,
+            "tenant_id": access_control.context.tenant_id,
+            "requested_tenant_id": tenant_id,
             "action": action,
             "resource_type": resource_type,
         },
     )
 
-    # Build query with tenant isolation
-    query = db_session.query(AuditLog).filter(
-        AuditLog.tenant_id == tenant_ctx.tenant_id
-    )
+    # Build query with RBAC-based tenant filtering
+    query = db_session.query(AuditLog)
+
+    if tenant_id:
+        # Explicit tenant requested - validate access
+        access_control.validate_access(tenant_id, db_session=db_session)
+        query = query.filter(AuditLog.tenant_id == tenant_id)
+    else:
+        # Auto-filter based on user's accessible tenants
+        query = access_control.filter_query(query, AuditLog.tenant_id)
 
     # Apply filters
     if action:
@@ -178,24 +190,21 @@ async def get_audit_log(
     """
     Get a single audit log entry.
 
-    SECURITY: Only returns log if it belongs to the authenticated tenant.
+    SECURITY: Only returns log if user has access to the log's tenant.
     """
-    tenant_ctx = get_tenant_context(request)
+    access_control = get_audit_access_control(request)
 
-    log = (
-        db_session.query(AuditLog)
-        .filter(
-            AuditLog.id == log_id,
-            AuditLog.tenant_id == tenant_ctx.tenant_id,
-        )
-        .first()
-    )
+    # First fetch the log without tenant filter
+    log = db_session.query(AuditLog).filter(AuditLog.id == log_id).first()
 
     if not log:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Audit log not found",
         )
+
+    # Validate access to this log's tenant
+    access_control.validate_access(log.tenant_id, db_session=db_session)
 
     return AuditLogEntry(
         id=log.id,
@@ -219,6 +228,7 @@ async def get_audit_log(
 async def get_audit_summary(
     request: Request,
     db_session=Depends(get_db_session),
+    tenant_id: Optional[str] = Query(None, description="Filter by tenant (super admin/agency only)"),
     start_date: Optional[datetime] = Query(
         None, description="Start of date range (defaults to 7 days ago)"
     ),
@@ -231,7 +241,7 @@ async def get_audit_summary(
 
     Returns counts grouped by action, severity, and resource type.
     """
-    tenant_ctx = get_tenant_context(request)
+    access_control = get_audit_access_control(request)
 
     # Default date range: last 7 days
     if not end_date:
@@ -239,9 +249,16 @@ async def get_audit_summary(
     if not start_date:
         start_date = end_date - timedelta(days=7)
 
-    # Base query
-    base_query = db_session.query(AuditLog).filter(
-        AuditLog.tenant_id == tenant_ctx.tenant_id,
+    # Base query with RBAC filtering
+    base_query = db_session.query(AuditLog)
+
+    if tenant_id:
+        access_control.validate_access(tenant_id, db_session=db_session)
+        base_query = base_query.filter(AuditLog.tenant_id == tenant_id)
+    else:
+        base_query = access_control.filter_query(base_query, AuditLog.tenant_id)
+
+    base_query = base_query.filter(
         AuditLog.timestamp >= start_date,
         AuditLog.timestamp <= end_date,
     )
@@ -296,19 +313,17 @@ async def get_correlated_logs(
 
     Useful for tracing request chains across services.
 
-    SECURITY: Only returns logs belonging to the authenticated tenant.
+    SECURITY: Only returns logs for accessible tenants.
     """
-    tenant_ctx = get_tenant_context(request)
+    access_control = get_audit_access_control(request)
 
-    logs = (
-        db_session.query(AuditLog)
-        .filter(
-            AuditLog.tenant_id == tenant_ctx.tenant_id,
-            AuditLog.correlation_id == correlation_id,
-        )
-        .order_by(AuditLog.timestamp.asc())
-        .all()
+    # Build query with RBAC filtering
+    query = db_session.query(AuditLog).filter(
+        AuditLog.correlation_id == correlation_id,
     )
+    query = access_control.filter_query(query, AuditLog.tenant_id)
+
+    logs = query.order_by(AuditLog.timestamp.asc()).all()
 
     return AuditLogsResponse(
         logs=[
