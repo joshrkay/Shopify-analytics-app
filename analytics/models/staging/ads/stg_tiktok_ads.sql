@@ -3,7 +3,8 @@
         materialized='incremental',
         schema='staging',
         unique_key=['tenant_id', 'ad_account_id', 'campaign_id', 'adgroup_id', 'ad_id', 'date'],
-        incremental_strategy='delete+insert'
+        incremental_strategy='delete+insert',
+        enabled=var('enable_tiktok_ads', true)
     )
 }}
 
@@ -16,6 +17,7 @@
     - Maps to canonical channel taxonomy
     - Supports incremental processing with configurable lookback window
     - Excludes PII fields
+    - Returns empty result if source table doesn't exist yet
 
     Required output columns (staging contract):
     - tenant_id, report_date, source, platform_channel, canonical_channel
@@ -24,6 +26,48 @@
     - cpm, cpc, ctr, cpa, roas_platform (derived where possible)
 #}
 
+-- Check if source table exists; if not, return empty result set
+{% if not source_exists('airbyte_raw', '_airbyte_raw_tiktok_ads') %}
+
+-- Source table does not exist yet; return empty result with correct schema
+select
+    cast(null as text) as tenant_id,
+    cast(null as date) as report_date,
+    cast(null as date) as date,
+    cast(null as text) as source,
+    cast(null as text) as ad_account_id,
+    cast(null as text) as campaign_id,
+    cast(null as text) as adgroup_id,
+    cast(null as text) as ad_id,
+    cast(null as text) as internal_account_id,
+    cast(null as text) as internal_campaign_id,
+    cast(null as text) as platform_channel,
+    cast(null as text) as canonical_channel,
+    cast(null as numeric) as spend,
+    cast(null as integer) as impressions,
+    cast(null as integer) as clicks,
+    cast(null as numeric) as conversions,
+    cast(null as numeric) as conversion_value,
+    cast(null as text) as currency,
+    cast(null as numeric) as cpm,
+    cast(null as numeric) as cpc,
+    cast(null as numeric) as ctr,
+    cast(null as numeric) as cpa,
+    cast(null as numeric) as roas_platform,
+    cast(null as text) as campaign_name,
+    cast(null as text) as adgroup_name,
+    cast(null as text) as ad_name,
+    cast(null as text) as objective,
+    cast(null as integer) as reach,
+    cast(null as numeric) as frequency,
+    cast(null as numeric) as cost_per_conversion,
+    cast(null as text) as platform,
+    cast(null as text) as airbyte_record_id,
+    cast(null as timestamp) as airbyte_emitted_at
+where 1=0
+
+{% else %}
+
 with raw_tiktok_ads as (
     select
         _airbyte_ab_id as airbyte_record_id,
@@ -31,7 +75,7 @@ with raw_tiktok_ads as (
         _airbyte_data as ad_data
     from {{ source('airbyte_raw', '_airbyte_raw_tiktok_ads') }}
     {% if is_incremental() %}
-    where _airbyte_emitted_at >= current_timestamp - interval '{{ get_lookback_days("tiktok_ads") }} days'
+    where _airbyte_emitted_at >= current_timestamp - interval '{{ var("tiktok_ads_lookback_days", 3) }} days'
     {% endif %}
 ),
 
@@ -357,5 +401,7 @@ where tenant_id is not null
     and trim(campaign_id) != ''
     and date is not null
     {% if is_incremental() %}
-    and date >= current_date - {{ get_lookback_days('tiktok_ads') }}
+    and date >= current_date - {{ var("tiktok_ads_lookback_days", 3) }}
     {% endif %}
+
+{% endif %}

@@ -3,7 +3,8 @@
         materialized='incremental',
         schema='staging',
         unique_key=['tenant_id', 'activity_id'],
-        incremental_strategy='delete+insert'
+        incremental_strategy='delete+insert',
+        enabled=var('enable_shopify_email', true)
     )
 }}
 
@@ -17,6 +18,7 @@
     - Includes revenue attribution for conversion events
     - Supports incremental processing with configurable lookback window
     - Excludes PII fields (email addresses are hashed)
+    - Returns empty result if source table doesn't exist yet
 
     Shopify Email Activity Types:
     - email_sent: Email was sent
@@ -33,6 +35,37 @@
     - customer_id_hash (hashed for privacy)
     - revenue, currency (for conversion events)
 #}
+
+-- Check if source table exists; if not, return empty result set
+{% if not source_exists('airbyte_raw', '_airbyte_raw_shopify_email_activities') %}
+
+select
+    cast(null as text) as tenant_id,
+    cast(null as text) as activity_id,
+    cast(null as text) as event_type,
+    cast(null as text) as event_type_raw,
+    cast(null as timestamp) as event_timestamp,
+    cast(null as date) as report_date,
+    cast(null as text) as source,
+    cast(null as text) as customer_id_hash,
+    cast(null as text) as campaign_id,
+    cast(null as text) as campaign_name,
+    cast(null as text) as marketing_channel,
+    cast(null as text) as internal_campaign_id,
+    cast(null as text) as platform_channel,
+    cast(null as text) as canonical_channel,
+    cast(null as text) as email_subject,
+    cast(null as text) as clicked_url,
+    cast(null as text) as bounce_type,
+    cast(null as numeric) as revenue,
+    cast(null as text) as currency,
+    cast(null as text) as order_id,
+    cast(null as text) as platform,
+    cast(null as text) as airbyte_record_id,
+    cast(null as timestamp) as airbyte_emitted_at
+where 1=0
+
+{% else %}
 
 with raw_shopify_email as (
     select
@@ -266,3 +299,5 @@ where tenant_id is not null
     {% if is_incremental() %}
     and report_date >= current_date - {{ var("shopify_email_lookback_days", 3) }}
     {% endif %}
+
+{% endif %}
