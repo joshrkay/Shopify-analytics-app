@@ -68,6 +68,17 @@ from src.models.llm_routing import (
     LLMUsageLog,
     LLMResponseStatus,
 )
+from src.models.changelog_entry import (
+    ChangelogEntry,
+    ReleaseType,
+    FEATURE_AREAS,
+)
+from src.models.changelog_read_status import ChangelogReadStatus
+from src.models.data_change_event import (
+    DataChangeEvent,
+    DataChangeEventType,
+    AFFECTED_METRICS,
+)
 
 __all__ = [
     "TimestampMixin",
@@ -153,4 +164,13 @@ __all__ = [
     "LLMPromptTemplate",
     "LLMUsageLog",
     "LLMResponseStatus",
+    # Changelog models (Story 9.7)
+    "ChangelogEntry",
+    "ReleaseType",
+    "FEATURE_AREAS",
+    "ChangelogReadStatus",
+    # Data Change Event models (Story 9.8)
+    "DataChangeEvent",
+    "DataChangeEventType",
+    "AFFECTED_METRICS",
 ]
