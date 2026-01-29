@@ -231,9 +231,10 @@ async def mark_entry_as_read(
         )
 
     # Get updated unread count
-    result = service.get_unread_count()
-
     db_session.commit()
+
+    # Get updated unread count
+    result = service.get_unread_count()
 
     return ChangelogMarkReadResponse(
         marked_count=1,
