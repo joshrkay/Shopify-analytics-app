@@ -164,6 +164,11 @@ class AuditAction(str, Enum):
     # Security events (Story 10.6)
     SECURITY_CROSS_TENANT_DENIED = "security.cross_tenant_denied"
 
+    # Retention events (Story 10.4)
+    AUDIT_RETENTION_STARTED = "audit.retention.started"
+    AUDIT_RETENTION_COMPLETED = "audit.retention.completed"
+    AUDIT_RETENTION_FAILED = "audit.retention.failed"
+
 
 class AuditOutcome(str, Enum):
     """Outcome of the audited action."""
