@@ -48,6 +48,7 @@ from src.services.platform_executors import (
     RetryConfig,
 )
 from src.services.action_safety_service import ActionSafetyService
+from src.services.data_change_aggregator import DataChangeAggregator
 from src.platform.feature_flags import is_kill_switch_active, FeatureFlag
 
 
@@ -126,6 +127,12 @@ class ActionExecutionService:
             db_session=db_session,
             tenant_id=tenant_id,
             billing_tier=billing_tier,
+        )
+
+        # Data change aggregator for "What Changed?" panel (Story 9.8)
+        self._data_change_aggregator = DataChangeAggregator(
+            db_session=db_session,
+            tenant_id=tenant_id,
         )
 
     @property
@@ -265,6 +272,22 @@ class ActionExecutionService:
                     entity_id=action.target_entity_id,
                     action_type=action.action_type.value,
                 )
+
+                # Record data change event for "What Changed?" panel (Story 9.8)
+                try:
+                    self._data_change_aggregator.record_ai_action_executed_simple(
+                        action_id=action.id,
+                        action_type=action.action_type.value,
+                        target_name=action.target_entity_id,
+                        platform=action.platform,
+                        before_state=before_state.to_dict() if before_state else None,
+                        after_state=after_state.to_dict() if after_state else None,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to record AI action executed event",
+                        extra={"error": str(e), "action_id": action.id},
+                    )
 
                 logger.info(
                     "Action executed successfully",

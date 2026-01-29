@@ -876,3 +876,219 @@ class DataChangeAggregator:
             return "Connector has been removed. Historical data is preserved."
         else:
             return "Connection status has changed."
+
+    # =========================================================================
+    # Simplified Recording Methods (for services without SyncRun objects)
+    # =========================================================================
+
+    def record_sync_completed_simple(
+        self,
+        connection_id: str,
+        connector_name: str,
+        rows_synced: Optional[int] = None,
+        duration_seconds: Optional[float] = None,
+        job_id: Optional[str] = None,
+    ) -> DataChangeEvent:
+        """
+        Record a sync completion event without a SyncRun object.
+
+        Used by the sync orchestrator when SyncRun tracking is not enabled.
+
+        Args:
+            connection_id: Internal connection ID
+            connector_name: Human-readable connector name
+            rows_synced: Number of rows synced (optional)
+            duration_seconds: Duration in seconds (optional)
+            job_id: External job ID (optional)
+
+        Returns:
+            Created DataChangeEvent
+        """
+        rows_info = f"{rows_synced:,} rows" if rows_synced else "data"
+        duration_info = f" in {duration_seconds:.0f}s" if duration_seconds else ""
+
+        event = DataChangeEvent(
+            tenant_id=self.tenant_id,
+            event_type=DataChangeEventType.SYNC_COMPLETED.value,
+            title=f"{connector_name} sync completed",
+            description=f"Successfully synced {rows_info}{duration_info}.",
+            affected_metrics=SYNC_AFFECTED_METRICS,
+            affected_connector_id=connection_id,
+            affected_connector_name=connector_name,
+            impact_summary=f"Data updated with {rows_info} from {connector_name}.",
+            source_entity_type="sync_job",
+            source_entity_id=job_id,
+            occurred_at=datetime.now(timezone.utc),
+        )
+
+        self.db.add(event)
+        self.db.flush()
+
+        logger.info(
+            "Recorded sync completed event (simple)",
+            extra={
+                "tenant_id": self.tenant_id,
+                "event_id": event.id,
+                "connector_id": connection_id,
+                "rows_synced": rows_synced,
+            },
+        )
+
+        return event
+
+    def record_sync_failed_simple(
+        self,
+        connection_id: str,
+        connector_name: str,
+        error_message: Optional[str] = None,
+        job_id: Optional[str] = None,
+    ) -> DataChangeEvent:
+        """
+        Record a sync failure event without a SyncRun object.
+
+        Used by the sync orchestrator when SyncRun tracking is not enabled.
+
+        Args:
+            connection_id: Internal connection ID
+            connector_name: Human-readable connector name
+            error_message: Error message (will be sanitized)
+            job_id: External job ID (optional)
+
+        Returns:
+            Created DataChangeEvent
+        """
+        error_summary = self._sanitize_error_message(error_message) or "Unknown error"
+
+        event = DataChangeEvent(
+            tenant_id=self.tenant_id,
+            event_type=DataChangeEventType.SYNC_FAILED.value,
+            title=f"{connector_name} sync failed",
+            description=f"Sync failed: {error_summary}",
+            affected_metrics=SYNC_AFFECTED_METRICS,
+            affected_connector_id=connection_id,
+            affected_connector_name=connector_name,
+            impact_summary=f"Data from {connector_name} may be stale until sync is restored.",
+            source_entity_type="sync_job",
+            source_entity_id=job_id,
+            occurred_at=datetime.now(timezone.utc),
+        )
+
+        self.db.add(event)
+        self.db.flush()
+
+        logger.info(
+            "Recorded sync failed event (simple)",
+            extra={
+                "tenant_id": self.tenant_id,
+                "event_id": event.id,
+                "connector_id": connection_id,
+            },
+        )
+
+        return event
+
+    def record_ai_action_executed_simple(
+        self,
+        action_id: str,
+        action_type: str,
+        target_name: str,
+        platform: Optional[str] = None,
+        before_state: Optional[dict] = None,
+        after_state: Optional[dict] = None,
+    ) -> DataChangeEvent:
+        """
+        Record an AI action execution event without an ActionProposal object.
+
+        Used by the action execution service.
+
+        Args:
+            action_id: Action ID
+            action_type: Type of action (e.g., "pause_campaign")
+            target_name: Target entity name (will be sanitized)
+            platform: Target platform (optional)
+            before_state: State before execution (optional)
+            after_state: State after execution (optional)
+
+        Returns:
+            Created DataChangeEvent
+        """
+        sanitized_target = self._sanitize_target_name(target_name)
+        platform_info = f" on {platform}" if platform else ""
+
+        # Generate a simple change summary if states are provided
+        impact = "This action may cause changes in ad performance metrics."
+        if before_state and after_state:
+            changes = self._compute_state_diff(before_state, after_state)
+            if changes:
+                impact = f"Changed: {changes}. Metrics may be affected."
+
+        event = DataChangeEvent(
+            tenant_id=self.tenant_id,
+            event_type=DataChangeEventType.AI_ACTION_EXECUTED.value,
+            title=f"AI action executed: {action_type}",
+            description=f"Executed {action_type} for {sanitized_target}{platform_info}.",
+            affected_metrics=AI_ACTION_AFFECTED_METRICS,
+            impact_summary=impact,
+            source_entity_type="ai_action",
+            source_entity_id=action_id,
+            occurred_at=datetime.now(timezone.utc),
+        )
+
+        self.db.add(event)
+        self.db.flush()
+
+        logger.info(
+            "Recorded AI action executed event (simple)",
+            extra={
+                "tenant_id": self.tenant_id,
+                "event_id": event.id,
+                "action_id": action_id,
+                "action_type": action_type,
+            },
+        )
+
+        return event
+
+    def _compute_state_diff(
+        self,
+        before: dict,
+        after: dict,
+    ) -> Optional[str]:
+        """
+        Compute a human-readable diff between before and after states.
+
+        Args:
+            before: State before change
+            after: State after change
+
+        Returns:
+            Human-readable diff string, or None if no changes
+        """
+        changes = []
+
+        # Only compare top-level keys for simplicity
+        all_keys = set(before.keys()) | set(after.keys())
+
+        for key in all_keys:
+            before_val = before.get(key)
+            after_val = after.get(key)
+
+            if before_val != after_val:
+                # Format the key for display
+                display_key = key.replace("_", " ").title()
+
+                if before_val is None:
+                    changes.append(f"{display_key} set to {after_val}")
+                elif after_val is None:
+                    changes.append(f"{display_key} removed")
+                else:
+                    changes.append(f"{display_key}: {before_val} -> {after_val}")
+
+        if not changes:
+            return None
+
+        # Limit to first 3 changes for brevity
+        if len(changes) > 3:
+            return ", ".join(changes[:3]) + f" (+{len(changes) - 3} more)"
+
+        return ", ".join(changes)

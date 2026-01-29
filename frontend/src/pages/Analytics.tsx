@@ -23,8 +23,11 @@ import type { EmbedConfig, EmbedHealthResponse } from '../services/embedApi';
 import { IncidentBanner } from '../components/health/IncidentBanner';
 import { DataFreshnessBadge } from '../components/health/DataFreshnessBadge';
 import { DashboardFreshnessIndicator } from '../components/health/DashboardFreshnessIndicator';
+import { FeatureUpdateBanner } from '../components/changelog/FeatureUpdateBanner';
+import { useNavigate } from 'react-router-dom';
 
 const Analytics: React.FC = () => {
+  const navigate = useNavigate();
   const [config, setConfig] = useState<EmbedConfig | null>(null);
   const [health, setHealth] = useState<EmbedHealthResponse | null>(null);
   const [selectedDashboard, setSelectedDashboard] = useState<string>('');
@@ -122,6 +125,13 @@ const Analytics: React.FC = () => {
     <>
       {/* Incident banner at top of page */}
       <IncidentBanner />
+
+      {/* Feature update banner for dashboard area */}
+      <FeatureUpdateBanner
+        featureArea="dashboard"
+        maxItems={3}
+        onViewAll={() => navigate('/whats-new')}
+      />
 
       <Page
         title="Analytics"
