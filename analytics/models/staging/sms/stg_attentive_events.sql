@@ -356,3 +356,5 @@ where tenant_id is not null
     {% if is_incremental() %}
     and report_date >= current_date - {{ var("attentive_lookback_days", 3) }}
     {% endif %}
+
+{% endif %}
