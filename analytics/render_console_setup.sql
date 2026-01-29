@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS test_airbyte.tenant_airbyte_connections (
     connection_name VARCHAR(255),
     status VARCHAR(50),
     is_enabled BOOLEAN,
+    configuration JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -79,7 +80,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_orders VALUES
     "currency": "USD",
     "customer": {"id": "gid://shopify/Customer/111"},
     "tags": "test,new-customer",
-    "note": "Test order"
+    "note": "Test order",
+    "shop_url": "https://test-store.myshopify.com"
 }'),
 ('order-2', '2024-01-16 11:00:00+00', '{
     "id": "gid://shopify/Order/12346",
@@ -98,7 +100,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_orders VALUES
     "currency": "USD",
     "customer": {"id": "gid://shopify/Customer/222"},
     "tags": "vip",
-    "note": null
+    "note": null,
+    "shop_url": "https://test-store.myshopify.com"
 }'),
 ('order-3', '2024-01-17 12:00:00+00', '{
     "id": null,
@@ -107,7 +110,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_orders VALUES
     "email": "customer3@example.com",
     "created_at": "2024-01-17T12:00:00Z",
     "total_price": "50.00",
-    "currency": "USD"
+    "currency": "USD",
+    "shop_url": "https://test-store.myshopify.com"
 }'),
 ('order-4', '2024-01-18 13:00:00+00', '{
     "id": "gid://shopify/Order/12348",
@@ -117,7 +121,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_orders VALUES
     "created_at": "2024-01-18T13:00:00Z",
     "total_price": "invalid",
     "currency": "EUR",
-    "financial_status": "paid"
+    "financial_status": "paid",
+    "shop_url": "https://test-store.myshopify.com"
 }');
 
 -- Insert Shopify Customers
@@ -136,7 +141,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_customers VALUES
     "total_spent": "499.99",
     "currency": "USD",
     "state": "enabled",
-    "default_address": {"country": "US", "city": "New York"}
+    "default_address": {"country": "US", "city": "New York"},
+    "shop_url": "https://test-store.myshopify.com"
 }'),
 ('customer-2', '2024-01-11 10:00:00+00', '{
     "id": "gid://shopify/Customer/222",
@@ -152,7 +158,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_customers VALUES
     "total_spent": "299.50",
     "currency": "USD",
     "state": "enabled",
-    "default_address": {"country": "CA", "city": "Toronto"}
+    "default_address": {"country": "CA", "city": "Toronto"},
+    "shop_url": "https://test-store.myshopify.com"
 }');
 
 -- Insert Meta Ads
@@ -230,9 +237,9 @@ INSERT INTO test_airbyte._airbyte_raw_google_ads VALUES
 
 -- Insert Tenant Connections
 INSERT INTO test_airbyte.tenant_airbyte_connections VALUES
-('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'shopify', 'Shopify Test Connection', 'active', true, NOW(), NOW()),
-('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'source-facebook-marketing', 'Meta Ads Test Connection', 'active', true, NOW(), NOW()),
-('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'source-google-ads', 'Google Ads Test Connection', 'active', true, NOW(), NOW());
+('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'shopify', 'Shopify Test Connection', 'active', true, '{"shop_domain": "test-store.myshopify.com"}'::jsonb, NOW(), NOW()),
+('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'source-facebook-marketing', 'Meta Ads Test Connection', 'active', true, '{}'::jsonb, NOW(), NOW()),
+('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'source-google-ads', 'Google Ads Test Connection', 'active', true, '{}'::jsonb, NOW(), NOW());
 
 -- Step 4: Verify test data was created
 SELECT 'Shopify Orders' as table_name, COUNT(*) as record_count FROM test_airbyte._airbyte_raw_shopify_orders

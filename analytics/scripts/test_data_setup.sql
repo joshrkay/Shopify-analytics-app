@@ -60,7 +60,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_orders VALUES
     "currency": "USD",
     "customer": {"id": "gid://shopify/Customer/111"},
     "tags": "test,new-customer",
-    "note": "Test order"
+    "note": "Test order",
+    "shop_url": "https://test-store.myshopify.com"
 }'),
 ('order-2', '2024-01-16 11:00:00+00', '{
     "id": "gid://shopify/Order/12346",
@@ -79,7 +80,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_orders VALUES
     "currency": "USD",
     "customer": {"id": "gid://shopify/Customer/222"},
     "tags": "vip",
-    "note": null
+    "note": null,
+    "shop_url": "https://test-store.myshopify.com"
 }'),
 -- Edge case: Order with null ID (should be filtered out)
 ('order-3', '2024-01-17 12:00:00+00', '{
@@ -89,7 +91,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_orders VALUES
     "email": "customer3@example.com",
     "created_at": "2024-01-17T12:00:00Z",
     "total_price": "50.00",
-    "currency": "USD"
+    "currency": "USD",
+    "shop_url": "https://test-store.myshopify.com"
 }'),
 -- Edge case: Order with invalid price (should default to 0.0)
 ('order-4', '2024-01-18 13:00:00+00', '{
@@ -100,7 +103,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_orders VALUES
     "created_at": "2024-01-18T13:00:00Z",
     "total_price": "invalid",
     "currency": "EUR",
-    "financial_status": "paid"
+    "financial_status": "paid",
+    "shop_url": "https://test-store.myshopify.com"
 }');
 
 -- Insert test Shopify customers
@@ -119,7 +123,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_customers VALUES
     "total_spent": "499.99",
     "currency": "USD",
     "state": "enabled",
-    "default_address": {"country": "US", "city": "New York"}
+    "default_address": {"country": "US", "city": "New York"},
+    "shop_url": "https://test-store.myshopify.com"
 }'),
 ('customer-2', '2024-01-11 10:00:00+00', '{
     "id": "gid://shopify/Customer/222",
@@ -135,7 +140,8 @@ INSERT INTO test_airbyte._airbyte_raw_shopify_customers VALUES
     "total_spent": "299.50",
     "currency": "USD",
     "state": "enabled",
-    "default_address": {"country": "CA", "city": "Toronto"}
+    "default_address": {"country": "CA", "city": "Toronto"},
+    "shop_url": "https://test-store.myshopify.com"
 }');
 
 -- Insert test Meta Ads data
@@ -224,14 +230,16 @@ CREATE TABLE IF NOT EXISTS test_airbyte.tenant_airbyte_connections (
     id VARCHAR(255) PRIMARY KEY,
     tenant_id VARCHAR(255) NOT NULL,
     airbyte_connection_id VARCHAR(255) NOT NULL,
+    connection_name VARCHAR(255),
     source_type VARCHAR(100),
     status VARCHAR(50),
     is_enabled BOOLEAN,
+    configuration JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 INSERT INTO test_airbyte.tenant_airbyte_connections VALUES
-('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'shopify', 'active', true, NOW(), NOW()),
-('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'source-facebook-marketing', 'active', true, NOW(), NOW()),
-('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'source-google-ads', 'active', true, NOW(), NOW());
+('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'Test Store - Shopify', 'shopify', 'active', true, '{"shop_domain": "test-store.myshopify.com"}'::jsonb, NOW(), NOW()),
+('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'Meta Ads', 'source-facebook-marketing', 'active', true, '{}'::jsonb, NOW(), NOW()),
+('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'Google Ads', 'source-google-ads', 'active', true, '{}'::jsonb, NOW(), NOW());

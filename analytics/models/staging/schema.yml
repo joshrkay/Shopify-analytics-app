@@ -40,7 +40,9 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ['shopify']
+                values: ['shopify', 'source-shopify', 'source-facebook-marketing', 'source-google-ads']
+      - name: shop_domain
+        description: Normalized shop domain for Shopify connections (lowercase, no protocol)
 
   - name: stg_shopify_orders
     description: Staging model for Shopify orders with normalized fields and tenant isolation
@@ -686,3 +688,5 @@ sources:
             description: Whether connection is enabled
             tests:
               - not_null
+          - name: configuration
+            description: JSONB configuration containing source-specific metadata (e.g., shop_domain for Shopify)

@@ -1,24 +1,28 @@
--- Test: Verify tenant mapping doesn't have multiple active Shopify connections
+-- Test: Verify tenant mapping configuration for multi-tenant Shopify support
 --
--- This test detects if multiple tenants have active Shopify connections,
--- which would cause data leakage with the current `limit 1` approach.
+-- This test validates that tenant mapping is properly configured:
+-- 1. Each active Shopify connection must have a shop_domain configured
+-- 2. No duplicate shop_domains (would cause ambiguous tenant mapping)
 --
--- If this test fails, you MUST configure proper tenant mapping in staging models.
--- Returns rows only when tenant count is NOT exactly 1 (test fails if any rows returned)
+-- Returns rows only when there's a problem (test fails if any rows returned)
 
-with tenant_count as (
-    select
-        count(distinct tenant_id) as active_shopify_tenant_count
-    from {{ ref('_tenant_airbyte_connections') }}
-    where source_type = 'shopify'
-        and status = 'active'
-        and is_enabled = true
-)
+-- Test 1: Active Shopify connections must have shop_domain configured
+select 'missing_shop_domain' as test_name, airbyte_connection_id
+from {{ ref('_tenant_airbyte_connections') }}
+where source_type in ('shopify', 'source-shopify')
+    and status = 'active'
+    and is_enabled = true
+    and (shop_domain is null or shop_domain = '')
 
--- Returns rows only when there's a problem (count > 1)
--- count = 0: OK - No active Shopify connections (e.g., CI environment)
--- count = 1: OK - Single tenant setup working correctly
--- count > 1: FAIL - Multiple tenants would cause data leakage
-select active_shopify_tenant_count
-from tenant_count
-where active_shopify_tenant_count > 1
+union all
+
+-- Test 2: No duplicate shop_domains across tenants (would cause ambiguous mapping)
+select 'duplicate_shop_domain' as test_name, shop_domain as airbyte_connection_id
+from {{ ref('_tenant_airbyte_connections') }}
+where source_type in ('shopify', 'source-shopify')
+    and status = 'active'
+    and is_enabled = true
+    and shop_domain is not null
+    and shop_domain != ''
+group by shop_domain
+having count(distinct tenant_id) > 1

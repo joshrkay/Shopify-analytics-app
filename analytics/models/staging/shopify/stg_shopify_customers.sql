@@ -13,10 +13,24 @@ with raw_customers as (
     from {{ source('airbyte_raw', '_airbyte_raw_shopify_customers') }}
 ),
 
+tenant_mapping as (
+    select
+        tenant_id,
+        shop_domain
+    from {{ ref('_tenant_airbyte_connections') }}
+    where source_type in ('shopify', 'source-shopify')
+        and status = 'active'
+        and is_enabled = true
+        and shop_domain is not null
+        and shop_domain != ''
+),
+
 customers_extracted as (
     select
         raw.airbyte_record_id,
         raw.airbyte_emitted_at,
+        -- Extract shop_url for tenant mapping (Airbyte includes this in customer data)
+        raw.customer_data->>'shop_url' as shop_url,
         raw.customer_data->>'id' as customer_id_raw,
         raw.customer_data->>'email' as email,
         raw.customer_data->>'first_name' as first_name,
@@ -136,50 +150,53 @@ customers_normalized as (
         
         -- Metadata
         airbyte_record_id,
-        airbyte_emitted_at
-        
+        airbyte_emitted_at,
+
+        -- Normalized shop_domain for tenant mapping
+        -- Normalize: lowercase, strip protocol and trailing slash
+        lower(
+            trim(
+                trailing '/' from
+                regexp_replace(
+                    coalesce(shop_url, ''),
+                    '^https?://',
+                    '',
+                    'i'
+                )
+            )
+        ) as shop_domain
+
     from customers_extracted
 ),
 
--- Join to tenant mapping to get tenant_id
--- Uses same strategy as stg_shopify_orders
--- 
--- CRITICAL: See stg_shopify_orders.sql for tenant mapping configuration.
--- Same security warning applies - must properly map each customer to its tenant.
+-- Join to tenant mapping on shop_domain for proper multi-tenant isolation
+-- Each customer is mapped to its tenant via the shop_url field from Airbyte
 customers_with_tenant as (
     select
-        cust.*,
-        coalesce(
-            -- Option 1: Extract connection_id from schema name (if Airbyte uses connection-specific schemas)
-            -- (select tenant_id 
-            --  from {{ ref('_tenant_airbyte_connections') }} t
-            --  where t.airbyte_connection_id = split_part(current_schema(), '_', 3)
-            --    and t.source_type = 'shopify'
-            --    and t.status = 'active'
-            --    and t.is_enabled = true
-            --  limit 1),
-            
-            -- Option 2: Extract connection_id from table metadata
-            -- (select tenant_id 
-            --  from {{ ref('_tenant_airbyte_connections') }} t
-            --  where t.airbyte_connection_id = cust.airbyte_connection_id_from_metadata
-            --    and t.source_type = 'shopify'
-            --    and t.status = 'active'
-            --    and t.is_enabled = true
-            --  limit 1),
-            
-            -- Option 3: Single connection per tenant (CURRENT - USE WITH CAUTION)
-            (select tenant_id 
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'shopify'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            
-            -- Fallback: null if no connection found
-            null
-        ) as tenant_id
+        cust.customer_id,
+        cust.email,
+        cust.first_name,
+        cust.last_name,
+        cust.full_name,
+        cust.phone,
+        cust.created_at,
+        cust.updated_at,
+        cust.accepts_marketing,
+        cust.verified_email,
+        cust.orders_count,
+        cust.total_spent,
+        cust.currency,
+        cust.state,
+        cust.country_code,
+        cust.city,
+        cust.tags,
+        cust.note,
+        cust.airbyte_record_id,
+        cust.airbyte_emitted_at,
+        tm.tenant_id
     from customers_normalized cust
+    inner join tenant_mapping tm
+        on cust.shop_domain = tm.shop_domain
 )
 
 select
@@ -205,8 +222,7 @@ select
     airbyte_emitted_at,
     tenant_id
 from customers_with_tenant
-where tenant_id is not null
-    and customer_id is not null  -- Edge case: Filter out null primary keys
-    and trim(customer_id) != ''  -- Edge case: Filter out empty primary keys
-    and email is not null        -- Edge case: Filter out customers without email (required field)
+where customer_id is not null
+    and trim(customer_id) != ''
+    and email is not null
     and trim(email) != ''

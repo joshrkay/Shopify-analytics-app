@@ -32,18 +32,20 @@
         id VARCHAR(255) PRIMARY KEY,
         tenant_id VARCHAR(255) NOT NULL,
         airbyte_connection_id VARCHAR(255) NOT NULL,
+        connection_name VARCHAR(255),
         source_type VARCHAR(100),
         status VARCHAR(50),
         is_enabled BOOLEAN,
+        configuration JSONB DEFAULT '{}'::jsonb,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
-    
+
     -- Insert test tenant connections
     INSERT INTO test_airbyte.tenant_airbyte_connections VALUES
-    ('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'shopify', 'active', true, NOW(), NOW()),
-    ('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'source-facebook-marketing', 'active', true, NOW(), NOW()),
-    ('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'source-google-ads', 'active', true, NOW(), NOW())
+    ('conn-1', 'tenant-test-123', 'airbyte-conn-shopify-1', 'Test Store - Shopify', 'shopify', 'active', true, '{"shop_domain": "test-store.myshopify.com"}'::jsonb, NOW(), NOW()),
+    ('conn-2', 'tenant-test-123', 'airbyte-conn-meta-1', 'Meta Ads', 'source-facebook-marketing', 'active', true, '{}'::jsonb, NOW(), NOW()),
+    ('conn-3', 'tenant-test-123', 'airbyte-conn-google-1', 'Google Ads', 'source-google-ads', 'active', true, '{}'::jsonb, NOW(), NOW())
     ON CONFLICT (id) DO NOTHING;
   {% endset %}
   

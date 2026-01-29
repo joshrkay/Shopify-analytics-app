@@ -15,19 +15,22 @@ with raw_orders as (
 
 tenant_mapping as (
     select
-        airbyte_connection_id,
         tenant_id,
-        source_type
+        shop_domain
     from {{ ref('_tenant_airbyte_connections') }}
-    where source_type = 'shopify'
+    where source_type in ('shopify', 'source-shopify')
         and status = 'active'
         and is_enabled = true
+        and shop_domain is not null
+        and shop_domain != ''
 ),
 
 orders_extracted as (
     select
         raw.airbyte_record_id,
         raw.airbyte_emitted_at,
+        -- Extract shop_url for tenant mapping (Airbyte includes this in order data)
+        raw.order_data->>'shop_url' as shop_url,
         raw.order_data->>'id' as order_id_raw,
         raw.order_data->>'name' as order_name,
         raw.order_data->>'email' as customer_email,
@@ -158,63 +161,53 @@ orders_normalized as (
         
         -- Metadata
         airbyte_record_id,
-        airbyte_emitted_at
-        
+        airbyte_emitted_at,
+
+        -- Normalized shop_domain for tenant mapping
+        -- Normalize: lowercase, strip protocol and trailing slash
+        lower(
+            trim(
+                trailing '/' from
+                regexp_replace(
+                    coalesce(shop_url, ''),
+                    '^https?://',
+                    '',
+                    'i'
+                )
+            )
+        ) as shop_domain
+
     from orders_extracted
 ),
 
--- Join to tenant mapping to get tenant_id
--- 
--- CRITICAL: Tenant isolation must be properly configured based on your Airbyte setup.
--- The current implementation assumes single connection per tenant.
--- 
--- Tenant mapping strategies:
--- 1. Connection-specific schemas: Extract connection_id from schema name
--- 2. Connection ID in metadata: Join on connection_id from _airbyte_data or metadata
--- 3. Single connection per tenant: Use the approach below (current)
---
--- SECURITY WARNING: If multiple tenants have active Shopify connections,
--- the current `limit 1` approach will assign ALL orders to the first tenant.
--- This causes cross-tenant data leakage. You MUST configure proper tenant mapping.
---
--- To fix: Uncomment and configure one of the options below based on your setup.
+-- Join to tenant mapping on shop_domain for proper multi-tenant isolation
+-- Each order is mapped to its tenant via the shop_url field from Airbyte
 orders_with_tenant as (
     select
-        ord.*,
-        coalesce(
-            -- Option 1: Extract connection_id from schema name (if Airbyte uses connection-specific schemas)
-            -- Example: schema name is "_airbyte_raw_<connection_id>_shopify"
-            -- (select tenant_id 
-            --  from {{ ref('_tenant_airbyte_connections') }} t
-            --  where t.airbyte_connection_id = split_part(current_schema(), '_', 3)
-            --    and t.source_type = 'shopify'
-            --    and t.status = 'active'
-            --    and t.is_enabled = true
-            --  limit 1),
-            
-            -- Option 2: Extract connection_id from table metadata or _airbyte_data
-            -- (select tenant_id 
-            --  from {{ ref('_tenant_airbyte_connections') }} t
-            --  where t.airbyte_connection_id = ord.airbyte_connection_id_from_metadata
-            --    and t.source_type = 'shopify'
-            --    and t.status = 'active'
-            --    and t.is_enabled = true
-            --  limit 1),
-            
-            -- Option 3: Single connection per tenant (CURRENT - USE WITH CAUTION)
-            -- This only works if exactly one active Shopify connection exists
-            -- If multiple connections exist, this causes data leakage
-            (select tenant_id 
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'shopify'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            
-            -- Fallback: null if no connection found
-            null
-        ) as tenant_id
+        ord.order_id,
+        ord.order_name,
+        ord.order_number,
+        ord.customer_email,
+        ord.customer_id_raw,
+        ord.created_at,
+        ord.updated_at,
+        ord.cancelled_at,
+        ord.closed_at,
+        ord.total_price,
+        ord.subtotal_price,
+        ord.total_tax,
+        ord.currency,
+        ord.financial_status,
+        ord.fulfillment_status,
+        ord.tags,
+        ord.note,
+        ord.refunds_json,
+        ord.airbyte_record_id,
+        ord.airbyte_emitted_at,
+        tm.tenant_id
     from orders_normalized ord
+    inner join tenant_mapping tm
+        on ord.shop_domain = tm.shop_domain
 )
 
 select
@@ -242,6 +235,5 @@ select
     airbyte_record_id,
     airbyte_emitted_at
 from orders_with_tenant
-where tenant_id is not null
-    and order_id is not null  -- Edge case: Filter out null primary keys
-    and trim(order_id) != ''  -- Edge case: Filter out empty primary keys
+where order_id is not null
+    and trim(order_id) != ''
