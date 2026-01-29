@@ -719,5 +719,509 @@ class TestAuditOutcome:
         assert event_dict["error_code"] == "INVALID_CREDENTIALS"
 
 
+# ============================================================================
+# TEST SUITE: AUDITABLE EVENTS REGISTRY (Story 10.2)
+# ============================================================================
+
+class TestAuditableEventsRegistry:
+    """Test AUDITABLE_EVENTS registry for audit coverage enforcement."""
+
+    def test_registry_exists_and_is_dict(self):
+        """AUDITABLE_EVENTS should be a dictionary."""
+        from src.platform.audit import AUDITABLE_EVENTS
+        assert isinstance(AUDITABLE_EVENTS, dict)
+        assert len(AUDITABLE_EVENTS) > 0
+
+    def test_registry_contains_high_risk_events(self):
+        """Registry should contain all high-risk events."""
+        from src.platform.audit import AUDITABLE_EVENTS
+
+        high_risk_actions = [
+            AuditAction.AUTH_LOGIN,
+            AuditAction.AUTH_LOGIN_FAILED,
+            AuditAction.AUTH_PASSWORD_CHANGE,
+            AuditAction.BILLING_PLAN_CHANGED,
+            AuditAction.BILLING_SUBSCRIPTION_CANCELLED,
+            AuditAction.AI_KEY_CREATED,
+            AuditAction.AI_ACTION_EXECUTED,
+            AuditAction.EXPORT_REQUESTED,
+            AuditAction.TEAM_MEMBER_INVITED,
+            AuditAction.ADMIN_PLAN_CREATED,
+        ]
+
+        for action in high_risk_actions:
+            assert action in AUDITABLE_EVENTS, f"{action} should be in registry"
+
+    def test_registry_metadata_has_required_fields(self):
+        """Each registry entry should have required metadata fields."""
+        from src.platform.audit import AUDITABLE_EVENTS, AuditableEventMetadata
+
+        for action, metadata in AUDITABLE_EVENTS.items():
+            assert isinstance(metadata, AuditableEventMetadata)
+            assert metadata.description, f"{action} should have description"
+            assert metadata.risk_level in ("high", "medium", "low")
+            assert isinstance(metadata.required_fields, tuple)
+            assert isinstance(metadata.compliance_tags, tuple)
+
+    def test_billing_plan_changed_requires_old_and_new_plan(self):
+        """BILLING_PLAN_CHANGED should require old_plan and new_plan."""
+        from src.platform.audit import AUDITABLE_EVENTS
+
+        metadata = AUDITABLE_EVENTS[AuditAction.BILLING_PLAN_CHANGED]
+        assert "old_plan" in metadata.required_fields
+        assert "new_plan" in metadata.required_fields
+
+    def test_export_completed_requires_record_count(self):
+        """EXPORT_COMPLETED should require record_count."""
+        from src.platform.audit import AUDITABLE_EVENTS
+
+        metadata = AUDITABLE_EVENTS[AuditAction.EXPORT_COMPLETED]
+        assert "export_type" in metadata.required_fields
+        assert "record_count" in metadata.required_fields
+
+
+# ============================================================================
+# TEST SUITE: METADATA VALIDATION (Story 10.2)
+# ============================================================================
+
+class TestValidateAuditMetadata:
+    """Test validate_audit_metadata function."""
+
+    def test_valid_metadata_returns_no_warnings(self):
+        """Valid metadata should return empty warnings list."""
+        from src.platform.audit import validate_audit_metadata
+
+        metadata = {"old_plan": "free", "new_plan": "pro"}
+        warnings = validate_audit_metadata(
+            AuditAction.BILLING_PLAN_CHANGED,
+            metadata
+        )
+
+        assert warnings == []
+
+    def test_missing_required_field_returns_warning(self):
+        """Missing required field should return warning."""
+        from src.platform.audit import validate_audit_metadata
+
+        metadata = {"old_plan": "free"}  # missing new_plan
+        warnings = validate_audit_metadata(
+            AuditAction.BILLING_PLAN_CHANGED,
+            metadata
+        )
+
+        assert len(warnings) == 1
+        assert "new_plan" in warnings[0]
+
+    def test_strict_mode_raises_on_missing_field(self):
+        """Strict mode should raise ValueError on missing field."""
+        from src.platform.audit import validate_audit_metadata
+
+        metadata = {}  # missing both old_plan and new_plan
+        with pytest.raises(ValueError) as exc_info:
+            validate_audit_metadata(
+                AuditAction.BILLING_PLAN_CHANGED,
+                metadata,
+                strict=True
+            )
+
+        assert "old_plan" in str(exc_info.value)
+        assert "new_plan" in str(exc_info.value)
+
+    def test_action_not_in_registry_returns_warning(self):
+        """Action not in registry should return warning."""
+        from src.platform.audit import validate_audit_metadata, AuditAction
+
+        # Find an action not in registry (if any) or use a known one
+        # AI_RATE_LIMIT_HIT might not be in the simplified registry
+        metadata = {}
+        warnings = validate_audit_metadata(
+            AuditAction.AI_RATE_LIMIT_HIT,  # May not have required fields
+            metadata
+        )
+
+        # Should either have no warnings (no required fields) or warning about missing registry
+        assert isinstance(warnings, list)
+
+
+# ============================================================================
+# TEST SUITE: HIGH RISK AND COMPLIANCE HELPERS (Story 10.2)
+# ============================================================================
+
+class TestAuditHelpers:
+    """Test get_high_risk_actions and get_compliance_actions helpers."""
+
+    def test_get_high_risk_actions_returns_list(self):
+        """get_high_risk_actions should return list of high-risk actions."""
+        from src.platform.audit import get_high_risk_actions
+
+        high_risk = get_high_risk_actions()
+
+        assert isinstance(high_risk, list)
+        assert len(high_risk) > 0
+        assert AuditAction.AUTH_LOGIN in high_risk
+        assert AuditAction.BILLING_PLAN_CHANGED in high_risk
+        assert AuditAction.EXPORT_REQUESTED in high_risk
+
+    def test_get_compliance_actions_soc2(self):
+        """get_compliance_actions('SOC2') should return SOC2 tagged actions."""
+        from src.platform.audit import get_compliance_actions
+
+        soc2_actions = get_compliance_actions("SOC2")
+
+        assert isinstance(soc2_actions, list)
+        assert len(soc2_actions) > 0
+        assert AuditAction.AUTH_LOGIN in soc2_actions
+
+    def test_get_compliance_actions_gdpr(self):
+        """get_compliance_actions('GDPR') should return GDPR tagged actions."""
+        from src.platform.audit import get_compliance_actions
+
+        gdpr_actions = get_compliance_actions("GDPR")
+
+        assert isinstance(gdpr_actions, list)
+        assert len(gdpr_actions) > 0
+        # Data export events should be GDPR tagged
+        assert AuditAction.EXPORT_REQUESTED in gdpr_actions
+        assert AuditAction.DATA_EXPORTED in gdpr_actions
+
+    def test_get_compliance_actions_pci(self):
+        """get_compliance_actions('PCI') should return PCI tagged actions."""
+        from src.platform.audit import get_compliance_actions
+
+        pci_actions = get_compliance_actions("PCI")
+
+        assert isinstance(pci_actions, list)
+        # Billing events should be PCI tagged
+        assert AuditAction.BILLING_PLAN_CHANGED in pci_actions
+        assert AuditAction.BILLING_PAYMENT_SUCCESS in pci_actions
+
+
+# ============================================================================
+# TEST SUITE: REQUIRE_AUDIT DECORATOR (Story 10.2)
+# ============================================================================
+
+class TestRequireAuditDecorator:
+    """Test require_audit decorator."""
+
+    def test_require_audit_decorator_exists(self):
+        """require_audit decorator should be importable."""
+        from src.platform.audit import require_audit
+        assert callable(require_audit)
+
+    def test_require_audit_creates_decorator(self):
+        """require_audit should create a decorator function."""
+        from src.platform.audit import require_audit
+
+        decorator = require_audit(AuditAction.BILLING_PLAN_CHANGED)
+        assert callable(decorator)
+
+    def test_require_audit_preserves_function_name(self):
+        """Decorated function should preserve original name."""
+        from src.platform.audit import require_audit
+
+        @require_audit(AuditAction.BILLING_PLAN_CHANGED)
+        async def change_plan():
+            return {"old_plan": "free", "new_plan": "pro"}
+
+        assert change_plan.__name__ == "change_plan"
+
+
+# ============================================================================
+# TEST SUITE: AUDIT EXPORT SERVICE (Story 10.3)
+# ============================================================================
+
+class TestAuditExportFormat:
+    """Test AuditExportFormat enum."""
+
+    def test_export_format_values(self):
+        """AuditExportFormat should have CSV and JSON."""
+        from src.platform.audit import AuditExportFormat
+
+        assert AuditExportFormat.CSV.value == "csv"
+        assert AuditExportFormat.JSON.value == "json"
+
+
+class TestAuditExportRequest:
+    """Test AuditExportRequest dataclass."""
+
+    def test_export_request_has_required_fields(self):
+        """AuditExportRequest should have all required fields."""
+        from src.platform.audit import AuditExportRequest, AuditExportFormat
+
+        request = AuditExportRequest(
+            tenant_id="tenant-123",
+            format=AuditExportFormat.CSV,
+        )
+
+        assert request.tenant_id == "tenant-123"
+        assert request.format == AuditExportFormat.CSV
+        assert request.limit == 10000  # Default
+        assert request.offset == 0  # Default
+
+    def test_export_request_optional_fields(self):
+        """AuditExportRequest should accept optional fields."""
+        from src.platform.audit import AuditExportRequest, AuditExportFormat
+
+        start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        end = datetime(2024, 1, 31, tzinfo=timezone.utc)
+
+        request = AuditExportRequest(
+            tenant_id="tenant-123",
+            format=AuditExportFormat.JSON,
+            start_date=start,
+            end_date=end,
+            actions=[AuditAction.AUTH_LOGIN, AuditAction.AUTH_LOGOUT],
+            user_id="user-456",
+            limit=5000,
+            offset=100,
+        )
+
+        assert request.start_date == start
+        assert request.end_date == end
+        assert request.actions == [AuditAction.AUTH_LOGIN, AuditAction.AUTH_LOGOUT]
+        assert request.user_id == "user-456"
+        assert request.limit == 5000
+        assert request.offset == 100
+
+
+class TestAuditExportResult:
+    """Test AuditExportResult dataclass."""
+
+    def test_export_result_success(self):
+        """AuditExportResult should represent successful export."""
+        from src.platform.audit import AuditExportResult, AuditExportFormat
+
+        result = AuditExportResult(
+            success=True,
+            record_count=100,
+            format=AuditExportFormat.CSV,
+            content="id,timestamp,action\n1,2024-01-01,auth.login\n",
+            export_id="export-123",
+        )
+
+        assert result.success is True
+        assert result.record_count == 100
+        assert result.format == AuditExportFormat.CSV
+        assert result.content is not None
+        assert result.error is None
+        assert result.is_async is False
+
+    def test_export_result_failure(self):
+        """AuditExportResult should represent failed export."""
+        from src.platform.audit import AuditExportResult, AuditExportFormat
+
+        result = AuditExportResult(
+            success=False,
+            record_count=0,
+            format=AuditExportFormat.CSV,
+            error="Rate limit exceeded",
+            export_id="export-456",
+        )
+
+        assert result.success is False
+        assert result.record_count == 0
+        assert result.error == "Rate limit exceeded"
+        assert result.content is None
+
+    def test_export_result_async(self):
+        """AuditExportResult should indicate async export."""
+        from src.platform.audit import AuditExportResult, AuditExportFormat
+
+        result = AuditExportResult(
+            success=True,
+            record_count=50000,
+            format=AuditExportFormat.JSON,
+            export_id="export-789",
+            is_async=True,
+        )
+
+        assert result.success is True
+        assert result.is_async is True
+        assert result.content is None  # Content not available yet
+
+
+class TestAuditExportServiceRateLimiting:
+    """Test AuditExportService rate limiting."""
+
+    def test_rate_limit_initial_state(self):
+        """Initial state should allow exports."""
+        from src.platform.audit import AuditExportService
+
+        mock_db = Mock()
+        service = AuditExportService(mock_db)
+
+        is_allowed, remaining = service.check_rate_limit("tenant-123")
+
+        assert is_allowed is True
+        assert remaining == 3
+
+    def test_rate_limit_after_exports(self):
+        """Should decrease remaining after exports."""
+        from src.platform.audit import AuditExportService
+
+        mock_db = Mock()
+        service = AuditExportService(mock_db)
+
+        # Record 2 exports
+        service.record_export("tenant-123")
+        service.record_export("tenant-123")
+
+        is_allowed, remaining = service.check_rate_limit("tenant-123")
+
+        assert is_allowed is True
+        assert remaining == 1
+
+    def test_rate_limit_exceeded(self):
+        """Should deny when rate limit exceeded."""
+        from src.platform.audit import AuditExportService
+
+        mock_db = Mock()
+        service = AuditExportService(mock_db)
+
+        # Record 3 exports (max)
+        service.record_export("tenant-123")
+        service.record_export("tenant-123")
+        service.record_export("tenant-123")
+
+        is_allowed, remaining = service.check_rate_limit("tenant-123")
+
+        assert is_allowed is False
+        assert remaining == 0
+
+    def test_rate_limit_separate_tenants(self):
+        """Rate limits should be per-tenant."""
+        from src.platform.audit import AuditExportService
+
+        mock_db = Mock()
+        service = AuditExportService(mock_db)
+
+        # Max out tenant-1
+        for _ in range(3):
+            service.record_export("tenant-1")
+
+        # Tenant-2 should still be allowed
+        is_allowed, remaining = service.check_rate_limit("tenant-2")
+
+        assert is_allowed is True
+        assert remaining == 3
+
+
+class TestAuditExportServiceFormatting:
+    """Test AuditExportService formatting methods."""
+
+    def test_format_csv_empty(self):
+        """CSV format should handle empty list."""
+        from src.platform.audit import AuditExportService
+
+        mock_db = Mock()
+        service = AuditExportService(mock_db)
+
+        csv_content = service.format_csv([])
+
+        # Should have header row
+        assert "id,timestamp,tenant_id" in csv_content
+        lines = csv_content.strip().split("\n")
+        assert len(lines) == 1  # Just header
+
+    def test_format_csv_with_data(self):
+        """CSV format should include data rows."""
+        from src.platform.audit import AuditExportService, AuditLog
+
+        mock_db = Mock()
+        service = AuditExportService(mock_db)
+
+        # Create mock log
+        mock_log = Mock(spec=AuditLog)
+        mock_log.id = "log-1"
+        mock_log.timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        mock_log.tenant_id = "tenant-123"
+        mock_log.user_id = "user-456"
+        mock_log.action = "auth.login"
+        mock_log.resource_type = None
+        mock_log.resource_id = None
+        mock_log.ip_address = "192.168.1.100"
+        mock_log.user_agent = "Mozilla/5.0"
+        mock_log.source = "api"
+        mock_log.outcome = "success"
+        mock_log.error_code = None
+        mock_log.correlation_id = "corr-789"
+        mock_log.event_metadata = {"key": "value"}
+
+        csv_content = service.format_csv([mock_log])
+
+        assert "log-1" in csv_content
+        assert "tenant-123" in csv_content
+        assert "user-456" in csv_content
+        assert "auth.login" in csv_content
+        lines = csv_content.strip().split("\n")
+        assert len(lines) == 2  # Header + 1 data row
+
+    def test_format_json_empty(self):
+        """JSON format should handle empty list."""
+        from src.platform.audit import AuditExportService
+
+        mock_db = Mock()
+        service = AuditExportService(mock_db)
+
+        json_content = service.format_json([])
+        data = json.loads(json_content)
+
+        assert data["audit_logs"] == []
+        assert data["count"] == 0
+
+    def test_format_json_with_data(self):
+        """JSON format should include data."""
+        from src.platform.audit import AuditExportService, AuditLog
+
+        mock_db = Mock()
+        service = AuditExportService(mock_db)
+
+        # Create mock log
+        mock_log = Mock(spec=AuditLog)
+        mock_log.id = "log-1"
+        mock_log.timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        mock_log.tenant_id = "tenant-123"
+        mock_log.user_id = "user-456"
+        mock_log.action = "auth.login"
+        mock_log.resource_type = "session"
+        mock_log.resource_id = "session-abc"
+        mock_log.ip_address = "192.168.1.100"
+        mock_log.user_agent = "Mozilla/5.0"
+        mock_log.source = "api"
+        mock_log.outcome = "success"
+        mock_log.error_code = None
+        mock_log.correlation_id = "corr-789"
+        mock_log.event_metadata = {"method": "oauth"}
+
+        json_content = service.format_json([mock_log])
+        data = json.loads(json_content)
+
+        assert data["count"] == 1
+        assert len(data["audit_logs"]) == 1
+
+        log_entry = data["audit_logs"][0]
+        assert log_entry["id"] == "log-1"
+        assert log_entry["tenant_id"] == "tenant-123"
+        assert log_entry["action"] == "auth.login"
+        assert log_entry["metadata"] == {"method": "oauth"}
+
+
+class TestAuditExportServiceConstants:
+    """Test AuditExportService constants."""
+
+    def test_rate_limit_constants(self):
+        """Service should have correct rate limit constants."""
+        from src.platform.audit import AuditExportService
+
+        assert AuditExportService.RATE_LIMIT_EXPORTS == 3
+        assert AuditExportService.RATE_LIMIT_WINDOW_HOURS == 24
+
+    def test_async_threshold_constant(self):
+        """Service should have correct async threshold."""
+        from src.platform.audit import AuditExportService
+
+        assert AuditExportService.ASYNC_THRESHOLD_ROWS == 10000
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

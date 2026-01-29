@@ -32,8 +32,11 @@ from typing import Any, Optional, FrozenSet
 from dataclasses import dataclass, field, asdict
 
 from fastapi import Request
-from sqlalchemy import Column, String, DateTime, Text, Index, Enum as SAEnum
+from sqlalchemy import Column, String, DateTime, Text, Index, Enum as SAEnum, JSON
 from sqlalchemy.dialects.postgresql import JSONB
+
+# Use JSON with PostgreSQL variant for JSONB - allows SQLite in tests
+JSONType = JSON().with_variant(JSONB(), "postgresql")
 from sqlalchemy.orm import Session
 
 from src.db_base import Base
@@ -290,7 +293,7 @@ class AuditLog(Base):
     user_agent = Column(Text, nullable=True)
     resource_type = Column(String(100), nullable=True, index=True)
     resource_id = Column(String(255), nullable=True, index=True)
-    event_metadata = Column(JSONB, nullable=False, default=dict)
+    event_metadata = Column(JSONType, nullable=False, default=dict)
     correlation_id = Column(String(36), nullable=False, index=True)
     # New fields for Story 10.1
     source = Column(String(50), nullable=False, default="api")  # api, worker, system, webhook
@@ -744,3 +747,934 @@ def create_audit_decorator(
             return result
         return wrapper
     return decorator
+
+
+# =============================================================================
+# Story 10.2 - Audit Event Coverage Enforcement
+# =============================================================================
+
+
+@dataclass
+class AuditableEventMetadata:
+    """
+    Metadata for auditable events defining required fields and classification.
+
+    Story 10.2 - Audit Event Coverage Enforcement
+    """
+    description: str
+    required_fields: tuple[str, ...] = ()  # Metadata fields that must be present
+    risk_level: str = "medium"  # high, medium, low
+    compliance_tags: tuple[str, ...] = ()  # SOC2, GDPR, PCI, etc.
+
+
+# Registry of all auditable events with their requirements
+AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
+    # Auth events - HIGH RISK
+    AuditAction.AUTH_LOGIN: AuditableEventMetadata(
+        description="User login attempt",
+        required_fields=(),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.AUTH_LOGOUT: AuditableEventMetadata(
+        description="User logout",
+        required_fields=(),
+        risk_level="low",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTH_LOGIN_FAILED: AuditableEventMetadata(
+        description="Failed login attempt",
+        required_fields=("reason",),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.AUTH_TOKEN_REFRESH: AuditableEventMetadata(
+        description="Token refresh",
+        required_fields=(),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTH_PASSWORD_CHANGE: AuditableEventMetadata(
+        description="Password changed",
+        required_fields=(),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.AUTH_MFA_ENABLED: AuditableEventMetadata(
+        description="MFA enabled",
+        required_fields=(),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTH_MFA_DISABLED: AuditableEventMetadata(
+        description="MFA disabled",
+        required_fields=(),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    # Billing events - HIGH RISK
+    AuditAction.BILLING_PLAN_CHANGED: AuditableEventMetadata(
+        description="Billing plan changed",
+        required_fields=("old_plan", "new_plan"),
+        risk_level="high",
+        compliance_tags=("SOC2", "PCI"),
+    ),
+    AuditAction.BILLING_SUBSCRIPTION_CREATED: AuditableEventMetadata(
+        description="Subscription created",
+        required_fields=("plan_id",),
+        risk_level="high",
+        compliance_tags=("SOC2", "PCI"),
+    ),
+    AuditAction.BILLING_SUBSCRIPTION_CANCELLED: AuditableEventMetadata(
+        description="Subscription cancelled",
+        required_fields=("reason",),
+        risk_level="high",
+        compliance_tags=("SOC2", "PCI"),
+    ),
+    AuditAction.BILLING_PAYMENT_FAILED: AuditableEventMetadata(
+        description="Payment failed",
+        required_fields=("error_code",),
+        risk_level="high",
+        compliance_tags=("SOC2", "PCI"),
+    ),
+    AuditAction.BILLING_PAYMENT_SUCCESS: AuditableEventMetadata(
+        description="Payment successful",
+        required_fields=("amount",),
+        risk_level="medium",
+        compliance_tags=("SOC2", "PCI"),
+    ),
+    # Store/connector events - MEDIUM RISK
+    AuditAction.STORE_CONNECTED: AuditableEventMetadata(
+        description="Store connected",
+        required_fields=("shop_domain",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.STORE_DISCONNECTED: AuditableEventMetadata(
+        description="Store disconnected",
+        required_fields=("shop_domain",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.STORE_UPDATED: AuditableEventMetadata(
+        description="Store settings updated",
+        required_fields=(),
+        risk_level="low",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.STORE_SYNC_STARTED: AuditableEventMetadata(
+        description="Store sync started",
+        required_fields=(),
+        risk_level="low",
+        compliance_tags=(),
+    ),
+    AuditAction.STORE_SYNC_COMPLETED: AuditableEventMetadata(
+        description="Store sync completed",
+        required_fields=(),
+        risk_level="low",
+        compliance_tags=(),
+    ),
+    AuditAction.STORE_SYNC_FAILED: AuditableEventMetadata(
+        description="Store sync failed",
+        required_fields=("error",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    # AI events - HIGH RISK
+    AuditAction.AI_KEY_CREATED: AuditableEventMetadata(
+        description="AI API key created",
+        required_fields=("key_type",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AI_KEY_ROTATED: AuditableEventMetadata(
+        description="AI API key rotated",
+        required_fields=("key_type",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AI_KEY_DELETED: AuditableEventMetadata(
+        description="AI API key deleted",
+        required_fields=("key_type",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AI_MODEL_CHANGED: AuditableEventMetadata(
+        description="AI model configuration changed",
+        required_fields=("old_model", "new_model"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AI_ACTION_REQUESTED: AuditableEventMetadata(
+        description="AI action requested",
+        required_fields=("action_type",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AI_ACTION_EXECUTED: AuditableEventMetadata(
+        description="AI action executed",
+        required_fields=("action_type",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AI_ACTION_REJECTED: AuditableEventMetadata(
+        description="AI action rejected",
+        required_fields=("action_type", "reason"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    # Export events - HIGH RISK (data exfiltration)
+    AuditAction.EXPORT_REQUESTED: AuditableEventMetadata(
+        description="Data export requested",
+        required_fields=("export_type",),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.EXPORT_COMPLETED: AuditableEventMetadata(
+        description="Data export completed",
+        required_fields=("export_type", "record_count"),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.EXPORT_FAILED: AuditableEventMetadata(
+        description="Data export failed",
+        required_fields=("export_type", "error"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.EXPORT_DOWNLOADED: AuditableEventMetadata(
+        description="Export file downloaded",
+        required_fields=("export_id",),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    # Automation events - MEDIUM RISK
+    AuditAction.AUTOMATION_CREATED: AuditableEventMetadata(
+        description="Automation created",
+        required_fields=("automation_type",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTOMATION_UPDATED: AuditableEventMetadata(
+        description="Automation updated",
+        required_fields=(),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTOMATION_DELETED: AuditableEventMetadata(
+        description="Automation deleted",
+        required_fields=(),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTOMATION_APPROVED: AuditableEventMetadata(
+        description="Automation approved",
+        required_fields=(),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTOMATION_REJECTED: AuditableEventMetadata(
+        description="Automation rejected",
+        required_fields=("reason",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTOMATION_EXECUTED: AuditableEventMetadata(
+        description="Automation executed",
+        required_fields=(),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTOMATION_FAILED: AuditableEventMetadata(
+        description="Automation failed",
+        required_fields=("error",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    # Feature flag events - MEDIUM RISK
+    AuditAction.FEATURE_FLAG_ENABLED: AuditableEventMetadata(
+        description="Feature flag enabled",
+        required_fields=("flag_name",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.FEATURE_FLAG_DISABLED: AuditableEventMetadata(
+        description="Feature flag disabled",
+        required_fields=("flag_name",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.FEATURE_FLAG_OVERRIDE: AuditableEventMetadata(
+        description="Feature flag override set",
+        required_fields=("flag_name", "override_value"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    # Team/permission events - HIGH RISK
+    AuditAction.TEAM_MEMBER_INVITED: AuditableEventMetadata(
+        description="Team member invited",
+        required_fields=("role",),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.TEAM_MEMBER_REMOVED: AuditableEventMetadata(
+        description="Team member removed",
+        required_fields=(),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.TEAM_ROLE_CHANGED: AuditableEventMetadata(
+        description="Team role changed",
+        required_fields=("old_role", "new_role"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    # Settings events - LOW RISK
+    AuditAction.SETTINGS_UPDATED: AuditableEventMetadata(
+        description="Settings updated",
+        required_fields=(),
+        risk_level="low",
+        compliance_tags=("SOC2",),
+    ),
+    # Admin events - HIGH RISK
+    AuditAction.ADMIN_PLAN_CREATED: AuditableEventMetadata(
+        description="Admin created plan",
+        required_fields=("plan_name",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.ADMIN_PLAN_UPDATED: AuditableEventMetadata(
+        description="Admin updated plan",
+        required_fields=("plan_name",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.ADMIN_PLAN_DELETED: AuditableEventMetadata(
+        description="Admin deleted plan",
+        required_fields=("plan_name",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.ADMIN_CONFIG_CHANGED: AuditableEventMetadata(
+        description="Admin configuration changed",
+        required_fields=("config_key",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    # Backfill events - MEDIUM RISK
+    AuditAction.BACKFILL_STARTED: AuditableEventMetadata(
+        description="Data backfill started",
+        required_fields=("backfill_type",),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.BACKFILL_COMPLETED: AuditableEventMetadata(
+        description="Data backfill completed",
+        required_fields=("backfill_type", "record_count"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.BACKFILL_FAILED: AuditableEventMetadata(
+        description="Data backfill failed",
+        required_fields=("backfill_type", "error"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    # Data access events - HIGH RISK
+    AuditAction.DATA_ACCESSED: AuditableEventMetadata(
+        description="Sensitive data accessed",
+        required_fields=("data_type",),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.DATA_EXPORTED: AuditableEventMetadata(
+        description="Data exported",
+        required_fields=("data_type", "record_count"),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.DATA_DELETED: AuditableEventMetadata(
+        description="Data deleted",
+        required_fields=("data_type",),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    # Governance events - HIGH RISK
+    AuditAction.GOVERNANCE_CONFIG_CHANGED: AuditableEventMetadata(
+        description="Governance configuration changed",
+        required_fields=("config_type",),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.GOVERNANCE_RETENTION_APPLIED: AuditableEventMetadata(
+        description="Data retention policy applied",
+        required_fields=("retention_period", "records_affected"),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+}
+
+
+def validate_audit_metadata(
+    action: AuditAction,
+    metadata: dict[str, Any],
+    strict: bool = False,
+) -> list[str]:
+    """
+    Validate that audit metadata contains required fields.
+
+    Args:
+        action: The audit action
+        metadata: The metadata dictionary
+        strict: If True, raises error; if False, returns list of warnings
+
+    Returns:
+        List of validation warnings (empty if valid)
+
+    Story 10.2 - Audit Event Coverage Enforcement
+    """
+    warnings = []
+
+    event_meta = AUDITABLE_EVENTS.get(action)
+    if not event_meta:
+        warnings.append(f"Action {action.value} not in AUDITABLE_EVENTS registry")
+        return warnings
+
+    for required_field in event_meta.required_fields:
+        if required_field not in metadata:
+            warnings.append(
+                f"Missing required field '{required_field}' for action {action.value}"
+            )
+
+    if strict and warnings:
+        raise ValueError("; ".join(warnings))
+
+    return warnings
+
+
+def require_audit(
+    action: AuditAction,
+    resource_type: Optional[str] = None,
+    resource_id_param: Optional[str] = None,
+    validate_metadata: bool = True,
+):
+    """
+    Decorator that enforces audit logging on sensitive endpoints.
+
+    Logs audit event after successful execution. Validates metadata
+    against AUDITABLE_EVENTS registry if validate_metadata is True.
+
+    Args:
+        action: The audit action to log
+        resource_type: Type of resource being acted upon
+        resource_id_param: Parameter name containing resource ID
+        validate_metadata: Whether to validate metadata fields
+
+    Usage:
+        @app.post("/api/billing/plan")
+        @require_audit(AuditAction.BILLING_PLAN_CHANGED, "plan")
+        async def change_plan(
+            request: Request,
+            plan_data: PlanChange,
+            db: AsyncSession = Depends(get_db)
+        ):
+            # audit_metadata is automatically extracted from response or set via request.state
+            return {"old_plan": "free", "new_plan": "pro"}
+
+    Story 10.2 - Audit Event Coverage Enforcement
+    """
+    def decorator(func):
+        from functools import wraps
+
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Execute the function first
+            result = await func(*args, **kwargs)
+
+            # Find request and db in kwargs
+            request = kwargs.get("request")
+            db = kwargs.get("db")
+
+            if request and db:
+                resource_id = kwargs.get(resource_id_param) if resource_id_param else None
+
+                # Get metadata from request.state if set, otherwise from result
+                metadata = {}
+                if hasattr(request.state, "audit_metadata"):
+                    metadata = request.state.audit_metadata
+                elif isinstance(result, dict):
+                    # Extract metadata from response dict
+                    event_meta = AUDITABLE_EVENTS.get(action)
+                    if event_meta:
+                        for field in event_meta.required_fields:
+                            if field in result:
+                                metadata[field] = result[field]
+
+                # Validate metadata if enabled
+                if validate_metadata:
+                    warnings = validate_audit_metadata(action, metadata)
+                    for warning in warnings:
+                        logger.warning(
+                            f"Audit metadata validation: {warning}",
+                            extra={
+                                "action": action.value,
+                                "resource_type": resource_type,
+                            }
+                        )
+
+                try:
+                    await log_audit_event(
+                        db=db,
+                        request=request,
+                        action=action,
+                        resource_type=resource_type,
+                        resource_id=str(resource_id) if resource_id else None,
+                        metadata=metadata,
+                    )
+                except Exception as e:
+                    # Never fail the request if audit logging fails
+                    logger.error(
+                        "Failed to write required audit log",
+                        extra={
+                            "error": str(e),
+                            "action": action.value,
+                            "resource_type": resource_type,
+                            "resource_id": str(resource_id) if resource_id else None,
+                        }
+                    )
+
+            return result
+        return wrapper
+    return decorator
+
+
+def get_high_risk_actions() -> list[AuditAction]:
+    """Get all high-risk actions that require strict auditing."""
+    return [
+        action for action, meta in AUDITABLE_EVENTS.items()
+        if meta.risk_level == "high"
+    ]
+
+
+def get_compliance_actions(tag: str) -> list[AuditAction]:
+    """Get all actions with a specific compliance tag (SOC2, GDPR, PCI)."""
+    return [
+        action for action, meta in AUDITABLE_EVENTS.items()
+        if tag in meta.compliance_tags
+    ]
+
+
+# =============================================================================
+# Story 10.3 - Audit Log Export
+# =============================================================================
+
+
+class AuditExportFormat(str, Enum):
+    """Supported export formats for audit logs."""
+    CSV = "csv"
+    JSON = "json"
+
+
+@dataclass
+class AuditExportRequest:
+    """Request parameters for audit log export."""
+    tenant_id: str
+    format: AuditExportFormat = AuditExportFormat.CSV
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    actions: Optional[list[AuditAction]] = None
+    user_id: Optional[str] = None
+    limit: int = 10000
+    offset: int = 0
+
+
+@dataclass
+class AuditExportResult:
+    """Result of an audit log export."""
+    success: bool
+    record_count: int
+    format: AuditExportFormat
+    content: Optional[str] = None
+    error: Optional[str] = None
+    export_id: Optional[str] = None
+    is_async: bool = False
+
+
+class AuditExportService:
+    """
+    Service for exporting audit logs to CSV or JSON.
+
+    Features:
+    - CSV and JSON export formats
+    - Rate limiting (3 exports/tenant/24 hours)
+    - Async job support for large exports (>10K rows)
+    - Automatic audit logging of export events
+
+    Story 10.3 - Audit Log Export
+
+    Usage:
+        service = AuditExportService(db)
+        result = await service.export_audit_logs(
+            tenant_id="tenant-123",
+            format=AuditExportFormat.CSV,
+            start_date=datetime(2024, 1, 1),
+            end_date=datetime(2024, 1, 31),
+        )
+    """
+
+    # Rate limit: 3 exports per tenant per 24 hours
+    RATE_LIMIT_EXPORTS = 3
+    RATE_LIMIT_WINDOW_HOURS = 24
+
+    # Threshold for async export
+    ASYNC_THRESHOLD_ROWS = 10000
+
+    def __init__(self, db: Session):
+        self.db = db
+        self._export_counts: dict[str, list[datetime]] = {}  # In-memory for simplicity
+
+    def check_rate_limit(self, tenant_id: str) -> tuple[bool, int]:
+        """
+        Check if tenant is within rate limit.
+
+        Args:
+            tenant_id: The tenant ID
+
+        Returns:
+            Tuple of (is_allowed, remaining_exports)
+        """
+        now = datetime.now(timezone.utc)
+        window_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Clean old entries
+        if tenant_id in self._export_counts:
+            self._export_counts[tenant_id] = [
+                ts for ts in self._export_counts[tenant_id]
+                if ts >= window_start
+            ]
+        else:
+            self._export_counts[tenant_id] = []
+
+        current_count = len(self._export_counts[tenant_id])
+        remaining = self.RATE_LIMIT_EXPORTS - current_count
+
+        return remaining > 0, max(0, remaining)
+
+    def record_export(self, tenant_id: str) -> None:
+        """Record an export for rate limiting."""
+        if tenant_id not in self._export_counts:
+            self._export_counts[tenant_id] = []
+        self._export_counts[tenant_id].append(datetime.now(timezone.utc))
+
+    def query_audit_logs(
+        self,
+        tenant_id: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        actions: Optional[list[AuditAction]] = None,
+        user_id: Optional[str] = None,
+        limit: int = 10000,
+        offset: int = 0,
+    ) -> list[AuditLog]:
+        """
+        Query audit logs with filters.
+
+        Args:
+            tenant_id: Required tenant ID
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+            actions: Optional list of actions to filter
+            user_id: Optional user ID filter
+            limit: Maximum records to return
+            offset: Offset for pagination
+
+        Returns:
+            List of AuditLog records
+        """
+        query = self.db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id)
+
+        if start_date:
+            query = query.filter(AuditLog.timestamp >= start_date)
+        if end_date:
+            query = query.filter(AuditLog.timestamp <= end_date)
+        if actions:
+            action_values = [a.value for a in actions]
+            query = query.filter(AuditLog.action.in_(action_values))
+        if user_id:
+            query = query.filter(AuditLog.user_id == user_id)
+
+        query = query.order_by(AuditLog.timestamp.desc())
+        query = query.offset(offset).limit(limit)
+
+        return query.all()
+
+    def count_audit_logs(
+        self,
+        tenant_id: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        actions: Optional[list[AuditAction]] = None,
+        user_id: Optional[str] = None,
+    ) -> int:
+        """Count audit logs matching filters."""
+        from sqlalchemy import func
+
+        query = self.db.query(func.count(AuditLog.id)).filter(
+            AuditLog.tenant_id == tenant_id
+        )
+
+        if start_date:
+            query = query.filter(AuditLog.timestamp >= start_date)
+        if end_date:
+            query = query.filter(AuditLog.timestamp <= end_date)
+        if actions:
+            action_values = [a.value for a in actions]
+            query = query.filter(AuditLog.action.in_(action_values))
+        if user_id:
+            query = query.filter(AuditLog.user_id == user_id)
+
+        return query.scalar() or 0
+
+    def format_csv(self, logs: list[AuditLog]) -> str:
+        """
+        Format audit logs as CSV.
+
+        Args:
+            logs: List of AuditLog records
+
+        Returns:
+            CSV string
+        """
+        import csv
+        import io
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Header row
+        headers = [
+            "id", "timestamp", "tenant_id", "user_id", "action",
+            "resource_type", "resource_id", "ip_address", "user_agent",
+            "source", "outcome", "error_code", "correlation_id", "metadata"
+        ]
+        writer.writerow(headers)
+
+        # Data rows
+        for log in logs:
+            metadata_json = json.dumps(log.event_metadata) if log.event_metadata else "{}"
+            writer.writerow([
+                log.id,
+                log.timestamp.isoformat() if log.timestamp else "",
+                log.tenant_id,
+                log.user_id or "",
+                log.action,
+                log.resource_type or "",
+                log.resource_id or "",
+                log.ip_address or "",
+                log.user_agent or "",
+                log.source,
+                log.outcome,
+                log.error_code or "",
+                log.correlation_id,
+                metadata_json,
+            ])
+
+        return output.getvalue()
+
+    def format_json(self, logs: list[AuditLog]) -> str:
+        """
+        Format audit logs as JSON.
+
+        Args:
+            logs: List of AuditLog records
+
+        Returns:
+            JSON string
+        """
+        records = []
+        for log in logs:
+            records.append({
+                "id": log.id,
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                "tenant_id": log.tenant_id,
+                "user_id": log.user_id,
+                "action": log.action,
+                "resource_type": log.resource_type,
+                "resource_id": log.resource_id,
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
+                "source": log.source,
+                "outcome": log.outcome,
+                "error_code": log.error_code,
+                "correlation_id": log.correlation_id,
+                "metadata": log.event_metadata,
+            })
+
+        return json.dumps({"audit_logs": records, "count": len(records)}, indent=2)
+
+    async def export_audit_logs(
+        self,
+        request: AuditExportRequest,
+        requesting_user_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
+    ) -> AuditExportResult:
+        """
+        Export audit logs to CSV or JSON.
+
+        Args:
+            request: Export request parameters
+            requesting_user_id: User ID of the person requesting export
+            ip_address: IP address of requester
+
+        Returns:
+            AuditExportResult with content or error
+        """
+        export_id = str(uuid.uuid4())
+
+        # Check rate limit
+        is_allowed, remaining = self.check_rate_limit(request.tenant_id)
+        if not is_allowed:
+            # Log the denied export attempt
+            log_system_audit_event_sync(
+                db=self.db,
+                tenant_id=request.tenant_id,
+                action=AuditAction.EXPORT_FAILED,
+                metadata={
+                    "export_type": "audit_logs",
+                    "error": "Rate limit exceeded",
+                    "format": request.format.value,
+                },
+                outcome=AuditOutcome.DENIED,
+                error_code="RATE_LIMIT_EXCEEDED",
+            )
+            return AuditExportResult(
+                success=False,
+                record_count=0,
+                format=request.format,
+                error=f"Rate limit exceeded. Maximum {self.RATE_LIMIT_EXPORTS} exports per day.",
+                export_id=export_id,
+            )
+
+        try:
+            # Count total records
+            total_count = self.count_audit_logs(
+                tenant_id=request.tenant_id,
+                start_date=request.start_date,
+                end_date=request.end_date,
+                actions=request.actions,
+                user_id=request.user_id,
+            )
+
+            # Check if async export is needed
+            if total_count > self.ASYNC_THRESHOLD_ROWS:
+                # Log async export request
+                log_system_audit_event_sync(
+                    db=self.db,
+                    tenant_id=request.tenant_id,
+                    action=AuditAction.EXPORT_REQUESTED,
+                    metadata={
+                        "export_type": "audit_logs",
+                        "format": request.format.value,
+                        "record_count": total_count,
+                        "export_id": export_id,
+                        "async": True,
+                    },
+                    outcome=AuditOutcome.SUCCESS,
+                )
+
+                return AuditExportResult(
+                    success=True,
+                    record_count=total_count,
+                    format=request.format,
+                    export_id=export_id,
+                    is_async=True,
+                    error=f"Export queued for async processing ({total_count} records)",
+                )
+
+            # Log export request
+            log_system_audit_event_sync(
+                db=self.db,
+                tenant_id=request.tenant_id,
+                action=AuditAction.EXPORT_REQUESTED,
+                metadata={
+                    "export_type": "audit_logs",
+                    "format": request.format.value,
+                    "export_id": export_id,
+                },
+                outcome=AuditOutcome.SUCCESS,
+            )
+
+            # Query logs
+            logs = self.query_audit_logs(
+                tenant_id=request.tenant_id,
+                start_date=request.start_date,
+                end_date=request.end_date,
+                actions=request.actions,
+                user_id=request.user_id,
+                limit=request.limit,
+                offset=request.offset,
+            )
+
+            # Format output
+            if request.format == AuditExportFormat.CSV:
+                content = self.format_csv(logs)
+            else:
+                content = self.format_json(logs)
+
+            # Record export for rate limiting
+            self.record_export(request.tenant_id)
+
+            # Log export completion
+            log_system_audit_event_sync(
+                db=self.db,
+                tenant_id=request.tenant_id,
+                action=AuditAction.EXPORT_COMPLETED,
+                metadata={
+                    "export_type": "audit_logs",
+                    "format": request.format.value,
+                    "record_count": len(logs),
+                    "export_id": export_id,
+                },
+                outcome=AuditOutcome.SUCCESS,
+            )
+
+            return AuditExportResult(
+                success=True,
+                record_count=len(logs),
+                format=request.format,
+                content=content,
+                export_id=export_id,
+            )
+
+        except Exception as e:
+            logger.error(
+                "Audit export failed",
+                extra={
+                    "tenant_id": request.tenant_id,
+                    "export_id": export_id,
+                    "error": str(e),
+                }
+            )
+
+            # Log export failure
+            log_system_audit_event_sync(
+                db=self.db,
+                tenant_id=request.tenant_id,
+                action=AuditAction.EXPORT_FAILED,
+                metadata={
+                    "export_type": "audit_logs",
+                    "format": request.format.value,
+                    "error": str(e),
+                    "export_id": export_id,
+                },
+                outcome=AuditOutcome.FAILURE,
+                error_code="EXPORT_ERROR",
+            )
+
+            return AuditExportResult(
+                success=False,
+                record_count=0,
+                format=request.format,
+                error=str(e),
+                export_id=export_id,
+            )

@@ -61,6 +61,18 @@ from src.platform.audit import (
     log_system_audit_event_sync,
     create_audit_decorator,
     extract_client_info,
+    # Story 10.2 - Audit Event Coverage Enforcement
+    AuditableEventMetadata,
+    AUDITABLE_EVENTS,
+    validate_audit_metadata,
+    require_audit,
+    get_high_risk_actions,
+    get_compliance_actions,
+    # Story 10.3 - Audit Log Export
+    AuditExportFormat,
+    AuditExportRequest,
+    AuditExportResult,
+    AuditExportService,
 )
 
 from src.platform.feature_flags import (
@@ -130,6 +142,18 @@ __all__ = [
     "log_system_audit_event_sync",
     "create_audit_decorator",
     "extract_client_info",
+    # Story 10.2 - Audit Event Coverage Enforcement
+    "AuditableEventMetadata",
+    "AUDITABLE_EVENTS",
+    "validate_audit_metadata",
+    "require_audit",
+    "get_high_risk_actions",
+    "get_compliance_actions",
+    # Story 10.3 - Audit Log Export
+    "AuditExportFormat",
+    "AuditExportRequest",
+    "AuditExportResult",
+    "AuditExportService",
     # Feature flags
     "FeatureFlag",
     "get_feature_flag_client",
