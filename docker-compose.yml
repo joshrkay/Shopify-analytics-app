@@ -1,0 +1,110 @@
+# Docker Compose for Local Development
+# Run with: docker-compose up -d
+#
+# This starts:
+# - PostgreSQL database
+# - Redis cache
+# - Backend API (FastAPI)
+# - Frontend (React/Vite) - optional, can run separately with npm run dev
+
+version: '3.8'
+
+services:
+  # =============================================================================
+  # PostgreSQL Database
+  # =============================================================================
+  postgres:
+    image: postgres:15
+    container_name: shopify-analytics-db
+    environment:
+      POSTGRES_USER: shopify_analytics_user
+      POSTGRES_PASSWORD: localdev123
+      POSTGRES_DB: shopify_analytics
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopify_analytics_user -d shopify_analytics"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # Redis Cache
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: shopify-analytics-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # Backend API (FastAPI)
+  # =============================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: shopify-analytics-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - PORT=8000
+      - DATABASE_URL=postgresql://shopify_analytics_user:localdev123@postgres:5432/shopify_analytics
+      - REDIS_URL=redis://redis:6379
+      # For local dev, use test/mock values
+      - FRONTEGG_CLIENT_ID=${FRONTEGG_CLIENT_ID:-test-client-id}
+      - FRONTEGG_CLIENT_SECRET=${FRONTEGG_CLIENT_SECRET:-test-client-secret}
+      - SHOPIFY_API_KEY=${SHOPIFY_API_KEY:-test-shopify-key}
+      - SHOPIFY_API_SECRET=${SHOPIFY_API_SECRET:-test-webhook-secret-for-hmac}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-test-openrouter-key}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGVzdGVuY3J5cHRpb25rZXkxMjM0NTY3ODkwMTI=}
+      - AIRBYTE_WORKSPACE_ID=${AIRBYTE_WORKSPACE_ID:-test-workspace}
+      - AIRBYTE_API_TOKEN=${AIRBYTE_API_TOKEN:-test-token}
+      # Enable test mode
+      - SHOPIFY_BILLING_TEST_MODE=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # Frontend (React/Vite) - Development Server
+  # =============================================================================
+  frontend:
+    image: node:20-alpine
+    container_name: shopify-analytics-frontend
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  frontend_node_modules:
