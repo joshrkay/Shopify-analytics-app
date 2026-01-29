@@ -10,23 +10,27 @@ import enTranslations from '@shopify/polaris/locales/en.json';
 import '@shopify/polaris/build/esm/styles.css';
 
 import { DataHealthProvider } from './contexts/DataHealthContext';
+import { AppHeader } from './components/layout/AppHeader';
 import AdminPlans from './pages/AdminPlans';
 import Analytics from './pages/Analytics';
 import Paywall from './pages/Paywall';
 import InsightsFeed from './pages/InsightsFeed';
 import ApprovalsInbox from './pages/ApprovalsInbox';
+import WhatsNew from './pages/WhatsNew';
 
 function App() {
   return (
     <AppProvider i18n={enTranslations}>
       <DataHealthProvider>
         <BrowserRouter>
+          <AppHeader />
           <Routes>
             <Route path="/admin/plans" element={<AdminPlans />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/paywall" element={<Paywall />} />
             <Route path="/insights" element={<InsightsFeed />} />
             <Route path="/approvals" element={<ApprovalsInbox />} />
+            <Route path="/whats-new" element={<WhatsNew />} />
             <Route path="/" element={<Navigate to="/analytics" replace />} />
           </Routes>
         </BrowserRouter>

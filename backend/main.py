@@ -28,6 +28,9 @@ from src.api.routes import recommendations
 from src.api.routes import action_proposals
 from src.api.routes import actions
 from src.api.routes import llm_config
+from src.api.routes import changelog
+from src.api.routes import admin_changelog
+from src.api.routes import what_changed
 from src.api.dq import routes as sync_health
 
 # Configure structured logging
@@ -152,6 +155,18 @@ app.include_router(actions.router)
 # Include LLM config routes (requires authentication and AI entitlement)
 # Story 8.8 - Model Routing & Prompt Governance
 app.include_router(llm_config.router)
+
+# Include changelog routes (requires authentication)
+# Story 9.7 - In-App Changelog & Release Notes
+app.include_router(changelog.router)
+
+# Include admin changelog routes (requires ADMIN_SYSTEM_CONFIG permission)
+# Story 9.7 - In-App Changelog & Release Notes
+app.include_router(admin_changelog.router)
+
+# Include what-changed routes (requires authentication, read-only)
+# Story 9.8 - "What Changed?" Debug Panel
+app.include_router(what_changed.router)
 
 
 # Global exception handler for tenant isolation errors

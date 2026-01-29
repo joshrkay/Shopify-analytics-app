@@ -23,9 +23,11 @@ import {
   Pagination,
   Modal,
 } from '@shopify/polaris';
+import { useNavigate } from 'react-router-dom';
 import { InsightCard } from '../components/insights/InsightCard';
 import { RecommendationCard } from '../components/recommendations/RecommendationCard';
 import { IncidentBanner } from '../components/health/IncidentBanner';
+import { FeatureUpdateBanner } from '../components/changelog/FeatureUpdateBanner';
 import type { Insight, InsightType, InsightSeverity } from '../types/insights';
 import type { Recommendation } from '../types/recommendations';
 import {
@@ -62,6 +64,8 @@ const severityOptions = [
 ];
 
 export function InsightsFeed() {
+  const navigate = useNavigate();
+
   // State
   const [insights, setInsights] = useState<Insight[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -246,6 +250,13 @@ export function InsightsFeed() {
     <>
       {/* Incident banner at top of page */}
       <IncidentBanner />
+
+      {/* Feature update banner for insights area */}
+      <FeatureUpdateBanner
+        featureArea="insights"
+        maxItems={3}
+        onViewAll={() => navigate('/whats-new')}
+      />
 
       <Page
         title="AI Insights"

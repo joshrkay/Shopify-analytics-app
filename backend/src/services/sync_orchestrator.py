@@ -31,6 +31,7 @@ from src.services.airbyte_service import (
     AirbyteService,
     ConnectionNotFoundServiceError,
 )
+from src.services.data_change_aggregator import DataChangeAggregator
 from src.jobs.job_entitlements import (
     JobEntitlementChecker,
     JobType,
@@ -131,6 +132,7 @@ class SyncOrchestrator:
         self.tenant_id = tenant_id
         self._airbyte_service = AirbyteService(db_session, tenant_id)
         self._airbyte_client = airbyte_client
+        self._data_change_aggregator = DataChangeAggregator(db_session, tenant_id)
         self.max_retries = max_retries
         self.base_delay_seconds = base_delay_seconds
         self.max_delay_seconds = max_delay_seconds
@@ -247,6 +249,21 @@ class SyncOrchestrator:
                 # Sync succeeded - persist success status
                 self._airbyte_service.record_sync_success(connection_id)
 
+                # Record data change event for the debug panel (Story 9.8)
+                try:
+                    self._data_change_aggregator.record_sync_completed_simple(
+                        connection_id=connection_id,
+                        connector_name=connection.connection_name,
+                        rows_synced=result.records_synced,
+                        duration_seconds=result.duration_seconds,
+                        job_id=result.job_id,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to record sync completed event",
+                        extra={"error": str(e), "connection_id": connection_id},
+                    )
+
                 logger.info(
                     "Sync completed successfully",
                     extra={
@@ -310,6 +327,20 @@ class SyncOrchestrator:
 
         # All retries exhausted - persist failure and log alert
         self._airbyte_service.mark_connection_failed(connection_id, last_error)
+
+        # Record data change event for the debug panel (Story 9.8)
+        try:
+            self._data_change_aggregator.record_sync_failed_simple(
+                connection_id=connection_id,
+                connector_name=connection.connection_name,
+                error_message=last_error,
+                job_id=last_job_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "Failed to record sync failed event",
+                extra={"error": str(e), "connection_id": connection_id},
+            )
 
         logger.error(
             "SYNC_FAILURE_ALERT: Sync failed after all retries",
