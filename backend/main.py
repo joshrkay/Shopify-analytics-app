@@ -33,6 +33,7 @@ from src.api.routes import changelog
 from src.api.routes import admin_changelog
 from src.api.routes import what_changed
 from src.api.routes import shopify_ingestion
+from src.api.routes import ad_platform_ingestion
 from src.api.dq import routes as sync_health
 
 # Configure structured logging
@@ -176,6 +177,10 @@ app.include_router(what_changed.router)
 # Include Shopify ingestion routes (requires authentication)
 # Shopify data source setup and sync management
 app.include_router(shopify_ingestion.router)
+
+# Include ad platform ingestion routes (requires authentication)
+# Ad platform data source setup and sync via Airbyte
+app.include_router(ad_platform_ingestion.router)
 
 
 # Global exception handler for tenant isolation errors
