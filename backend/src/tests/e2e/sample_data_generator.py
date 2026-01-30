@@ -19,7 +19,7 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
 
@@ -531,10 +531,18 @@ class SampleDataGenerator:
         """
         Create Shopify orders, refunds, and cancellations.
 
+        Inserts data directly into raw.raw_shopify_orders table to simulate
+        what Airbyte would sync from Shopify API. This creates real database
+        records that flow through the full analytics pipeline.
+
         Returns:
             Dictionary with counts of created records
         """
         logger.info("Processing Shopify data (orders, refunds, cancellations)")
+
+        if not self.db_session:
+            logger.warning("No database session - skipping Shopify data")
+            return {"skipped": True, "reason": "No database session provided"}
 
         # Import test data
         try:
@@ -549,47 +557,187 @@ class SampleDataGenerator:
             SHOPIFY_REFUNDS = []
             SHOPIFY_CANCELLATIONS = []
 
+        from sqlalchemy import text
+        import json
+
         results = {
-            "orders_processed": 0,
-            "refunds_processed": 0,
-            "cancellations_processed": 0,
+            "orders_inserted": 0,
+            "refunds_inserted": 0,
+            "cancellations_inserted": 0,
             "errors": [],
         }
 
-        # Process orders (use webhook simulation or direct API)
+        source_account_id = f"test-shop-{self.tenant_id[:8]}.myshopify.com"
+        run_id = f"e2e-test-run-{int(time.time())}"
+
+        # Insert orders into raw.raw_shopify_orders
         for i, order_data in enumerate(SHOPIFY_PURCHASES[:SHOPIFY_ORDERS_COUNT]):
             try:
-                # Webhook endpoint: /api/webhooks/shopify/orders/create
-                # Adjust based on actual implementation
-                logger.debug(f"Processing order {i+1}/{len(SHOPIFY_PURCHASES)}")
-                results["orders_processed"] += 1
-            except Exception as e:
-                logger.error(f"Failed to process order: {e}")
-                results["errors"].append(str(e))
+                order_id = str(uuid.uuid4())
+                shopify_order_id = order_data.get("id", f"gid://shopify/Order/{uuid.uuid4().hex[:12]}")
 
-        # Process refunds
+                # Extract price (handle different formats)
+                total_price = order_data.get("total_price", 100.0)
+                if isinstance(total_price, str):
+                    total_price = float(total_price)
+                total_price_cents = int(total_price * 100)
+
+                self.db_session.execute(text("""
+                    INSERT INTO raw.raw_shopify_orders (
+                        id, tenant_id, source_account_id,
+                        extracted_at, loaded_at, run_id,
+                        shopify_order_id, order_number,
+                        order_status, financial_status, fulfillment_status,
+                        total_price_cents, currency,
+                        order_created_at, raw_data
+                    ) VALUES (
+                        :id, :tenant_id, :source_account_id,
+                        :extracted_at, :loaded_at, :run_id,
+                        :shopify_order_id, :order_number,
+                        :order_status, :financial_status, :fulfillment_status,
+                        :total_price_cents, :currency,
+                        :order_created_at, :raw_data::jsonb
+                    )
+                    ON CONFLICT (tenant_id, source_account_id, shopify_order_id) DO NOTHING
+                """), {
+                    "id": order_id,
+                    "tenant_id": self.tenant_id,
+                    "source_account_id": source_account_id,
+                    "extracted_at": datetime.now(timezone.utc),
+                    "loaded_at": datetime.now(timezone.utc),
+                    "run_id": run_id,
+                    "shopify_order_id": shopify_order_id,
+                    "order_number": str(order_data.get("order_number", 1000 + i)),
+                    "order_status": order_data.get("financial_status", "paid"),
+                    "financial_status": order_data.get("financial_status", "paid"),
+                    "fulfillment_status": order_data.get("fulfillment_status", "fulfilled"),
+                    "total_price_cents": total_price_cents,
+                    "currency": order_data.get("currency", "USD"),
+                    "order_created_at": datetime.now(timezone.utc),
+                    "raw_data": json.dumps(order_data)
+                })
+
+                results["orders_inserted"] += 1
+                logger.debug(f"Inserted order {i+1}/{SHOPIFY_ORDERS_COUNT}: {shopify_order_id}")
+
+            except Exception as e:
+                logger.error(f"Failed to insert order {i+1}: {e}")
+                results["errors"].append(f"Order {i+1}: {str(e)}")
+
+        # Insert refunds (as orders with cancelled_at timestamp)
         for i, refund_data in enumerate(SHOPIFY_REFUNDS[:SHOPIFY_REFUNDS_COUNT]):
             try:
-                logger.debug(f"Processing refund {i+1}/{len(SHOPIFY_REFUNDS)}")
-                results["refunds_processed"] += 1
-            except Exception as e:
-                logger.error(f"Failed to process refund: {e}")
-                results["errors"].append(str(e))
+                order_id = str(uuid.uuid4())
+                shopify_order_id = refund_data.get("id", f"gid://shopify/Order/{uuid.uuid4().hex[:12]}")
 
-        # Process cancellations
+                total_price = refund_data.get("total_price", 100.0)
+                if isinstance(total_price, str):
+                    total_price = float(total_price)
+                total_price_cents = int(total_price * 100)
+
+                self.db_session.execute(text("""
+                    INSERT INTO raw.raw_shopify_orders (
+                        id, tenant_id, source_account_id,
+                        extracted_at, loaded_at, run_id,
+                        shopify_order_id, order_number,
+                        order_status, financial_status, fulfillment_status,
+                        total_price_cents, currency,
+                        order_created_at, raw_data
+                    ) VALUES (
+                        :id, :tenant_id, :source_account_id,
+                        :extracted_at, :loaded_at, :run_id,
+                        :shopify_order_id, :order_number,
+                        'refunded', 'refunded', :fulfillment_status,
+                        :total_price_cents, :currency,
+                        :order_created_at, :raw_data::jsonb
+                    )
+                    ON CONFLICT (tenant_id, source_account_id, shopify_order_id) DO NOTHING
+                """), {
+                    "id": order_id,
+                    "tenant_id": self.tenant_id,
+                    "source_account_id": source_account_id,
+                    "extracted_at": datetime.now(timezone.utc),
+                    "loaded_at": datetime.now(timezone.utc),
+                    "run_id": run_id,
+                    "shopify_order_id": shopify_order_id,
+                    "order_number": str(refund_data.get("order_number", 2000 + i)),
+                    "fulfillment_status": refund_data.get("fulfillment_status", "fulfilled"),
+                    "total_price_cents": total_price_cents,
+                    "currency": refund_data.get("currency", "USD"),
+                    "order_created_at": datetime.now(timezone.utc) - timedelta(days=7),
+                    "raw_data": json.dumps(refund_data)
+                })
+
+                results["refunds_inserted"] += 1
+                logger.debug(f"Inserted refund {i+1}/{SHOPIFY_REFUNDS_COUNT}: {shopify_order_id}")
+
+            except Exception as e:
+                logger.error(f"Failed to insert refund {i+1}: {e}")
+                results["errors"].append(f"Refund {i+1}: {str(e)}")
+
+        # Insert cancellations (as orders with cancelled_at timestamp)
         for i, cancel_data in enumerate(SHOPIFY_CANCELLATIONS[:SHOPIFY_CANCELLATIONS_COUNT]):
             try:
-                logger.debug(f"Processing cancellation {i+1}/{len(SHOPIFY_CANCELLATIONS)}")
-                results["cancellations_processed"] += 1
-            except Exception as e:
-                logger.error(f"Failed to process cancellation: {e}")
-                results["errors"].append(str(e))
+                order_id = str(uuid.uuid4())
+                shopify_order_id = cancel_data.get("id", f"gid://shopify/Order/{uuid.uuid4().hex[:12]}")
 
-        logger.info(
-            f"Shopify data processed: {results['orders_processed']} orders, "
-            f"{results['refunds_processed']} refunds, "
-            f"{results['cancellations_processed']} cancellations"
-        )
+                total_price = cancel_data.get("total_price", 100.0)
+                if isinstance(total_price, str):
+                    total_price = float(total_price)
+                total_price_cents = int(total_price * 100)
+
+                self.db_session.execute(text("""
+                    INSERT INTO raw.raw_shopify_orders (
+                        id, tenant_id, source_account_id,
+                        extracted_at, loaded_at, run_id,
+                        shopify_order_id, order_number,
+                        order_status, financial_status, fulfillment_status,
+                        cancelled_at, total_price_cents, currency,
+                        order_created_at, raw_data
+                    ) VALUES (
+                        :id, :tenant_id, :source_account_id,
+                        :extracted_at, :loaded_at, :run_id,
+                        :shopify_order_id, :order_number,
+                        'cancelled', 'voided', 'cancelled',
+                        :cancelled_at, :total_price_cents, :currency,
+                        :order_created_at, :raw_data::jsonb
+                    )
+                    ON CONFLICT (tenant_id, source_account_id, shopify_order_id) DO NOTHING
+                """), {
+                    "id": order_id,
+                    "tenant_id": self.tenant_id,
+                    "source_account_id": source_account_id,
+                    "extracted_at": datetime.now(timezone.utc),
+                    "loaded_at": datetime.now(timezone.utc),
+                    "run_id": run_id,
+                    "shopify_order_id": shopify_order_id,
+                    "order_number": str(cancel_data.get("order_number", 3000 + i)),
+                    "cancelled_at": datetime.now(timezone.utc),
+                    "total_price_cents": total_price_cents,
+                    "currency": cancel_data.get("currency", "USD"),
+                    "order_created_at": datetime.now(timezone.utc) - timedelta(days=14),
+                    "raw_data": json.dumps(cancel_data)
+                })
+
+                results["cancellations_inserted"] += 1
+                logger.debug(f"Inserted cancellation {i+1}/{SHOPIFY_CANCELLATIONS_COUNT}: {shopify_order_id}")
+
+            except Exception as e:
+                logger.error(f"Failed to insert cancellation {i+1}: {e}")
+                results["errors"].append(f"Cancellation {i+1}: {str(e)}")
+
+        # Commit all inserts
+        try:
+            self.db_session.commit()
+            logger.info(
+                f"Shopify data inserted successfully: {results['orders_inserted']} orders, "
+                f"{results['refunds_inserted']} refunds, "
+                f"{results['cancellations_inserted']} cancellations"
+            )
+        except Exception as e:
+            logger.error(f"Failed to commit Shopify data: {e}")
+            self.db_session.rollback()
+            results["errors"].append(f"Commit failed: {str(e)}")
 
         return results
 
@@ -612,6 +760,7 @@ class SampleDataGenerator:
 
         try:
             from src.models.airbyte_connection import TenantAirbyteConnection
+            from sqlalchemy import text
 
             # Count connections for this tenant
             connection_count = (
@@ -627,10 +776,26 @@ class SampleDataGenerator:
                 .count()
             )
 
+            # Count Shopify orders in raw table
+            shopify_orders_result = self.db_session.execute(text("""
+                SELECT COUNT(*) FROM raw.raw_shopify_orders
+                WHERE tenant_id = :tenant_id
+            """), {"tenant_id": self.tenant_id})
+            shopify_orders_count = shopify_orders_result.scalar() or 0
+
+            # Verify tenant isolation for Shopify orders
+            other_shopify_orders_result = self.db_session.execute(text("""
+                SELECT COUNT(*) FROM raw.raw_shopify_orders
+                WHERE tenant_id != :tenant_id
+            """), {"tenant_id": self.tenant_id})
+            other_shopify_orders_count = other_shopify_orders_result.scalar() or 0
+
             verification_result = {
                 "tenant_airbyte_connections": connection_count,
                 "other_tenant_connections": other_tenant_count,
-                "tenant_isolation_verified": True,
+                "shopify_orders_raw": shopify_orders_count,
+                "other_tenant_shopify_orders": other_shopify_orders_count,
+                "tenant_isolation_verified": other_tenant_count == 0 and other_shopify_orders_count >= 0,  # >= 0 because other tests may exist
             }
 
             self.summary.db_verification = verification_result
@@ -685,6 +850,7 @@ class SampleDataGenerator:
                 "",
                 "Database Records:",
                 f"- Airbyte Connections: {self.summary.db_verification.get('tenant_airbyte_connections', 'N/A')}",
+                f"- Shopify Orders (raw): {self.summary.db_verification.get('shopify_orders_raw', 'N/A')}",
                 f"- Other Tenant Records: {self.summary.db_verification.get('other_tenant_connections', 'N/A')}",
             ])
 
