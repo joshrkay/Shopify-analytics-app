@@ -46,6 +46,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Local backups
+*.local.bak
+*.mybackup
+
 # Node.js / Frontend
 node_modules/
 .npm
