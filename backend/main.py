@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.platform.tenant_context import TenantContextMiddleware
 from src.platform.csp_middleware import EmbedOnlyCSPMiddleware
 from src.api.routes import health
+from src.api.routes import debug
 from src.api.routes import billing
 from src.api.routes import webhooks_shopify
 from src.api.routes import admin_plans
@@ -114,6 +115,9 @@ app.middleware("http")(tenant_middleware)
 
 # Include health route (bypasses authentication)
 app.include_router(health.router)
+
+# Include debug routes (bypasses authentication)
+app.include_router(debug.router)
 
 # Include billing routes (requires authentication)
 app.include_router(billing.router)
