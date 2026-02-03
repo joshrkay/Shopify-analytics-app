@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from '@shopify/polaris';
 import { useAuth } from '@frontegg/react';
 import enTranslations from '@shopify/polaris/locales/en.json';
@@ -340,18 +340,16 @@ function App() {
   return (
     <AppProvider i18n={enTranslations}>
       <DataHealthProvider>
-        <BrowserRouter>
-          <AppHeader />
-          <Routes>
-            <Route path="/admin/plans" element={<AdminPlans />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/paywall" element={<Paywall />} />
-            <Route path="/insights" element={<InsightsFeed />} />
-            <Route path="/approvals" element={<ApprovalsInbox />} />
-            <Route path="/whats-new" element={<WhatsNew />} />
-            <Route path="/" element={<Navigate to="/analytics" replace />} />
-          </Routes>
-        </BrowserRouter>
+        <AppHeader />
+        <Routes>
+          <Route path="/admin/plans" element={<AdminPlans />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/paywall" element={<Paywall />} />
+          <Route path="/insights" element={<InsightsFeed />} />
+          <Route path="/approvals" element={<ApprovalsInbox />} />
+          <Route path="/whats-new" element={<WhatsNew />} />
+          <Route path="/" element={<Navigate to="/analytics" replace />} />
+        </Routes>
       </DataHealthProvider>
     </AppProvider>
   );
