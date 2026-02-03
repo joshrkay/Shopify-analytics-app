@@ -9,7 +9,7 @@ const fronteggConfig = {
     clientId: import.meta.env.VITE_FRONTEGG_CLIENT_ID,
     tokenStorageKey: 'jwt_token',
   },
-  hostedLoginBox: true,
+  hostedLoginBox: false, // Embedded login - no external redirect
   authOptions: {
     keepSessionAlive: true,
   },
