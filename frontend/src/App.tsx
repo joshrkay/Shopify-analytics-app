@@ -26,18 +26,23 @@ function App() {
   const [showDiagnostics, setShowDiagnostics] = useState(true);
   const [hookError, setHookError] = useState<string | null>(null);
 
-  let authData;
-  try {
-    authData = useAuth();
-  } catch (error) {
-    setHookError(error instanceof Error ? error.message : String(error));
-    authData = { isAuthenticated: false, isLoading: false, user: null };
-  }
-
-  const { isAuthenticated, isLoading, user } = authData;
+  // Get auth data - if this throws, let React error boundary handle it
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   // Ensure JWT token is synced to localStorage
   useTokenSync();
+
+  // Check for initialization errors in useEffect (not during render)
+  useEffect(() => {
+    // This runs after render, so we can safely detect issues
+    if (!isLoading && !isAuthenticated) {
+      // Check if Frontegg SDK initialized properly
+      const fronteggElements = document.querySelectorAll('[data-frontegg]');
+      if (fronteggElements.length === 0) {
+        setHookError('Frontegg SDK may not have initialized');
+      }
+    }
+  }, [isLoading, isAuthenticated]);
 
   // Collect diagnostic information
   const diagnostics = {
