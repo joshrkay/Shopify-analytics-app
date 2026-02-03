@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useAuth } from '@frontegg/react';
-import { ContextHolder } from '@frontegg/rest-api';
 
 /**
  * Ensures Frontegg JWT token is synced to localStorage with the key
@@ -20,12 +19,15 @@ export function useTokenSync() {
       // Method 1: Check if already in localStorage (from tokenStorageKey config)
       token = localStorage.getItem('jwt_token');
 
-      // Method 2: Try ContextHolder (Frontegg's internal state)
+      // Method 2: Try Frontegg global state (if available)
       if (!token) {
         try {
-          token = ContextHolder.getAccessToken();
+          const fronteggGlobal = (window as any).FronteggProvider || (window as any).Frontegg;
+          if (fronteggGlobal?.auth?.accessToken) {
+            token = fronteggGlobal.auth.accessToken;
+          }
         } catch (e) {
-          console.log('ContextHolder not available:', e);
+          // Frontegg global not available
         }
       }
 
