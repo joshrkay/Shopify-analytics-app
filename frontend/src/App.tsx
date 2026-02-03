@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from '@shopify/polaris';
-import { useAuth } from '@frontegg/react';
+import { useAuth, useLoginWithRedirect } from '@frontegg/react';
 import enTranslations from '@shopify/polaris/locales/en.json';
 import '@shopify/polaris/build/esm/styles.css';
 
@@ -28,6 +28,7 @@ function App() {
 
   // Get auth data - if this throws, let React error boundary handle it
   const { isAuthenticated, isLoading, user } = useAuth();
+  const loginWithRedirect = useLoginWithRedirect();
 
   // Ensure JWT token is synced to localStorage
   useTokenSync();
@@ -82,7 +83,7 @@ function App() {
           marginBottom: '20px'
         }}>
           <h1 style={{ margin: '0 0 10px 0', fontSize: '24px' }}>🔍 Frontegg Authentication Diagnostics</h1>
-          <p style={{ margin: 0, opacity: 0.8 }}>Embedded Login Mode (hostedLoginBox: false)</p>
+          <p style={{ margin: 0, opacity: 0.8 }}>Hosted Login Mode (hostedLoginBox: true)</p>
         </div>
 
         <div style={{
@@ -126,8 +127,8 @@ function App() {
                 🔐 <strong>Not Authenticated</strong>
               </p>
               <p style={{ fontSize: '14px', margin: '10px 0', color: '#666' }}>
-                With embedded login, Frontegg should automatically render a login form below.
-                If you don't see a login form, there may be an SDK initialization issue.
+                With hosted login, Frontegg will redirect you to their login page.
+                Click the button below to start the authentication flow.
               </p>
               {hookError && (
                 <div style={{
@@ -179,7 +180,7 @@ function App() {
 
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <button
-            onClick={() => setShowDiagnostics(false)}
+            onClick={() => isAuthenticated ? setShowDiagnostics(false) : loginWithRedirect()}
             style={{
               backgroundColor: '#4caf50',
               color: 'white',
@@ -191,7 +192,7 @@ function App() {
               fontWeight: 'bold'
             }}
           >
-            {isAuthenticated ? '✅ Continue to App' : '🔄 Try to Show Login Form'}
+            {isAuthenticated ? '✅ Continue to App' : '🔐 Login with Frontegg'}
           </button>
           <button
             onClick={() => window.location.reload()}
@@ -236,9 +237,9 @@ function App() {
         }}>
           <strong>What to look for:</strong>
           <ul style={{ margin: '10px 0', paddingLeft: '20px' }}>
-            <li>If isAuthenticated = NO after clicking "Try to Show Login Form", Frontegg embedded login may not be rendering</li>
+            <li>If isAuthenticated = NO, click "Login with Frontegg" to be redirected to Frontegg's login page</li>
             <li>If Environment Variables show MISSING, the .env file is not being loaded by Vite</li>
-            <li>If localStorage jwt_token = MISSING, tokens are not being stored after login</li>
+            <li>If localStorage jwt_token = MISSING after login, token sync is not working</li>
             <li>If there's a Hook Error, the Frontegg SDK is failing to initialize</li>
           </ul>
         </div>
@@ -274,7 +275,7 @@ function App() {
     );
   }
 
-  // If not authenticated, Frontegg will automatically render embedded login form
+  // If not authenticated, show login button (hosted login redirects to Frontegg)
   if (!isAuthenticated) {
     return (
       <AppProvider i18n={enTranslations}>
@@ -289,48 +290,51 @@ function App() {
         }}>
           <div style={{
             backgroundColor: '#ffffff',
-            padding: '20px',
+            padding: '40px',
             borderRadius: '8px',
             boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
             textAlign: 'center',
-            marginBottom: '20px'
+            maxWidth: '400px'
           }}>
-            <h2 style={{ margin: '0 0 10px 0', color: '#333' }}>🔐 Login Required</h2>
-            <p style={{ margin: '0', color: '#666', fontSize: '14px' }}>
-              Frontegg embedded login form should appear below
+            <h2 style={{ margin: '0 0 10px 0', color: '#333' }}>🔐 Authentication Required</h2>
+            <p style={{ margin: '20px 0', color: '#666', fontSize: '14px', lineHeight: '1.6' }}>
+              You'll be redirected to Frontegg's secure login page. After logging in, you'll be brought back here.
             </p>
-          </div>
 
-          {/* Frontegg's embedded login form will render here automatically */}
-          <div style={{
-            width: '100%',
-            maxWidth: '400px',
-            padding: '20px',
-            backgroundColor: '#ffffff',
-            borderRadius: '8px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-            minHeight: '300px'
-          }}>
-            {/* The FronteggProvider handles rendering the login UI */}
-            <p style={{ textAlign: 'center', color: '#999', fontSize: '13px', marginTop: '140px' }}>
-              ⏳ Waiting for Frontegg login form to render...
-            </p>
-          </div>
+            <button
+              onClick={loginWithRedirect}
+              style={{
+                backgroundColor: '#4caf50',
+                color: 'white',
+                padding: '14px 28px',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '16px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                width: '100%',
+                marginBottom: '15px'
+              }}
+            >
+              🔐 Login with Frontegg
+            </button>
 
-          <button
-            onClick={() => setShowDiagnostics(true)}
-            style={{
-              padding: '10px 20px',
-              fontSize: '14px',
-              cursor: 'pointer',
-              backgroundColor: '#2196f3',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px'
-            }}
-          >
-            🔍 Show Diagnostics
-          </button>
+            <button
+              onClick={() => setShowDiagnostics(true)}
+              style={{
+                padding: '10px 20px',
+                fontSize: '14px',
+                cursor: 'pointer',
+                backgroundColor: '#2196f3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                width: '100%'
+              }}
+            >
+              🔍 Show Diagnostics
+            </button>
+          </div>
         </div>
       </AppProvider>
     );
