@@ -198,6 +198,11 @@ class TenantContextMiddleware:
         if request.url.path in ("/health", "/docs", "/redoc", "/openapi.json") or request.url.path.startswith("/api/webhooks/"):
             return await call_next(request)
 
+        # Skip authentication for CORS preflight requests (OPTIONS method)
+        # Browsers do not send authorization headers with OPTIONS requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Check if authentication is configured (set in app lifespan)
         if hasattr(request.app.state, "auth_configured") and not request.app.state.auth_configured:
             logger.warning(
