@@ -60,9 +60,12 @@ services:
       - PORT=8000
       - DATABASE_URL=postgresql://shopify_analytics_user:localdev123@postgres:5432/shopify_analytics
       - REDIS_URL=redis://redis:6379
-      # For local dev, use test/mock values
-      - FRONTEGG_CLIENT_ID=${FRONTEGG_CLIENT_ID:-test-client-id}
-      - FRONTEGG_CLIENT_SECRET=${FRONTEGG_CLIENT_SECRET:-test-client-secret}
+      # Frontegg authentication (required - from .env file)
+      - FRONTEGG_CLIENT_ID=${FRONTEGG_CLIENT_ID}
+      - FRONTEGG_CLIENT_SECRET=${FRONTEGG_CLIENT_SECRET}
+      # CORS configuration
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,https://markisight.frontegg.com}
+      # Other services (use test values for local dev)
       - SHOPIFY_API_KEY=${SHOPIFY_API_KEY:-test-shopify-key}
       - SHOPIFY_API_SECRET=${SHOPIFY_API_SECRET:-test-webhook-secret-for-hmac}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-test-openrouter-key}
@@ -95,6 +98,8 @@ services:
       - "3000:3000"
     environment:
       - VITE_API_URL=http://localhost:8000
+      - VITE_FRONTEGG_BASE_URL=${VITE_FRONTEGG_BASE_URL:-https://markisight.frontegg.com}
+      - VITE_FRONTEGG_CLIENT_ID=${VITE_FRONTEGG_CLIENT_ID:-${FRONTEGG_CLIENT_ID}}
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules

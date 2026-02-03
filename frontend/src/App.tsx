@@ -2,15 +2,19 @@
  * Main App Component
  *
  * Sets up Shopify Polaris provider, data health context, and routing.
+ * Requires Frontegg authentication before rendering application content.
  */
 
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from '@shopify/polaris';
+import { useAuth, useLoginWithRedirect } from '@frontegg/react';
 import enTranslations from '@shopify/polaris/locales/en.json';
 import '@shopify/polaris/build/esm/styles.css';
 
 import { DataHealthProvider } from './contexts/DataHealthContext';
 import { AppHeader } from './components/layout/AppHeader';
+import { useTokenSync } from './hooks/useTokenSync';
 import AdminPlans from './pages/AdminPlans';
 import Analytics from './pages/Analytics';
 import Paywall from './pages/Paywall';
@@ -19,6 +23,40 @@ import ApprovalsInbox from './pages/ApprovalsInbox';
 import WhatsNew from './pages/WhatsNew';
 
 function App() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const loginWithRedirect = useLoginWithRedirect();
+
+  // Ensure JWT token is synced to localStorage
+  useTokenSync();
+
+  useEffect(() => {
+    if (!isAuthenticated && !isLoading) {
+      loginWithRedirect();
+    }
+  }, [isAuthenticated, isLoading, loginWithRedirect]);
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <AppProvider i18n={enTranslations}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100vh'
+        }}>
+          <p>Loading...</p>
+        </div>
+      </AppProvider>
+    );
+  }
+
+  // If not authenticated, loginWithRedirect will handle redirect
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  // User is authenticated - render the app
   return (
     <AppProvider i18n={enTranslations}>
       <DataHealthProvider>
