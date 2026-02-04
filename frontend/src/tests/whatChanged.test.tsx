@@ -119,9 +119,9 @@ describe('WhatChangedButton', () => {
     vi.clearAllMocks();
     (hasCriticalIssues as any).mockResolvedValue(false);
     (getSummary as any).mockResolvedValue(mockSummary);
-    (getRecentSyncs as any).mockResolvedValue(mockRecentSyncs);
-    (getAIActions as any).mockResolvedValue(mockAIActions);
-    (getConnectorStatusChanges as any).mockResolvedValue([]);
+    (getRecentSyncs as any).mockResolvedValue({ syncs: mockRecentSyncs });
+    (getAIActions as any).mockResolvedValue({ actions: mockAIActions });
+    (getConnectorStatusChanges as any).mockResolvedValue({ changes: [] });
   });
 
   it('renders inline variant with label', async () => {
@@ -205,9 +205,9 @@ describe('WhatChangedPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (getSummary as any).mockResolvedValue(mockSummary);
-    (getRecentSyncs as any).mockResolvedValue(mockRecentSyncs);
-    (getAIActions as any).mockResolvedValue(mockAIActions);
-    (getConnectorStatusChanges as any).mockResolvedValue([]);
+    (getRecentSyncs as any).mockResolvedValue({ syncs: mockRecentSyncs });
+    (getAIActions as any).mockResolvedValue({ actions: mockAIActions });
+    (getConnectorStatusChanges as any).mockResolvedValue({ changes: [] });
   });
 
   it('renders when open', async () => {
@@ -224,7 +224,7 @@ describe('WhatChangedPanel', () => {
     expect(screen.queryByText('What Changed?')).not.toBeInTheDocument();
   });
 
-  it('calls onClose when close button is clicked', async () => {
+  it('calls onClose when Escape key is pressed', async () => {
     const handleClose = vi.fn();
 
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={handleClose} />);
@@ -233,9 +233,8 @@ describe('WhatChangedPanel', () => {
       expect(screen.getByText('What Changed?')).toBeInTheDocument();
     });
 
-    // Find and click close button (Polaris Modal has a close button)
-    const closeButton = screen.getByLabelText(/close/i);
-    await userEvent.click(closeButton);
+    // Press Escape key to close the modal
+    await userEvent.keyboard('{Escape}');
 
     expect(handleClose).toHaveBeenCalled();
   });
@@ -244,8 +243,8 @@ describe('WhatChangedPanel', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      // Overview tab should show summary counts
-      expect(screen.getByText(/syncs/i)).toBeInTheDocument();
+      // Overview tab should show Data Freshness section
+      expect(screen.getByText('Data Freshness')).toBeInTheDocument();
     });
   });
 
@@ -253,8 +252,9 @@ describe('WhatChangedPanel', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      // Should show freshness status
-      expect(screen.getByText(/fresh/i)).toBeInTheDocument();
+      // Should show freshness status badge - use getAllBy since "fresh" appears multiple times
+      const freshElements = screen.getAllByText(/fresh/i);
+      expect(freshElements.length).toBeGreaterThan(0);
     });
   });
 
@@ -265,11 +265,11 @@ describe('WhatChangedPanel', () => {
 
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
-    // Should show loading indicator initially
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    // Should show Spinner component initially (Polaris Spinner has class Polaris-Spinner)
+    expect(document.querySelector('.Polaris-Spinner')).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
+      expect(document.querySelector('.Polaris-Spinner')).not.toBeInTheDocument();
     });
   });
 
@@ -279,7 +279,7 @@ describe('WhatChangedPanel', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/error/i)).toBeInTheDocument();
+      expect(screen.getByText(/failed to load data/i)).toBeInTheDocument();
     });
   });
 });
@@ -292,9 +292,9 @@ describe('WhatChangedPanel Tabs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (getSummary as any).mockResolvedValue(mockSummary);
-    (getRecentSyncs as any).mockResolvedValue(mockRecentSyncs);
-    (getAIActions as any).mockResolvedValue(mockAIActions);
-    (getConnectorStatusChanges as any).mockResolvedValue(mockConnectorChanges);
+    (getRecentSyncs as any).mockResolvedValue({ syncs: mockRecentSyncs });
+    (getAIActions as any).mockResolvedValue({ actions: mockAIActions });
+    (getConnectorStatusChanges as any).mockResolvedValue({ changes: mockConnectorChanges });
   });
 
   it('has overview, syncs, AI actions, and connectors tabs', async () => {
@@ -302,9 +302,9 @@ describe('WhatChangedPanel Tabs', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Overview')).toBeInTheDocument();
-      expect(screen.getByText('Syncs')).toBeInTheDocument();
-      expect(screen.getByText('AI Actions')).toBeInTheDocument();
-      expect(screen.getByText('Connectors')).toBeInTheDocument();
+      expect(screen.getByText(/^Syncs \(\d+\)$/)).toBeInTheDocument();
+      expect(screen.getByText(/^AI Actions \(\d+\)$/)).toBeInTheDocument();
+      expect(screen.getByText(/^Connectors \(\d+\)$/)).toBeInTheDocument();
     });
   });
 
@@ -312,10 +312,10 @@ describe('WhatChangedPanel Tabs', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Syncs')).toBeInTheDocument();
+      expect(screen.getByText(/^Syncs \(\d+\)$/)).toBeInTheDocument();
     });
 
-    const syncsTab = screen.getByText('Syncs');
+    const syncsTab = screen.getByText(/^Syncs \(\d+\)$/);
     await userEvent.click(syncsTab);
 
     await waitFor(() => {
@@ -327,10 +327,10 @@ describe('WhatChangedPanel Tabs', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Syncs')).toBeInTheDocument();
+      expect(screen.getByText(/^Syncs \(\d+\)$/)).toBeInTheDocument();
     });
 
-    const syncsTab = screen.getByText('Syncs');
+    const syncsTab = screen.getByText(/^Syncs \(\d+\)$/);
     await userEvent.click(syncsTab);
 
     await waitFor(() => {
@@ -343,10 +343,10 @@ describe('WhatChangedPanel Tabs', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText('AI Actions')).toBeInTheDocument();
+      expect(screen.getByText(/^AI Actions \(\d+\)$/)).toBeInTheDocument();
     });
 
-    const actionsTab = screen.getByText('AI Actions');
+    const actionsTab = screen.getByText(/^AI Actions \(\d+\)$/);
     await userEvent.click(actionsTab);
 
     await waitFor(() => {
@@ -358,10 +358,10 @@ describe('WhatChangedPanel Tabs', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText('AI Actions')).toBeInTheDocument();
+      expect(screen.getByText(/^AI Actions \(\d+\)$/)).toBeInTheDocument();
     });
 
-    const actionsTab = screen.getByText('AI Actions');
+    const actionsTab = screen.getByText(/^AI Actions \(\d+\)$/);
     await userEvent.click(actionsTab);
 
     await waitFor(() => {
@@ -374,10 +374,10 @@ describe('WhatChangedPanel Tabs', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Connectors')).toBeInTheDocument();
+      expect(screen.getByText(/^Connectors \(\d+\)$/)).toBeInTheDocument();
     });
 
-    const connectorsTab = screen.getByText('Connectors');
+    const connectorsTab = screen.getByText(/^Connectors \(\d+\)$/);
     await userEvent.click(connectorsTab);
 
     await waitFor(() => {
@@ -399,23 +399,23 @@ describe('WhatChangedPanel Empty States', () => {
       recent_syncs_count: 0,
       recent_ai_actions_count: 0,
     });
-    (getRecentSyncs as any).mockResolvedValue([]);
-    (getAIActions as any).mockResolvedValue([]);
-    (getConnectorStatusChanges as any).mockResolvedValue([]);
+    (getRecentSyncs as any).mockResolvedValue({ syncs: [] });
+    (getAIActions as any).mockResolvedValue({ actions: [] });
+    (getConnectorStatusChanges as any).mockResolvedValue({ changes: [] });
   });
 
   it('shows empty state for syncs tab when no syncs', async () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Syncs')).toBeInTheDocument();
+      expect(screen.getByText(/^Syncs \(\d+\)$/)).toBeInTheDocument();
     });
 
-    const syncsTab = screen.getByText('Syncs');
+    const syncsTab = screen.getByText(/^Syncs \(\d+\)$/);
     await userEvent.click(syncsTab);
 
     await waitFor(() => {
-      expect(screen.getByText(/no recent syncs/i)).toBeInTheDocument();
+      expect(screen.getByText(/no sync activity/i)).toBeInTheDocument();
     });
   });
 
@@ -423,14 +423,14 @@ describe('WhatChangedPanel Empty States', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText('AI Actions')).toBeInTheDocument();
+      expect(screen.getByText(/^AI Actions \(\d+\)$/)).toBeInTheDocument();
     });
 
-    const actionsTab = screen.getByText('AI Actions');
+    const actionsTab = screen.getByText(/^AI Actions \(\d+\)$/);
     await userEvent.click(actionsTab);
 
     await waitFor(() => {
-      expect(screen.getByText(/no recent/i)).toBeInTheDocument();
+      expect(screen.getByText(/no ai action activity/i)).toBeInTheDocument();
     });
   });
 
@@ -438,14 +438,14 @@ describe('WhatChangedPanel Empty States', () => {
     renderWithPolaris(<WhatChangedPanel isOpen={true} onClose={() => {}} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Connectors')).toBeInTheDocument();
+      expect(screen.getByText(/^Connectors \(\d+\)$/)).toBeInTheDocument();
     });
 
-    const connectorsTab = screen.getByText('Connectors');
+    const connectorsTab = screen.getByText(/^Connectors \(\d+\)$/);
     await userEvent.click(connectorsTab);
 
     await waitFor(() => {
-      expect(screen.getByText(/no status changes/i)).toBeInTheDocument();
+      expect(screen.getByText(/no connector status changes/i)).toBeInTheDocument();
     });
   });
 });
@@ -458,9 +458,9 @@ describe('WhatChangedPanel Refresh', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (getSummary as any).mockResolvedValue(mockSummary);
-    (getRecentSyncs as any).mockResolvedValue(mockRecentSyncs);
-    (getAIActions as any).mockResolvedValue(mockAIActions);
-    (getConnectorStatusChanges as any).mockResolvedValue([]);
+    (getRecentSyncs as any).mockResolvedValue({ syncs: mockRecentSyncs });
+    (getAIActions as any).mockResolvedValue({ actions: mockAIActions });
+    (getConnectorStatusChanges as any).mockResolvedValue({ changes: [] });
   });
 
   it('fetches data when panel opens', async () => {
