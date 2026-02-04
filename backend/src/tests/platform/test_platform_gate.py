@@ -181,7 +181,7 @@ class TestTenantIsolation:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_tenant_a_cannot_access_tenant_b_data(
         self,
         mock_get_signing_key,
@@ -227,7 +227,7 @@ class TestTenantIsolation:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_tenant_id_from_request_body_ignored(
         self,
         mock_get_signing_key,
@@ -322,7 +322,7 @@ class TestRBACEnforcement:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_admin_role_required_for_admin_endpoint(
         self,
         mock_get_signing_key,
@@ -484,7 +484,7 @@ class TestAuditLogging:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_all_requests_logged_with_tenant_context(
         self,
         mock_get_signing_key,
@@ -594,7 +594,7 @@ class TestFeatureFlagKillSwitch:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_feature_flag_in_environment(
         self,
         mock_get_signing_key,
