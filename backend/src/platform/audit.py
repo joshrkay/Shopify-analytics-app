@@ -177,6 +177,12 @@ class AuditAction(str, Enum):
     IDENTITY_TENANT_CREATED = "identity.tenant_created"
     IDENTITY_TENANT_DEACTIVATED = "identity.tenant_deactivated"
 
+    # Invite events
+    IDENTITY_INVITE_SENT = "identity.invite_sent"
+    IDENTITY_INVITE_ACCEPTED = "identity.invite_accepted"
+    IDENTITY_INVITE_EXPIRED = "identity.invite_expired"
+    IDENTITY_INVITE_REVOKED = "identity.invite_revoked"
+
 
 class AuditOutcome(str, Enum):
     """Outcome of the audited action."""
