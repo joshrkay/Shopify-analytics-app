@@ -17,6 +17,7 @@ import pytest
 import logging
 import os
 import re
+from dataclasses import dataclass, field
 from io import StringIO
 from unittest.mock import Mock, patch, MagicMock
 from fastapi import FastAPI, Request, status, HTTPException
@@ -29,6 +30,39 @@ from src.platform.tenant_context import (
 )
 from src.repositories.base_repo import BaseRepository, TenantIsolationError
 from src.db_base import Base
+
+
+# ============================================================================
+# MOCK AUTHORIZATION HELPERS
+# ============================================================================
+
+def create_mock_authz_result(is_authorized=True, roles=None, tenant_id=None, user_id=None):
+    """Create a mock AuthorizationResult for testing."""
+    from src.services.tenant_guard import AuthorizationResult
+    return AuthorizationResult(
+        is_authorized=is_authorized,
+        user_id=user_id or "test-user-id",
+        tenant_id=tenant_id,
+        roles=roles or ["admin", "user"],
+        billing_tier="pro",
+        denial_reason=None if is_authorized else "Access denied",
+        error_code=None if is_authorized else "ACCESS_DENIED",
+        roles_changed=False,
+        previous_roles=[],
+        audit_action=None,
+        audit_metadata={},
+    )
+
+
+@pytest.fixture(autouse=True)
+def mock_authorization_enforcement():
+    """Mock TenantGuard.enforce_authorization to skip DB checks in tests."""
+    with patch('src.platform.tenant_context.TenantGuard') as mock_guard_class:
+        mock_guard = MagicMock()
+        mock_guard.enforce_authorization.return_value = create_mock_authz_result()
+        mock_guard.emit_enforcement_audit_event.return_value = None
+        mock_guard_class.return_value = mock_guard
+        yield mock_guard
 
 
 # ============================================================================
@@ -80,8 +114,8 @@ def mock_jwt_payload_tenant_b():
 @pytest.fixture(autouse=True)
 def setup_test_env(monkeypatch):
     """Set up test environment variables."""
-    monkeypatch.setenv("FRONTEGG_CLIENT_ID", "test-client-id")
-    monkeypatch.setenv("FRONTEGG_CLIENT_SECRET", "test-client-secret")
+    monkeypatch.setenv("CLERK_PUBLISHABLE_KEY", "test-clerk-publishable-key")
+    monkeypatch.setenv("CLERK_SECRET_KEY", "test-clerk-secret-key")
     monkeypatch.setenv("CLERK_FRONTEND_API", "test.clerk.accounts.dev")
 
 
