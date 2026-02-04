@@ -896,6 +896,39 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
     ],
 
     # =========================================================================
+    # SUPER ADMIN LIFECYCLE EVENTS
+    # =========================================================================
+    # Track all super admin status changes. CRITICAL for security auditing.
+    # Super admin is DB-backed only - NEVER from JWT claims.
+
+    "identity.super_admin_granted": [
+        "clerk_user_id",       # User receiving super admin status
+        "granted_by",          # clerk_user_id of granting super admin (or "migration")
+        "source",              # Enum: migration, admin_api
+    ],
+
+    "identity.super_admin_revoked": [
+        "clerk_user_id",       # User losing super admin status
+        "revoked_by",          # clerk_user_id of revoking super admin
+        "reason",              # Reason for revocation
+    ],
+
+    # =========================================================================
+    # IDENTITY COLLISION EVENTS
+    # =========================================================================
+    # Track identity collision when invite is accepted by a different
+    # clerk_user_id than expected (same email, different identity).
+
+    "identity.identity_collision_detected": [
+        "invite_id",           # The invite being accepted
+        "tenant_id",           # Tenant context
+        "email",               # Email that matched
+        "accepting_clerk_user_id",  # Clerk user ID accepting the invite
+        "existing_clerk_user_id",   # Clerk user ID of existing user with same email
+        "action_taken",        # Enum: new_user_created, blocked
+    ],
+
+    # =========================================================================
     # AUTHORIZATION ENFORCEMENT EVENTS
     # =========================================================================
     # Track mid-session authorization enforcement when access is revoked,
@@ -1050,6 +1083,9 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "identity.role_revoked",
         "identity.tenant_created",
         "identity.tenant_deactivated",
+        "identity.super_admin_granted",
+        "identity.super_admin_revoked",
+        "identity.identity_collision_detected",
     ],
     "authorization_enforcement": [
         "identity.access_revoked_enforced",
@@ -1131,6 +1167,11 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
     "identity.role_revoked": "medium",
     "identity.tenant_created": "medium",
     "identity.tenant_deactivated": "high",
+    # Super admin events - CRITICAL (highest risk)
+    "identity.super_admin_granted": "critical",
+    "identity.super_admin_revoked": "critical",
+    # Identity collision events - HIGH (security concern)
+    "identity.identity_collision_detected": "high",
 
     # Authorization enforcement events - all high severity (security-critical)
     "identity.access_revoked_enforced": "high",
