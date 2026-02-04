@@ -50,6 +50,20 @@ class TenantViolationType(str, Enum):
     MISSING_ORG_ID = "missing_org_id"
     MISSING_USER_ID = "missing_user_id"
     SERVICE_UNAVAILABLE = "service_unavailable"
+    TENANT_SELECTION_REQUIRED = "tenant_selection_required"
+    NO_TENANT_ACCESS = "no_tenant_access"
+
+
+class TenantSelectionRequiredException(Exception):
+    """Raised when user has multiple tenants but no active selection."""
+    def __init__(self, message: str, tenant_count: int):
+        super().__init__(message)
+        self.tenant_count = tenant_count
+
+
+class NoTenantAccessException(Exception):
+    """Raised when user has no tenant access."""
+    pass
 
 
 def _emit_tenant_violation_audit_log(
@@ -349,7 +363,117 @@ class TenantContextMiddleware:
         if self._issuer is None:
             self._get_jwks_client()
         return self._issuer
-    
+
+    async def _resolve_tenant_from_db(
+        self,
+        request: Request,
+        user_id: str,
+        jwt_org_id: str,
+        jwt_active_tenant_id: str,
+        jwt_allowed_tenants: list[str],
+    ) -> tuple[str, list[str]]:
+        """
+        Resolve active tenant from database.
+
+        Resolution order:
+        1. JWT-provided active_tenant_id (if valid in DB)
+        2. Stored active_tenant_id in user metadata (if valid)
+        3. Auto-select if user has exactly 1 tenant
+        4. Raise TenantSelectionRequiredException if multiple tenants
+
+        Args:
+            request: FastAPI request
+            user_id: Clerk user ID from JWT
+            jwt_org_id: Organization ID from JWT
+            jwt_active_tenant_id: Active tenant from JWT
+            jwt_allowed_tenants: Allowed tenants from JWT metadata
+
+        Returns:
+            Tuple of (resolved_tenant_id, db_allowed_tenants)
+
+        Raises:
+            TenantSelectionRequiredException: User has >1 tenants and no selection
+            NoTenantAccessException: User has no tenant access
+        """
+        from src.database.session import get_db_session_sync
+        from src.models.user import User
+        from src.models.user_tenant_roles import UserTenantRole
+        from src.models.tenant import Tenant, TenantStatus
+
+        db = get_db_session_sync()
+        try:
+            # Find user by clerk_user_id
+            user = db.query(User).filter(
+                User.clerk_user_id == user_id,
+                User.is_active == True,
+            ).first()
+
+            if not user:
+                # User not in DB yet - use JWT-based tenant_id
+                # User will be created on first authenticated request
+                return jwt_active_tenant_id, []
+
+            # Get all active tenant roles for this user
+            roles = db.query(UserTenantRole).filter(
+                UserTenantRole.user_id == user.id,
+                UserTenantRole.is_active == True,
+            ).all()
+
+            # Get unique tenant IDs that are active
+            db_tenant_ids = set()
+            for role in roles:
+                tenant = db.query(Tenant).filter(
+                    Tenant.id == role.tenant_id,
+                    Tenant.status == TenantStatus.ACTIVE,
+                ).first()
+                if tenant:
+                    db_tenant_ids.add(tenant.id)
+
+            # Merge with JWT-based allowed_tenants
+            all_tenant_ids = list(set(jwt_allowed_tenants) | db_tenant_ids)
+
+            # If no tenants at all, use JWT org_id
+            if not all_tenant_ids:
+                # User has JWT org_id but no DB records yet
+                return jwt_org_id, []
+
+            # 1. Try JWT-provided active_tenant_id (if in allowed list)
+            if jwt_active_tenant_id in all_tenant_ids:
+                return jwt_active_tenant_id, list(db_tenant_ids)
+
+            # 2. Try stored active_tenant_id from user metadata
+            stored_tenant_id = (user.extra_metadata or {}).get("active_tenant_id")
+            if stored_tenant_id and stored_tenant_id in all_tenant_ids:
+                return stored_tenant_id, list(db_tenant_ids)
+
+            # 3. Auto-select if exactly 1 tenant
+            if len(all_tenant_ids) == 1:
+                auto_tenant_id = all_tenant_ids[0]
+                # Store the auto-selection
+                metadata = user.extra_metadata or {}
+                metadata["active_tenant_id"] = auto_tenant_id
+                user.extra_metadata = metadata
+                db.commit()
+
+                logger.info(
+                    "Auto-selected single tenant in middleware",
+                    extra={
+                        "user_id": user_id,
+                        "tenant_id": auto_tenant_id,
+                    }
+                )
+                return auto_tenant_id, list(db_tenant_ids)
+
+            # 4. Multiple tenants but no selection
+            raise TenantSelectionRequiredException(
+                f"User has {len(all_tenant_ids)} tenants but no active selection. "
+                "Use POST /api/users/me/active-tenant to select one.",
+                tenant_count=len(all_tenant_ids),
+            )
+
+        finally:
+            db.close()
+
     async def __call__(self, request: Request, call_next):
         """
         Process request and extract tenant context from JWT.
@@ -489,6 +613,53 @@ class TenantContextMiddleware:
             # For agency users, active_tenant_id may differ from org_id
             # Use 'active_tenant_id' claim if present, otherwise default to org_id
             active_tenant_id = payload.get("active_tenant_id") or str(org_id)
+
+            # =========================================================================
+            # DB-BASED TENANT RESOLUTION
+            # If user has multiple tenants (via agency grants), resolve active tenant
+            # =========================================================================
+            try:
+                resolved_tenant_id, db_allowed_tenants = await self._resolve_tenant_from_db(
+                    request=request,
+                    user_id=str(user_id),
+                    jwt_org_id=str(org_id),
+                    jwt_active_tenant_id=active_tenant_id,
+                    jwt_allowed_tenants=allowed_tenants,
+                )
+                active_tenant_id = resolved_tenant_id
+                # Merge DB-based allowed_tenants with JWT-based
+                if db_allowed_tenants:
+                    allowed_tenants = list(set(allowed_tenants + db_allowed_tenants))
+            except TenantSelectionRequiredException as e:
+                # Multi-tenant user has no active tenant selected
+                _emit_tenant_violation_audit_log(
+                    request=request,
+                    violation_type=TenantViolationType.TENANT_SELECTION_REQUIRED,
+                    error_message=str(e),
+                    user_id=str(user_id),
+                    org_id=str(org_id),
+                    extra_metadata={"tenant_count": e.tenant_count},
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "TENANT_SELECTION_REQUIRED",
+                        "message": str(e),
+                        "tenant_count": e.tenant_count,
+                    }
+                )
+            except NoTenantAccessException as e:
+                _emit_tenant_violation_audit_log(
+                    request=request,
+                    violation_type=TenantViolationType.NO_TENANT_ACCESS,
+                    error_message=str(e),
+                    user_id=str(user_id),
+                    org_id=str(org_id),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User has no tenant access"
+                )
 
             # Ensure active_tenant_id is in allowed_tenants for agency users
             if allowed_tenants and active_tenant_id not in allowed_tenants:

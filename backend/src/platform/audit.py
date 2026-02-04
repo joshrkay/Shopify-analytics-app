@@ -61,6 +61,8 @@ class AuditAction(str, Enum):
     AUTH_PASSWORD_CHANGE = "auth.password_change"
     AUTH_MFA_ENABLED = "auth.mfa_enabled"
     AUTH_MFA_DISABLED = "auth.mfa_disabled"
+    AUTH_CROSS_TENANT_ACCESS_ATTEMPT = "auth.cross_tenant_access_attempt"
+    AUTH_TENANT_SELECTED = "auth.tenant_selected"
 
     # Billing events
     BILLING_PLAN_CHANGED = "billing.plan_changed"
