@@ -177,6 +177,11 @@ class AuditAction(str, Enum):
     IDENTITY_TENANT_CREATED = "identity.tenant_created"
     IDENTITY_TENANT_DEACTIVATED = "identity.tenant_deactivated"
 
+    # Authorization Enforcement events (Authorization Hardening)
+    # These events are emitted when authorization is enforced mid-session
+    IDENTITY_ACCESS_REVOKED_ENFORCED = "identity.access_revoked_enforced"
+    IDENTITY_ROLE_CHANGE_ENFORCED = "identity.role_change_enforced"
+    BILLING_ROLE_REVOKED_DUE_TO_DOWNGRADE = "billing.role_revoked_due_to_downgrade"
     # Invite events
     IDENTITY_INVITE_SENT = "identity.invite_sent"
     IDENTITY_INVITE_ACCEPTED = "identity.invite_accepted"

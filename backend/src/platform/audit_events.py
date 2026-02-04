@@ -894,6 +894,40 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "clerk_org_id",        # Clerk organization ID
         "reason",              # Enum: org_deleted, admin_action, billing
     ],
+
+    # =========================================================================
+    # AUTHORIZATION ENFORCEMENT EVENTS
+    # =========================================================================
+    # Track mid-session authorization enforcement when access is revoked,
+    # roles change, or billing downgrades remove permissions.
+
+    "identity.access_revoked_enforced": [
+        "clerk_user_id",       # User whose access was revoked
+        "tenant_id",           # Tenant access was revoked from
+        "previous_roles",      # Roles the user had before revocation
+        "enforcement_reason",  # Enum: membership_deleted, role_deactivated, tenant_suspended
+        "request_path",        # The request path that was blocked
+        "request_method",      # HTTP method of blocked request
+    ],
+
+    "identity.role_change_enforced": [
+        "clerk_user_id",       # User whose role changed
+        "tenant_id",           # Tenant where role changed
+        "previous_roles",      # Roles before the change
+        "new_roles",           # Roles after the change
+        "change_source",       # Enum: clerk_webhook, admin_action, agency_grant
+        "permissions_removed", # List of permissions no longer available
+    ],
+
+    "billing.role_revoked_due_to_downgrade": [
+        "clerk_user_id",       # User whose role was invalidated
+        "tenant_id",           # Tenant that was downgraded
+        "previous_billing_tier",  # Billing tier before downgrade
+        "new_billing_tier",    # Billing tier after downgrade
+        "invalid_role",        # The role that's no longer valid
+        "allowed_roles",       # Roles that are valid for new tier
+        "request_path",        # The request path that was blocked
+    ],
 }
 
 
@@ -1017,6 +1051,11 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "identity.tenant_created",
         "identity.tenant_deactivated",
     ],
+    "authorization_enforcement": [
+        "identity.access_revoked_enforced",
+        "identity.role_change_enforced",
+        "billing.role_revoked_due_to_downgrade",
+    ],
 }
 
 
@@ -1092,6 +1131,11 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
     "identity.role_revoked": "medium",
     "identity.tenant_created": "medium",
     "identity.tenant_deactivated": "high",
+
+    # Authorization enforcement events - all high severity (security-critical)
+    "identity.access_revoked_enforced": "high",
+    "identity.role_change_enforced": "medium",
+    "billing.role_revoked_due_to_downgrade": "high",
 }
 
 
