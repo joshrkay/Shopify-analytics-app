@@ -104,6 +104,7 @@ def db_engine():
     # Import and create all tables
     from src.db_base import Base
     from src.models import subscription, plan, store, billing_event, airbyte_connection
+    from src.models import user, tenant, organization, user_tenant_roles, tenant_invite
     from src.ingestion.jobs import models as ingestion_job_models
 
     Base.metadata.create_all(bind=engine)
