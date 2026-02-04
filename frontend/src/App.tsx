@@ -1,17 +1,17 @@
 /**
  * Main App Component
  *
- * Sets up Clerk authentication, Shopify Polaris provider, data health context, and routing.
+ * Sets up Shopify Polaris provider, data health context, and routing.
  * Includes root-level error boundary for graceful error handling.
  *
  * Authentication: Clerk (https://clerk.com)
- * - ClerkProvider wraps the entire app
+ * - ClerkProvider is set up in main.tsx
  * - SignedIn/SignedOut components control access
- * - useAuth() hook provides token for API calls
+ * - useClerkToken hook syncs tokens for API calls
  */
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ClerkProvider, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
 import { AppProvider } from '@shopify/polaris';
 import enTranslations from '@shopify/polaris/locales/en.json';
 import '@shopify/polaris/build/esm/styles.css';
@@ -27,13 +27,6 @@ import Paywall from './pages/Paywall';
 import InsightsFeed from './pages/InsightsFeed';
 import ApprovalsInbox from './pages/ApprovalsInbox';
 import WhatsNew from './pages/WhatsNew';
-
-// Clerk publishable key from environment
-const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-if (!CLERK_PUBLISHABLE_KEY) {
-  console.warn('Missing VITE_CLERK_PUBLISHABLE_KEY environment variable. Authentication will not work.');
-}
 
 /**
  * Authenticated app content.
@@ -72,27 +65,24 @@ function App() {
         </AppProvider>
       )}
       onError={(error, errorInfo) => {
-        // Log error to console (could be extended to send to error tracking service)
         console.error('Root error boundary caught error:', error);
         console.error('Component stack:', errorInfo.componentStack);
       }}
     >
-      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY || ''}>
-        <AppProvider i18n={enTranslations}>
-          <DataHealthProvider>
-            <BrowserRouter>
-              {/* Show app content only when signed in */}
-              <SignedIn>
-                <AuthenticatedApp />
-              </SignedIn>
-              {/* Redirect to sign-in when not authenticated */}
-              <SignedOut>
-                <RedirectToSignIn />
-              </SignedOut>
-            </BrowserRouter>
-          </DataHealthProvider>
-        </AppProvider>
-      </ClerkProvider>
+      <AppProvider i18n={enTranslations}>
+        <DataHealthProvider>
+          <BrowserRouter>
+            {/* Show app content only when signed in */}
+            <SignedIn>
+              <AuthenticatedApp />
+            </SignedIn>
+            {/* Redirect to sign-in when not authenticated */}
+            <SignedOut>
+              <RedirectToSignIn />
+            </SignedOut>
+          </BrowserRouter>
+        </DataHealthProvider>
+      </AppProvider>
     </ErrorBoundary>
   );
 }
