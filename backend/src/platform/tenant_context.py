@@ -128,7 +128,8 @@ def _emit_tenant_violation_audit_log(
         }
     )
 
-    # Try to write to audit database (lazy import to avoid circular deps)
+    # Try to write to audit database (lazy import for audit module to avoid circular deps)
+    # Note: get_db_session_sync is already imported at module level
     try:
         from src.platform.audit import (
             AuditEvent,
@@ -136,7 +137,6 @@ def _emit_tenant_violation_audit_log(
             AuditOutcome,
             write_audit_log_sync,
         )
-        from src.database.session import get_db_session_sync
 
         db_gen = get_db_session_sync()
         db = next(db_gen)
