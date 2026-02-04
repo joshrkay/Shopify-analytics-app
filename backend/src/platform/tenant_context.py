@@ -124,7 +124,8 @@ def _emit_tenant_violation_audit_log(
         )
         from src.database.session import get_db_session_sync
 
-        db = get_db_session_sync()
+        db_gen = get_db_session_sync()
+        db = next(db_gen)
         try:
             event = AuditEvent(
                 tenant_id=org_id or "UNKNOWN",
@@ -514,7 +515,8 @@ class TenantContextMiddleware:
             from src.services.tenant_guard import TenantGuard
             from src.database.session import get_db_session_sync
 
-            db = get_db_session_sync()
+            db_gen = get_db_session_sync()
+            db = next(db_gen)
             try:
                 guard = TenantGuard(db)
                 authz_result = guard.enforce_authorization(
