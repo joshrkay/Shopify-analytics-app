@@ -182,6 +182,11 @@ class AuditAction(str, Enum):
     IDENTITY_ACCESS_REVOKED_ENFORCED = "identity.access_revoked_enforced"
     IDENTITY_ROLE_CHANGE_ENFORCED = "identity.role_change_enforced"
     BILLING_ROLE_REVOKED_DUE_TO_DOWNGRADE = "billing.role_revoked_due_to_downgrade"
+    # Invite events
+    IDENTITY_INVITE_SENT = "identity.invite_sent"
+    IDENTITY_INVITE_ACCEPTED = "identity.invite_accepted"
+    IDENTITY_INVITE_EXPIRED = "identity.invite_expired"
+    IDENTITY_INVITE_REVOKED = "identity.invite_revoked"
 
 
 class AuditOutcome(str, Enum):
