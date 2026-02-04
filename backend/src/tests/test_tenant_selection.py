@@ -129,9 +129,14 @@ class TestSingleTenantAutoSelection:
     ):
         """User with single tenant should auto-select that tenant."""
         # Setup: User has exactly 1 tenant
+        # resolve_active_tenant calls _get_user 3 times:
+        # 1. In resolve_active_tenant itself
+        # 2. In get_user_tenants
+        # 3. In get_active_tenant_id
         mock_db_session.query.return_value.filter.return_value.first.side_effect = [
-            mock_user,  # User query
-            mock_tenant_1,  # Tenant status check
+            mock_user,  # resolve_active_tenant._get_user
+            mock_user,  # get_user_tenants._get_user
+            mock_user,  # get_active_tenant_id._get_user
         ]
         mock_db_session.query.return_value.filter.return_value.all.return_value = [
             mock_role_1
@@ -158,9 +163,11 @@ class TestSingleTenantAutoSelection:
         """Auto-selection should store the tenant in user metadata."""
         mock_user.extra_metadata = {}
 
+        # resolve_active_tenant calls _get_user 3 times
         mock_db_session.query.return_value.filter.return_value.first.side_effect = [
-            mock_user,
-            mock_tenant_1,
+            mock_user,  # resolve_active_tenant._get_user
+            mock_user,  # get_user_tenants._get_user
+            mock_user,  # get_active_tenant_id._get_user
         ]
         mock_db_session.query.return_value.filter.return_value.all.return_value = [
             mock_role_1
@@ -198,10 +205,11 @@ class TestMultiTenantRequiresSelection:
         # Setup: User has 2 tenants, no active selection
         mock_user.extra_metadata = {}
 
+        # resolve_active_tenant calls _get_user 3 times
         mock_db_session.query.return_value.filter.return_value.first.side_effect = [
-            mock_user,
-            mock_tenant_1,
-            mock_tenant_2,
+            mock_user,  # resolve_active_tenant._get_user
+            mock_user,  # get_user_tenants._get_user
+            mock_user,  # get_active_tenant_id._get_user
         ]
         mock_db_session.query.return_value.filter.return_value.all.return_value = [
             mock_role_1,
@@ -231,10 +239,11 @@ class TestMultiTenantRequiresSelection:
         # Setup: User has 2 tenants with active selection
         mock_user.extra_metadata = {"active_tenant_id": "tenant_2"}
 
+        # resolve_active_tenant calls _get_user 3 times
         mock_db_session.query.return_value.filter.return_value.first.side_effect = [
-            mock_user,
-            mock_tenant_1,
-            mock_tenant_2,
+            mock_user,  # resolve_active_tenant._get_user
+            mock_user,  # get_user_tenants._get_user
+            mock_user,  # get_active_tenant_id._get_user
         ]
         mock_db_session.query.return_value.filter.return_value.all.return_value = [
             mock_role_1,
@@ -420,10 +429,16 @@ class TestSetActiveTenant:
         """Successfully setting active tenant."""
         mock_user.extra_metadata = {}
 
+        # set_active_tenant calls .first() 4 times:
+        # 1. _get_user for user lookup
+        # 2. Tenant query
+        # 3. UserTenantRole query for access check
+        # 4. get_active_tenant_id._get_user for previous tenant
         mock_db_session.query.return_value.filter.return_value.first.side_effect = [
-            mock_user,
-            mock_tenant_1,
-            mock_role_1,  # Has access
+            mock_user,     # _get_user
+            mock_tenant_1, # Tenant query
+            mock_role_1,   # UserTenantRole (has access)
+            mock_user,     # get_active_tenant_id._get_user
         ]
 
         with patch('src.services.tenant_selection_service.write_audit_log_sync'):
@@ -448,10 +463,16 @@ class TestSetActiveTenant:
         """Setting active tenant should emit success audit event."""
         mock_user.extra_metadata = {"active_tenant_id": "old_tenant"}
 
+        # set_active_tenant calls .first() 4 times:
+        # 1. _get_user for user lookup
+        # 2. Tenant query
+        # 3. UserTenantRole query for access check
+        # 4. get_active_tenant_id._get_user for previous tenant
         mock_db_session.query.return_value.filter.return_value.first.side_effect = [
-            mock_user,
-            mock_tenant_1,
-            mock_role_1,
+            mock_user,     # _get_user
+            mock_tenant_1, # Tenant query
+            mock_role_1,   # UserTenantRole (has access)
+            mock_user,     # get_active_tenant_id._get_user
         ]
 
         with patch('src.services.tenant_selection_service.write_audit_log_sync') as mock_audit:
