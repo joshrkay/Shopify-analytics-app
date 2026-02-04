@@ -79,6 +79,11 @@ from src.models.data_change_event import (
     DataChangeEventType,
     AFFECTED_METRICS,
 )
+from src.models.platform_credential import (
+    PlatformCredential,
+    PlatformType,
+    CredentialStatus,
+)
 
 __all__ = [
     "TimestampMixin",
@@ -173,4 +178,8 @@ __all__ = [
     "DataChangeEvent",
     "DataChangeEventType",
     "AFFECTED_METRICS",
+    # Platform Credential models (Story 8.5)
+    "PlatformCredential",
+    "PlatformType",
+    "CredentialStatus",
 ]
