@@ -19,12 +19,9 @@ Tests cover:
   - Resolution priority (tenant > global > yaml)
 """
 
-import tempfile
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
-import yaml
 
 from src.models.dashboard_metric_binding import DashboardMetricBinding
 from src.services.dashboard_metric_binding_service import (
@@ -38,21 +35,14 @@ from src.governance.metric_versioning import MetricVersionResolver
 
 
 # ============================================================================
-# Test Fixtures
+# Test Fixtures (uses shared temp_config_dir and make_yaml_config from conftest)
 # ============================================================================
 
 
 @pytest.fixture
-def temp_config_dir():
-    """Create a temporary directory with test config files."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir)
-
-
-@pytest.fixture
-def consumers_config(temp_config_dir):
+def consumers_config(make_yaml_config):
     """Create test consumers.yaml configuration."""
-    config = {
+    return make_yaml_config("consumers.yaml", {
         "dashboards": {
             "merchant_overview": {
                 "description": "Primary merchant dashboard",
@@ -82,22 +72,16 @@ def consumers_config(temp_config_dir):
             "emit_audit_event": True,
             "block_if_version_sunset": True,
         },
-    }
-
-    config_path = temp_config_dir / "consumers.yaml"
-    with open(config_path, "w") as f:
-        yaml.dump(config, f)
-
-    return config_path
+    })
 
 
 @pytest.fixture
-def metrics_config(temp_config_dir):
+def metrics_config(make_yaml_config):
     """Create test metrics versioning configuration."""
     future_sunset = (datetime.now(timezone.utc) + timedelta(days=60)).strftime("%Y-%m-%d")
     past_sunset = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%d")
 
-    config = {
+    return make_yaml_config("metrics_versions.yaml", {
         "deprecation_enforcement": {
             "warn_on_query": True,
             "warn_days_before_sunset": 30,
@@ -156,13 +140,7 @@ def metrics_config(temp_config_dir):
                 },
             },
         },
-    }
-
-    config_path = temp_config_dir / "metrics_versions.yaml"
-    with open(config_path, "w") as f:
-        yaml.dump(config, f)
-
-    return config_path
+    })
 
 
 @pytest.fixture
