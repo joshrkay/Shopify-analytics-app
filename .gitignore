@@ -36,11 +36,13 @@ env/
 .env
 .env.local
 .env.*.local
+.env.visual
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+reports/
 
 # OS
 .DS_Store

@@ -18,6 +18,13 @@ help:
 	@echo "  make test-platform Run platform tests"
 	@echo "  make test-raw-rls  Run raw warehouse RLS tests (requires PostgreSQL)"
 	@echo ""
+	@echo "Visual E2E Tests (Real APIs):"
+	@echo "  make test-visual           Run all visual API tests"
+	@echo "  make test-visual-shopify   Run Shopify API tests"
+	@echo "  make test-visual-meta      Run Meta Ads API tests"
+	@echo "  make test-visual-google    Run Google Ads API tests"
+	@echo "  make test-visual-dry-run   Validate configuration only"
+	@echo ""
 	@echo "Code Quality:"
 	@echo "  make lint          Run linter (ruff)"
 	@echo "  make format        Auto-format code"
@@ -81,6 +88,31 @@ test-raw-rls:
 		-v \
 		--tb=short \
 		--timeout=300
+
+# =============================================================================
+# Visual E2E Tests (Real API Testing)
+# =============================================================================
+
+test-visual:
+	@echo "Running E2E Visual API Tests..."
+	@echo "Ensure .env.visual is configured with real API credentials"
+	PYTHONPATH=. python -m src.tests.e2e.visual.run_visual_tests --all
+
+test-visual-shopify:
+	@echo "Running Shopify API Visual Tests..."
+	PYTHONPATH=. python -m src.tests.e2e.visual.run_visual_tests --shopify
+
+test-visual-meta:
+	@echo "Running Meta Ads API Visual Tests..."
+	PYTHONPATH=. python -m src.tests.e2e.visual.run_visual_tests --meta
+
+test-visual-google:
+	@echo "Running Google Ads API Visual Tests..."
+	PYTHONPATH=. python -m src.tests.e2e.visual.run_visual_tests --google
+
+test-visual-dry-run:
+	@echo "Validating Visual Test Configuration..."
+	PYTHONPATH=. python -m src.tests.e2e.visual.run_visual_tests --dry-run
 
 # =============================================================================
 # Code Quality
