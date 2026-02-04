@@ -39,8 +39,22 @@ from jwt.exceptions import InvalidTokenError, DecodeError
 import json
 
 from src.constants.permissions import has_multi_tenant_access, RoleCategory, get_primary_role_category
+from src.database.session import get_db_session_sync
 
 logger = logging.getLogger(__name__)
+
+# Lazy import for TenantGuard to avoid circular imports
+# Imported at module level so it can be mocked in tests
+_tenant_guard_class = None
+
+
+def _get_tenant_guard_class():
+    """Get TenantGuard class (lazy import to avoid circular dependencies)."""
+    global _tenant_guard_class
+    if _tenant_guard_class is None:
+        from src.services.tenant_guard import TenantGuard
+        _tenant_guard_class = TenantGuard
+    return _tenant_guard_class
 
 
 class TenantViolationType(str, Enum):
@@ -512,8 +526,7 @@ class TenantContextMiddleware:
             # - Tenant access revoked mid-session
             # - Role changes mid-session
             # - Billing downgrades that invalidate roles
-            from src.services.tenant_guard import TenantGuard
-            from src.database.session import get_db_session_sync
+            TenantGuard = _get_tenant_guard_class()
 
             db_gen = get_db_session_sync()
             db = next(db_gen)
