@@ -57,12 +57,18 @@ def create_mock_authz_result(is_authorized=True, roles=None, tenant_id=None, use
 @pytest.fixture(autouse=True)
 def mock_authorization_enforcement():
     """Mock TenantGuard.enforce_authorization to skip DB checks in tests."""
-    with patch('src.platform.tenant_context.TenantGuard') as mock_guard_class:
-        mock_guard = MagicMock()
-        mock_guard.enforce_authorization.return_value = create_mock_authz_result()
-        mock_guard.emit_enforcement_audit_event.return_value = None
-        mock_guard_class.return_value = mock_guard
-        yield mock_guard
+    # Create mock guard instance
+    mock_guard = MagicMock()
+    mock_guard.enforce_authorization.return_value = create_mock_authz_result()
+    mock_guard.emit_enforcement_audit_event.return_value = None
+
+    # Patch at multiple locations to ensure coverage
+    with patch('src.services.tenant_guard.TenantGuard', return_value=mock_guard) as mock_class:
+        # Also patch the database session to prevent any DB calls
+        with patch('src.platform.tenant_context.get_db_session_sync') as mock_db:
+            mock_session = MagicMock()
+            mock_db.return_value = iter([mock_session])
+            yield mock_guard
 
 
 # ============================================================================
