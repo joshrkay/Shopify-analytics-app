@@ -75,10 +75,8 @@ def invite_service_mocked(mock_db_session, correlation_id):
         yield service
 
 
-@pytest.fixture
-def db_session(test_db_session):
-    """Use the test database session for integration tests."""
-    return test_db_session
+# db_session fixture is provided by e2e/conftest.py or regression/conftest.py
+# Import it via pytest's fixture discovery
 
 
 @pytest.fixture

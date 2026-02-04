@@ -29,10 +29,8 @@ from src.services.invite_service import InviteService
 # Test Fixtures
 # =============================================================================
 
-@pytest.fixture
-def db_session(test_db_session):
-    """Use the test database session."""
-    return test_db_session
+# db_session fixture is provided by e2e/conftest.py or regression/conftest.py
+# Import it via pytest's fixture discovery
 
 
 @pytest.fixture
