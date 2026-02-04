@@ -25,6 +25,11 @@ from pydantic import BaseModel, Field
 from src.platform.tenant_context import TenantContext, get_tenant_context
 from src.database.session import get_db_session_sync
 from src.services.tenant_members_service import TenantMembersService
+from src.services.tenant_selection_service import (
+    TenantSelectionService,
+    TenantAccessDeniedError,
+    TenantNotFoundError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +68,21 @@ class TenantAccessResponse(BaseModel):
     tenant_id: str
     roles: List[str] = []
     is_admin: bool = False
+
+
+class SetActiveTenantRequest(BaseModel):
+    """Request body for setting active tenant."""
+    tenant_id: str = Field(..., description="ID of the tenant to set as active")
+
+
+class SetActiveTenantResponse(BaseModel):
+    """Response for setting active tenant."""
+    tenant_id: str = Field(..., description="The newly active tenant ID")
+    name: str = Field(..., description="Tenant name")
+    previous_tenant_id: Optional[str] = Field(
+        None,
+        description="Previously active tenant ID (if any)"
+    )
 
 
 # --- Helper Functions ---
@@ -249,6 +269,95 @@ async def get_my_context(request: Request):
                 for t in tenants
             ],
         }
+
+    finally:
+        if not hasattr(request.state, 'db'):
+            db.close()
+
+
+@router.post("/me/active-tenant", response_model=SetActiveTenantResponse)
+async def set_active_tenant(request: Request, body: SetActiveTenantRequest):
+    """
+    Set the user's active tenant.
+
+    SECURITY:
+    - Validates user has access to the requested tenant via database
+    - Never trusts tenant_id from client without validation
+    - Emits audit event on invalid access attempts
+
+    Args:
+        body: Request with tenant_id to set as active
+
+    Returns:
+        Tenant details and previous active tenant
+
+    Raises:
+        403: If user doesn't have access to the tenant
+        404: If tenant doesn't exist
+    """
+    tenant_context = get_tenant_context(request)
+
+    # Extract client info for audit logging
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        ip_address = forwarded_for.split(",")[0].strip()
+    else:
+        ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("User-Agent")
+
+    db = _get_db_session(request)
+    try:
+        service = TenantSelectionService(db)
+
+        result = service.set_active_tenant(
+            clerk_user_id=tenant_context.user_id,
+            tenant_id=body.tenant_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+
+        db.commit()
+
+        logger.info(
+            "User set active tenant",
+            extra={
+                "user_id": tenant_context.user_id,
+                "tenant_id": body.tenant_id,
+                "previous_tenant_id": result.get("previous_tenant_id"),
+            }
+        )
+
+        return SetActiveTenantResponse(
+            tenant_id=result["tenant_id"],
+            name=result["name"],
+            previous_tenant_id=result.get("previous_tenant_id"),
+        )
+
+    except TenantNotFoundError as e:
+        logger.warning(
+            "Attempt to set non-existent tenant as active",
+            extra={
+                "user_id": tenant_context.user_id,
+                "requested_tenant_id": body.tenant_id,
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tenant not found: {body.tenant_id}"
+        )
+
+    except TenantAccessDeniedError as e:
+        logger.warning(
+            "Attempt to set unauthorized tenant as active",
+            extra={
+                "user_id": tenant_context.user_id,
+                "requested_tenant_id": body.tenant_id,
+            }
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied to tenant: {body.tenant_id}"
+        )
 
     finally:
         if not hasattr(request.state, 'db'):
