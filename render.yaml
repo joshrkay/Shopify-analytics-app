@@ -1,4 +1,4 @@
-# Render Blueprint for Shopify Analytics App
+# Render Blueprint for MarkInsight App
 # This file enables one-click deployment of the entire application stack
 # Deploy via: https://render.com/docs/blueprint-spec
 
@@ -7,7 +7,7 @@ services:
   # FRONTEND (React + Vite Static Site)
   # ============================================
   - type: web
-    name: shopify-analytics-frontend
+    name: markinsight-frontend
     runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
@@ -29,7 +29,7 @@ services:
       - key: VITE_API_URL
         fromService:
           type: web
-          name: shopify-analytics-api
+          name: markinsight-api
           property: host
       # Clerk authentication (set via Render dashboard)
       - key: VITE_CLERK_PUBLISHABLE_KEY
@@ -39,7 +39,7 @@ services:
   # WEB API SERVICE (FastAPI)
   # ============================================
   - type: web
-    name: shopify-analytics-api
+    name: markinsight-api
     runtime: docker
     # Dockerfile path relative to repo root
     dockerfilePath: ./docker/backend.Dockerfile
@@ -60,13 +60,13 @@ services:
       # Database connection (auto-injected from database service)
       - key: DATABASE_URL
         fromDatabase:
-          name: shopify-analytics-db
+          name: markinsight-db
           property: connectionString
       # Redis connection (auto-injected from Redis service)
       - key: REDIS_URL
         fromService:
           type: redis
-          name: shopify-analytics-redis
+          name: markinsight-redis
           property: connectionString
       # Clerk authentication (set via Render dashboard)
       - key: CLERK_SECRET_KEY
@@ -89,7 +89,7 @@ services:
   # BACKGROUND WORKER SERVICE
   # ============================================
   - type: worker
-    name: shopify-analytics-worker
+    name: markinsight-worker
     runtime: docker
     # Uses worker Dockerfile
     dockerfilePath: ./docker/worker.Dockerfile
@@ -105,12 +105,12 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: shopify-analytics-db
+          name: markinsight-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
-          name: shopify-analytics-redis
+          name: markinsight-redis
           property: connectionString
       # Clerk authentication (set via Render dashboard)
       - key: CLERK_SECRET_KEY
@@ -142,7 +142,7 @@ services:
   # CRON JOB: RECONCILE SUBSCRIPTIONS
   # ============================================
   - type: cron
-    name: shopify-analytics-reconcile-subscriptions
+    name: markinsight-reconcile-subscriptions
     # Schedule: runs every hour
     schedule: "0 * * * *"
     # Uses worker Dockerfile (same runtime environment)
@@ -157,12 +157,12 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: shopify-analytics-db
+          name: markinsight-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
-          name: shopify-analytics-redis
+          name: markinsight-redis
           property: connectionString
       # Clerk authentication (set via Render dashboard)
       - key: CLERK_SECRET_KEY
@@ -182,7 +182,7 @@ services:
   # REDIS: IN-MEMORY CACHE & QUEUE
   # ============================================
   - type: redis
-    name: shopify-analytics-redis
+    name: markinsight-redis
     plan: starter
     region: oregon
     # Redis eviction policy
@@ -192,9 +192,9 @@ services:
 # DATABASE: POSTGRES
 # ============================================
 databases:
-  - name: shopify-analytics-db
-    databaseName: shopify_analytics
-    user: shopify_analytics_user
+  - name: markinsight-db
+    databaseName: markinsight
+    user: markinsight_user
     plan: starter
     region: oregon
     # PostgreSQL version

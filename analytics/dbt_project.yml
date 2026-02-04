@@ -1,8 +1,8 @@
-name: 'shopify_analytics'
+name: 'markinsight'
 version: '1.0.0'
 config-version: 2
 
-profile: 'shopify_analytics'
+profile: 'markinsight'
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]
@@ -17,7 +17,7 @@ clean-targets:
   - "dbt_packages"
 
 models:
-  shopify_analytics:
+  markinsight:
     staging:
       +materialized: view
       shopify:
@@ -45,7 +45,7 @@ models:
       +schema: marts
 
 data_tests:
-  shopify_analytics:
+  markinsight:
     # All data tests should fail the build by default
     +severity: error
 

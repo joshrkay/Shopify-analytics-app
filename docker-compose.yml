@@ -15,18 +15,18 @@ services:
   # =============================================================================
   postgres:
     image: postgres:15
-    container_name: shopify-analytics-db
+    container_name: markinsight-db
     environment:
-      POSTGRES_USER: shopify_analytics_user
+      POSTGRES_USER: markinsight_user
       POSTGRES_PASSWORD: localdev123
-      POSTGRES_DB: shopify_analytics
+      POSTGRES_DB: markinsight
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shopify_analytics_user -d shopify_analytics"]
+      test: ["CMD-SHELL", "pg_isready -U markinsight_user -d markinsight"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,7 +36,7 @@ services:
   # =============================================================================
   redis:
     image: redis:7-alpine
-    container_name: shopify-analytics-redis
+    container_name: markinsight-redis
     ports:
       - "6379:6379"
     volumes:
@@ -54,17 +54,17 @@ services:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
-    container_name: shopify-analytics-api
+    container_name: markinsight-api
     ports:
       - "8000:8000"
     environment:
       - ENV=development
       - PORT=8000
-      - DATABASE_URL=postgresql://shopify_analytics_user:localdev123@postgres:5432/shopify_analytics
+      - DATABASE_URL=postgresql://markinsight_user:localdev123@postgres:5432/markinsight
       - REDIS_URL=redis://redis:6379
       # For local dev, use test/mock values
-      - FRONTEGG_CLIENT_ID=${FRONTEGG_CLIENT_ID:-test-client-id}
-      - FRONTEGG_CLIENT_SECRET=${FRONTEGG_CLIENT_SECRET:-test-client-secret}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-test-clerk-secret-key}
+      - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY:-test-clerk-publishable-key}
       - SHOPIFY_API_KEY=${SHOPIFY_API_KEY:-test-shopify-key}
       - SHOPIFY_API_SECRET=${SHOPIFY_API_SECRET:-test-webhook-secret-for-hmac}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-test-openrouter-key}
@@ -91,7 +91,7 @@ services:
   # =============================================================================
   frontend:
     image: node:20-alpine
-    container_name: shopify-analytics-frontend
+    container_name: markinsight-frontend
     working_dir: /app
     ports:
       - "3000:3000"
