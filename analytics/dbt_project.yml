@@ -43,6 +43,9 @@ models:
     marts:
       +materialized: table
       +schema: marts
+      metrics:
+        +materialized: view
+        +schema: metrics
 
 data_tests:
   markinsight:

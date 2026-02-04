@@ -68,6 +68,7 @@ def db_engine():
     # Import and create all tables
     from src.db_base import Base
     from src.models import user, tenant, organization, user_tenant_roles, tenant_invite
+    from src.models import dashboard_metric_binding  # noqa: F401 - Story 2.3
 
     Base.metadata.create_all(bind=engine)
 
