@@ -218,9 +218,17 @@ class InviteService:
         self,
         invite_id: str,
         clerk_user_id: str,
+        accepting_user_email: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Accept an invitation and create UserTenantRole.
+
+        IDENTITY COLLISION GUARDRAILS:
+        - Invites bind to clerk_user_id, not email
+        - If accepting clerk_user_id differs from existing user with same email:
+          - Do NOT merge accounts
+          - Create new user for the accepting clerk_user_id
+          - Emit identity.identity_collision_detected audit event
 
         Called when:
         1. Clerk organizationInvitation.accepted webhook received
@@ -229,9 +237,10 @@ class InviteService:
         Args:
             invite_id: Invitation ID to accept
             clerk_user_id: Clerk user ID of the acceptor
+            accepting_user_email: Email of the accepting user (for collision detection)
 
         Returns:
-            Dict with user_id, tenant_id, role
+            Dict with user_id, tenant_id, role, identity_collision (bool)
 
         Raises:
             InviteNotFoundError: If invitation doesn't exist
@@ -252,13 +261,69 @@ class InviteService:
         if invite.status == InviteStatus.EXPIRED or invite.is_expired:
             raise InviteExpiredError("Invitation has expired")
 
-        # Get or create user
+        # Get user by clerk_user_id
         user = self.session.query(User).filter(
             User.clerk_user_id == clerk_user_id
         ).first()
 
+        identity_collision = False
+        existing_user_clerk_id = None
+
         if not user:
-            raise UserNotFoundError(f"User {clerk_user_id} not found")
+            # Check for identity collision: same email, different clerk_user_id
+            # This can happen when:
+            # - User has personal and work Clerk accounts with same email
+            # - Invite was sent to an email that belongs to multiple identities
+            email_to_check = accepting_user_email or invite.email
+
+            existing_user_with_email = self.session.query(User).filter(
+                User.email == email_to_check,
+                User.is_active == True,
+            ).first()
+
+            if existing_user_with_email:
+                # IDENTITY COLLISION DETECTED
+                # Do NOT merge accounts - create new user for this clerk_user_id
+                identity_collision = True
+                existing_user_clerk_id = existing_user_with_email.clerk_user_id
+
+                logger.warning(
+                    "Identity collision detected during invite acceptance",
+                    extra={
+                        "invite_id": invite_id,
+                        "email": email_to_check,
+                        "accepting_clerk_user_id": clerk_user_id,
+                        "existing_clerk_user_id": existing_user_clerk_id,
+                        "tenant_id": invite.tenant_id,
+                    }
+                )
+
+                # Emit identity collision audit event
+                self._emit_identity_collision(
+                    invite=invite,
+                    email=email_to_check,
+                    accepting_clerk_user_id=clerk_user_id,
+                    existing_clerk_user_id=existing_user_clerk_id,
+                )
+
+            # Create new user for this clerk_user_id (regardless of collision)
+            # User will be lazily synced with full profile from Clerk
+            user = User(
+                clerk_user_id=clerk_user_id,
+                email=email_to_check,
+                is_active=True,
+            )
+            self.session.add(user)
+            self.session.flush()
+
+            logger.info(
+                "Created new user during invite acceptance",
+                extra={
+                    "user_id": user.id,
+                    "clerk_user_id": clerk_user_id,
+                    "identity_collision": identity_collision,
+                }
+            )
 
         # Create role assignment
         user_role = UserTenantRole.create_from_grant(
@@ -281,6 +346,7 @@ class InviteService:
                 "user_id": user.id,
                 "tenant_id": invite.tenant_id,
                 "role": invite.role,
+                "identity_collision": identity_collision,
             }
         )
 
@@ -292,6 +358,7 @@ class InviteService:
             "user_id": user.id,
             "tenant_id": invite.tenant_id,
             "role": invite.role,
+            "identity_collision": identity_collision,
         }
 
     def revoke_invite(
@@ -523,6 +590,38 @@ class InviteService:
                     "invite_id": invite.id,
                     "tenant_id": invite.tenant_id,
                     "revoked_by": revoked_by,
+                },
+            ),
+        )
+
+    def _emit_identity_collision(
+        self,
+        invite: TenantInvite,
+        email: str,
+        accepting_clerk_user_id: str,
+        existing_clerk_user_id: str,
+    ) -> None:
+        """
+        Emit audit event for identity collision detected.
+
+        This is logged when an invite is accepted by a clerk_user_id that
+        differs from an existing user with the same email address.
+        """
+        write_audit_log_sync(
+            db=self.session,
+            event=AuditEvent(
+                action=AuditAction.IDENTITY_COLLISION_DETECTED,
+                outcome=AuditOutcome.SUCCESS,
+                tenant_id=invite.tenant_id,
+                user_id=accepting_clerk_user_id,
+                correlation_id=self.correlation_id,
+                metadata={
+                    "invite_id": invite.id,
+                    "tenant_id": invite.tenant_id,
+                    "email": email,
+                    "accepting_clerk_user_id": accepting_clerk_user_id,
+                    "existing_clerk_user_id": existing_clerk_user_id,
+                    "action_taken": "new_user_created",
                 },
             ),
         )

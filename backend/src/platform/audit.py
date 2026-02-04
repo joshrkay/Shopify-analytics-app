@@ -188,6 +188,13 @@ class AuditAction(str, Enum):
     IDENTITY_INVITE_EXPIRED = "identity.invite_expired"
     IDENTITY_INVITE_REVOKED = "identity.invite_revoked"
 
+    # Super Admin events (DB-backed only - NEVER from JWT claims)
+    IDENTITY_SUPER_ADMIN_GRANTED = "identity.super_admin_granted"
+    IDENTITY_SUPER_ADMIN_REVOKED = "identity.super_admin_revoked"
+
+    # Identity collision events
+    IDENTITY_COLLISION_DETECTED = "identity.identity_collision_detected"
+
 
 class AuditOutcome(str, Enum):
     """Outcome of the audited action."""
