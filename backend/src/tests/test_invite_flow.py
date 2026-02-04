@@ -280,7 +280,11 @@ class TestCreateInviteIntegration:
         assert invite.status == InviteStatus.PENDING
         assert invite.tenant_id == sample_tenant.id
         assert invite.invited_by == admin_user.clerk_user_id
-        assert invite.expires_at > datetime.now(timezone.utc)
+        # Handle SQLite returning naive datetime
+        expires_at = invite.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        assert expires_at > datetime.now(timezone.utc)
 
     def test_create_invite_tenant_not_found(self, service):
         """Test creating invite for non-existent tenant."""
@@ -330,8 +334,12 @@ class TestCreateInviteIntegration:
         )
 
         expected_expiry = datetime.now(timezone.utc) + timedelta(days=7)
+        # Handle SQLite returning naive datetime
+        expires_at = invite.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
         # Allow 1 minute tolerance
-        assert abs((invite.expires_at - expected_expiry).total_seconds()) < 60
+        assert abs((expires_at - expected_expiry).total_seconds()) < 60
 
     def test_create_invite_with_clerk_invitation_id(self, service, sample_tenant):
         """Test creating invite with Clerk invitation ID (from webhook)."""
@@ -525,8 +533,9 @@ class TestInviteExpiration:
 
     def test_expire_stale_invites(self, service, db_session, sample_tenant, admin_user):
         """Test bulk expiration of stale invites."""
-        # Create several expired invites
-        now = datetime.now(timezone.utc)
+        # Create several expired invites - use naive datetime for SQLite compatibility
+        now = datetime.utcnow()
+        stale_invite_ids = []
         for i in range(3):
             invite = TenantInvite(
                 tenant_id=sample_tenant.id,
@@ -538,6 +547,8 @@ class TestInviteExpiration:
                 expires_at=now - timedelta(days=1),
             )
             db_session.add(invite)
+            db_session.flush()
+            stale_invite_ids.append(invite.id)
 
         # Create one valid invite (should not be expired)
         valid_invite = TenantInvite.create_invite(
@@ -555,15 +566,15 @@ class TestInviteExpiration:
 
         assert count == 3
 
-        # Verify expired invites have correct status
-        expired_invites = db_session.query(TenantInvite).filter(
-            TenantInvite.tenant_id == sample_tenant.id,
-            TenantInvite.status == InviteStatus.EXPIRED,
-        ).all()
-        assert len(expired_invites) == 3
+        # Verify expired invites have correct status by reloading from DB
+        db_session.expire_all()  # Clear identity map to force fresh load
+        for invite_id in stale_invite_ids:
+            invite = db_session.query(TenantInvite).get(invite_id)
+            assert invite.status == InviteStatus.EXPIRED, \
+                f"Invite {invite_id} should be EXPIRED but is {invite.status}"
 
         # Verify valid invite was not expired
-        reloaded_valid = service.get_invite_by_id(valid_invite.id)
+        reloaded_valid = db_session.query(TenantInvite).get(valid_invite.id)
         assert reloaded_valid.status == InviteStatus.PENDING
 
 
@@ -648,7 +659,7 @@ class TestInviteAuditEvents:
             def __init__(self):
                 self.events = []
 
-            def collect(self, session, event):
+            def collect(self, db, event):
                 self.events.append(event)
                 return MagicMock(spec=AuditLog)
 
@@ -706,15 +717,16 @@ class TestInviteAuditEvents:
         self, service, db_session, sample_tenant, admin_user, audit_event_collector
     ):
         """Test that expiring invite emits identity.invite_expired event."""
-        # Create expired invite
+        # Create expired invite - use naive datetime for SQLite compatibility
+        now = datetime.utcnow()
         invite = TenantInvite(
             tenant_id=sample_tenant.id,
             email="expired@example.com",
             role="MERCHANT_VIEWER",
             status=InviteStatus.PENDING,
             invited_by=admin_user.clerk_user_id,
-            invited_at=datetime.now(timezone.utc) - timedelta(days=31),
-            expires_at=datetime.now(timezone.utc) - timedelta(days=1),
+            invited_at=now - timedelta(days=31),
+            expires_at=now - timedelta(days=1),
         )
         db_session.add(invite)
         db_session.flush()

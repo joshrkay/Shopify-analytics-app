@@ -347,7 +347,8 @@ class InviteService:
         Returns:
             Number of invites expired
         """
-        now = datetime.now(timezone.utc)
+        # Use naive UTC datetime for SQLite compatibility
+        now = datetime.utcnow()
 
         # Find all pending invites that have expired
         stale_invites = self.session.query(TenantInvite).filter(
@@ -360,6 +361,10 @@ class InviteService:
             invite.mark_expired()
             self._emit_invite_expired(invite)
             count += 1
+
+        # Flush changes to persist status updates
+        if count > 0:
+            self.session.flush()
 
         logger.info(f"Expired {count} stale invitations")
         return count
@@ -453,7 +458,7 @@ class InviteService:
     def _emit_invite_sent(self, invite: TenantInvite) -> None:
         """Emit audit event for invitation sent."""
         write_audit_log_sync(
-            session=self.session,
+            db=self.session,
             event=AuditEvent(
                 action=AuditAction.IDENTITY_INVITE_SENT,
                 outcome=AuditOutcome.SUCCESS,
@@ -472,7 +477,7 @@ class InviteService:
     def _emit_invite_accepted(self, invite: TenantInvite, user_id: str) -> None:
         """Emit audit event for invitation accepted."""
         write_audit_log_sync(
-            session=self.session,
+            db=self.session,
             event=AuditEvent(
                 action=AuditAction.IDENTITY_INVITE_ACCEPTED,
                 outcome=AuditOutcome.SUCCESS,
@@ -490,7 +495,7 @@ class InviteService:
     def _emit_invite_expired(self, invite: TenantInvite) -> None:
         """Emit audit event for invitation expired."""
         write_audit_log_sync(
-            session=self.session,
+            db=self.session,
             event=AuditEvent(
                 action=AuditAction.IDENTITY_INVITE_EXPIRED,
                 outcome=AuditOutcome.SUCCESS,
@@ -507,7 +512,7 @@ class InviteService:
     def _emit_invite_revoked(self, invite: TenantInvite, revoked_by: str) -> None:
         """Emit audit event for invitation revoked."""
         write_audit_log_sync(
-            session=self.session,
+            db=self.session,
             event=AuditEvent(
                 action=AuditAction.IDENTITY_INVITE_REVOKED,
                 outcome=AuditOutcome.SUCCESS,

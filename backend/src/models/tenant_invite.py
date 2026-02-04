@@ -168,7 +168,12 @@ class TenantInvite(Base, TimestampMixin):
         """Check if invitation has expired based on expires_at."""
         if self.status != InviteStatus.PENDING:
             return False
-        return datetime.now(timezone.utc) > self.expires_at
+        now = datetime.now(timezone.utc)
+        expires = self.expires_at
+        # Handle SQLite returning naive datetimes
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return now > expires
 
     @property
     def is_actionable(self) -> bool:
