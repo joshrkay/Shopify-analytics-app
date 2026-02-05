@@ -158,3 +158,21 @@ def make_yaml_config(temp_config_dir):
             yaml.dump(config, f)
         return config_path
     return _make
+
+
+@pytest.fixture
+def metric_resolver(metrics_config):
+    """Create a MetricVersionResolver from test config."""
+    from src.governance.metric_versioning import MetricVersionResolver
+    return MetricVersionResolver(config_path=metrics_config)
+
+
+@pytest.fixture
+def binding_service(db_session, consumers_config, metric_resolver):
+    """Create a DashboardMetricBindingService for testing."""
+    from src.services.dashboard_metric_binding_service import DashboardMetricBindingService
+    return DashboardMetricBindingService(
+        db=db_session,
+        consumers_config_path=consumers_config,
+        metric_resolver=metric_resolver,
+    )

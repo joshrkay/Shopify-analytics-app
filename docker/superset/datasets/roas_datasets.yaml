@@ -1,0 +1,283 @@
+# Superset Dataset Definitions: ROAS (all versions)
+#
+# Declares v1, v2, and current alias datasets in one file.
+# Shared columns, metrics, RLS, guardrails are defined once via YAML anchors.
+#
+# IMPORTANT:
+# - No calculated metrics in Superset - all calculations live in dbt
+# - RLS enforced via tenant_id
+# - Columns are read-only pass-throughs from the dbt views
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared definitions (anchors)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_shared:
+  # Columns that are identical across all ROAS versions
+  base_columns: &base_columns
+    - column_name: id
+      type: VARCHAR
+      description: Unique row identifier
+      filterable: false
+      groupby: false
+
+    - column_name: tenant_id
+      type: VARCHAR
+      description: Tenant identifier (RLS enforced)
+      filterable: false
+      groupby: false
+      is_rls_column: true
+
+    - column_name: period_type
+      type: VARCHAR
+      description: Aggregation period (daily, weekly, monthly, all_time)
+      filterable: true
+      groupby: true
+
+    - column_name: period_start
+      type: TIMESTAMP
+      description: Start of the aggregation period
+      filterable: true
+      groupby: true
+      is_dttm: true
+
+    - column_name: currency
+      type: VARCHAR
+      description: Currency code
+      filterable: true
+      groupby: true
+
+    - column_name: total_spend
+      type: NUMERIC
+      description: Total ad spend
+      filterable: false
+      groupby: false
+
+    - column_name: total_gross_revenue
+      type: NUMERIC
+      description: Total gross revenue
+      filterable: false
+      groupby: false
+
+    - column_name: total_net_revenue
+      type: NUMERIC
+      description: Total net revenue
+      filterable: false
+      groupby: false
+
+    - column_name: gross_roas
+      type: NUMERIC
+      description: Gross ROAS
+      filterable: false
+      groupby: false
+
+    - column_name: net_roas
+      type: NUMERIC
+      description: Net ROAS
+      filterable: false
+      groupby: false
+
+    - column_name: avg_order_value_gross
+      type: NUMERIC
+      description: Average gross order value
+      filterable: false
+      groupby: false
+
+    - column_name: avg_order_value_net
+      type: NUMERIC
+      description: Average net order value
+      filterable: false
+      groupby: false
+
+  # Superset-side aggregations (simple pass-throughs only)
+  metrics: &shared_metrics
+    - metric_name: total_gross_roas
+      expression: AVG(gross_roas)
+      description: Average Gross ROAS across rows
+
+    - metric_name: total_net_roas
+      expression: AVG(net_roas)
+      description: Average Net ROAS across rows
+
+    - metric_name: sum_spend
+      expression: SUM(total_spend)
+      description: Total ad spend
+
+    - metric_name: sum_gross_revenue
+      expression: SUM(total_gross_revenue)
+      description: Total gross revenue
+
+    - metric_name: sum_net_revenue
+      expression: SUM(total_net_revenue)
+      description: Total net revenue
+
+    - metric_name: total_orders
+      expression: SUM(order_count)
+      description: Total order count
+
+  rls: &shared_rls
+    enabled: true
+    clause: "tenant_id = '{{ current_user.tenant_id }}'"
+
+  guardrails: &shared_guardrails
+    max_date_range_days: 90
+    query_timeout_seconds: 20
+    row_limit: 50000
+    cache_ttl_minutes: 30
+
+  visualizations_allowed: &shared_viz_allowed
+    - line
+    - bar
+    - table
+    - number
+
+  visualizations_disallowed: &shared_viz_disallowed
+    - scatter
+    - geo_map
+    - box_plot
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dataset: ROAS v1 (Attributed)
+# ─────────────────────────────────────────────────────────────────────────────
+
+roas_v1:
+  table_name: metric_roas_v1
+  schema: metrics
+  description: |
+    ROAS v1 - Platform-attributed Return on Ad Spend.
+    Gross ROAS = Attributed Gross Revenue / Ad Spend (last-click).
+    Net ROAS = Attributed Net Revenue / Ad Spend (last-click).
+    Only includes revenue from platform-attributed orders.
+
+  dbt_model: metric_roas_v1
+  metric_version: v1
+  version_status: active
+
+  # v1-specific: per-platform breakdown with campaign drill-down
+  columns:
+    - *base_columns
+    - column_name: platform
+      type: VARCHAR
+      description: Ad platform (meta_ads, google_ads)
+      filterable: true
+      groupby: true
+    - column_name: campaign_id
+      type: VARCHAR
+      description: Campaign identifier
+      filterable: true
+      groupby: true
+    - column_name: order_count
+      type: INTEGER
+      description: Number of attributed orders
+      filterable: false
+      groupby: false
+    - column_name: metric_version
+      type: VARCHAR
+      description: Always 'v1' for this dataset
+      filterable: true
+      groupby: false
+
+  metrics: *shared_metrics
+  rls: *shared_rls
+  guardrails: *shared_guardrails
+  visualizations_allowed: *shared_viz_allowed
+  visualizations_disallowed: *shared_viz_disallowed
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dataset: ROAS v2 (Blended)
+# ─────────────────────────────────────────────────────────────────────────────
+
+roas_v2:
+  table_name: metric_roas_v2
+  schema: metrics
+  description: |
+    ROAS v2 - Blended Return on Ad Spend.
+    Gross ROAS = Total Gross Revenue / Total Ad Spend (all revenue, not just attributed).
+    Net ROAS = Total Net Revenue / Total Ad Spend (all revenue, not just attributed).
+    Includes both attributed AND organic revenue for a blended view.
+    BREAKING from v1: produces higher ROAS values.
+
+  dbt_model: metric_roas_v2
+  metric_version: v2
+  version_status: active
+
+  # v2-specific: blended across all platforms, no campaign drill-down
+  columns:
+    - *base_columns
+    - column_name: platform
+      type: VARCHAR
+      description: Always 'all' for blended ROAS (aggregated across platforms)
+      filterable: true
+      groupby: true
+    - column_name: campaign_id
+      type: VARCHAR
+      description: Always null for blended ROAS
+      filterable: false
+      groupby: false
+    - column_name: order_count
+      type: INTEGER
+      description: Number of all orders (attributed + organic)
+      filterable: false
+      groupby: false
+    - column_name: metric_version
+      type: VARCHAR
+      description: Always 'v2' for this dataset
+      filterable: true
+      groupby: false
+
+  metrics: *shared_metrics
+  rls: *shared_rls
+  guardrails: *shared_guardrails
+  visualizations_allowed: *shared_viz_allowed
+  visualizations_disallowed: *shared_viz_disallowed
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dataset: ROAS Current (Governed Alias)
+# ─────────────────────────────────────────────────────────────────────────────
+
+roas_current:
+  table_name: metric_roas_current
+  schema: metrics
+  description: |
+    ROAS (Current) - Governed alias for the approved ROAS version.
+    Points to the latest approved metric version.
+    Dashboards using this dataset automatically track version upgrades
+    without manual repointing.
+    Current target: metric_roas_v1 (attributed ROAS).
+
+  dbt_model: metric_roas_current
+  metric_version: current
+  version_status: governed_alias
+
+  # Current alias inherits columns from whichever version it points to
+  columns:
+    - *base_columns
+    - column_name: platform
+      type: VARCHAR
+      description: Ad platform
+      filterable: true
+      groupby: true
+    - column_name: campaign_id
+      type: VARCHAR
+      description: Campaign identifier
+      filterable: true
+      groupby: true
+    - column_name: order_count
+      type: INTEGER
+      description: Number of orders
+      filterable: false
+      groupby: false
+    - column_name: metric_version
+      type: VARCHAR
+      description: Version tag from the underlying metric view
+      filterable: true
+      groupby: false
+
+  metrics: *shared_metrics
+  rls: *shared_rls
+  guardrails: *shared_guardrails
+  visualizations_allowed: *shared_viz_allowed
+  visualizations_disallowed: *shared_viz_disallowed

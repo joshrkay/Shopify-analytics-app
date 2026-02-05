@@ -82,6 +82,23 @@ class MetricStatusChecker:
         self.binding_service = binding_service
         self.metric_resolver = metric_resolver
 
+    def _get_metric_config(self, metric_name: str) -> dict:
+        """Look up a metric's config dict from the resolver."""
+        return self.metric_resolver._config.get("metrics", {}).get(metric_name, {})
+
+    @staticmethod
+    def _build_issue(
+        level: str, dashboard_id: str, metric_name: str, version: str, issue: str,
+    ) -> dict[str, str]:
+        """Build a validation issue dict."""
+        return {
+            "level": level,
+            "dashboard_id": dashboard_id,
+            "metric_name": metric_name,
+            "version": version,
+            "issue": issue,
+        }
+
     def check_dashboard_metric(
         self,
         dashboard_id: str,
@@ -145,9 +162,7 @@ class MetricStatusChecker:
                     days_until = w.days_until_sunset
                     break
 
-            sunset_date = None
-            metric_config = self.metric_resolver._config.get("metrics", {}).get(metric_name, {})
-            version_config = metric_config.get(version, {})
+            version_config = self._get_metric_config(metric_name).get(version, {})
             sunset_date = version_config.get("sunset_date")
 
             return BannerData(
@@ -166,8 +181,7 @@ class MetricStatusChecker:
             )
 
         # ACTIVE: Check if there's a newer version available
-        metric_config = self.metric_resolver._config.get("metrics", {}).get(metric_name, {})
-        current_version_tag = metric_config.get("current_version")
+        current_version_tag = self._get_metric_config(metric_name).get("current_version")
 
         if current_version_tag and current_version_tag != version:
             return BannerData(
@@ -232,41 +246,31 @@ class MetricStatusChecker:
             if binding.metric_version == "current":
                 continue
 
+            bid = binding.dashboard_id
+            mname = binding.metric_name
+            ver = binding.metric_version
+
             # Check sunset first (resolve_metric raises for sunset versions)
-            if self.metric_resolver.check_sunset_status(
-                binding.metric_name, binding.metric_version
-            ):
-                issues.append({
-                    "level": "critical",
-                    "dashboard_id": binding.dashboard_id,
-                    "metric_name": binding.metric_name,
-                    "version": binding.metric_version,
-                    "issue": "Version is sunset/retired. Dashboard will fail to render.",
-                })
+            if self.metric_resolver.check_sunset_status(mname, ver):
+                issues.append(self._build_issue(
+                    "critical", bid, mname, ver,
+                    "Version is sunset/retired. Dashboard will fail to render.",
+                ))
                 continue
 
             try:
                 resolution = self.metric_resolver.resolve_metric(
-                    metric_name=binding.metric_name,
-                    requested_version=binding.metric_version,
+                    metric_name=mname, requested_version=ver,
                 )
-
                 if resolution.status == MetricStatus.DEPRECATED:
-                    issues.append({
-                        "level": "warning",
-                        "dashboard_id": binding.dashboard_id,
-                        "metric_name": binding.metric_name,
-                        "version": binding.metric_version,
-                        "issue": "Version is deprecated. Plan migration to a newer version.",
-                    })
-
+                    issues.append(self._build_issue(
+                        "warning", bid, mname, ver,
+                        "Version is deprecated. Plan migration to a newer version.",
+                    ))
             except ValueError:
-                issues.append({
-                    "level": "critical",
-                    "dashboard_id": binding.dashboard_id,
-                    "metric_name": binding.metric_name,
-                    "version": binding.metric_version,
-                    "issue": "Version does not exist in metrics registry.",
-                })
+                issues.append(self._build_issue(
+                    "critical", bid, mname, ver,
+                    "Version does not exist in metrics registry.",
+                ))
 
         return issues

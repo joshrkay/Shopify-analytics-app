@@ -31,17 +31,18 @@ from src.services.dashboard_metric_binding_service import (
     RepointResult,
     REPOINT_ALLOWED_ROLES,
 )
-from src.governance.metric_versioning import MetricVersionResolver
 
 
 # ============================================================================
-# Test Fixtures (uses shared temp_config_dir and make_yaml_config from conftest)
+# Test Fixtures
+# metric_resolver and binding_service are inherited from conftest.py.
+# Only consumers_config and metrics_config are local (test-specific data).
 # ============================================================================
 
 
 @pytest.fixture
 def consumers_config(make_yaml_config):
-    """Create test consumers.yaml configuration."""
+    """Create test consumers.yaml with 3 dashboards for binding tests."""
     return make_yaml_config("consumers.yaml", {
         "dashboards": {
             "merchant_overview": {
@@ -77,7 +78,7 @@ def consumers_config(make_yaml_config):
 
 @pytest.fixture
 def metrics_config(make_yaml_config):
-    """Create test metrics versioning configuration."""
+    """Create test metrics config. ROAS current_version=v1 (binding tests pin to v2)."""
     future_sunset = (datetime.now(timezone.utc) + timedelta(days=60)).strftime("%Y-%m-%d")
     past_sunset = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%d")
 
@@ -141,22 +142,6 @@ def metrics_config(make_yaml_config):
             },
         },
     })
-
-
-@pytest.fixture
-def metric_resolver(metrics_config):
-    """Create a MetricVersionResolver from test config."""
-    return MetricVersionResolver(config_path=metrics_config)
-
-
-@pytest.fixture
-def binding_service(db_session, consumers_config, metric_resolver):
-    """Create a DashboardMetricBindingService for testing."""
-    return DashboardMetricBindingService(
-        db=db_session,
-        consumers_config_path=consumers_config,
-        metric_resolver=metric_resolver,
-    )
 
 
 # ============================================================================

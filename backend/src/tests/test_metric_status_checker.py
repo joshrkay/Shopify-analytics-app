@@ -21,10 +21,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from src.governance.metric_versioning import MetricVersionResolver
-from src.services.dashboard_metric_binding_service import (
-    DashboardMetricBindingService,
-)
 from src.services.metric_status_checker import (
     MetricStatusChecker,
     MetricSunsetError,
@@ -34,13 +30,15 @@ from src.services.metric_status_checker import (
 
 
 # ============================================================================
-# Test Fixtures (uses shared temp_config_dir and make_yaml_config from conftest)
+# Test Fixtures
+# metric_resolver and binding_service are inherited from conftest.py.
+# Only consumers_config, metrics_config, and status_checker are local.
 # ============================================================================
 
 
 @pytest.fixture
 def consumers_config(make_yaml_config):
-    """Create test consumers.yaml for status checker tests."""
+    """Create test consumers.yaml with 2 dashboards for status checker tests."""
     return make_yaml_config("consumers.yaml", {
         "dashboards": {
             "merchant_overview": {
@@ -68,7 +66,7 @@ def consumers_config(make_yaml_config):
 
 @pytest.fixture
 def metrics_config(make_yaml_config):
-    """Create test metrics config with varied statuses for status checker."""
+    """Create test metrics config. ROAS current_version=v2 (status checker tests pin to v1)."""
     future_sunset = (datetime.now(timezone.utc) + timedelta(days=45)).strftime("%Y-%m-%d")
     past_sunset = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%d")
 
@@ -129,22 +127,6 @@ def metrics_config(make_yaml_config):
             },
         },
     })
-
-
-@pytest.fixture
-def metric_resolver(metrics_config):
-    """Create a MetricVersionResolver from test config."""
-    return MetricVersionResolver(config_path=metrics_config)
-
-
-@pytest.fixture
-def binding_service(db_session, consumers_config, metric_resolver):
-    """Create a DashboardMetricBindingService for testing."""
-    return DashboardMetricBindingService(
-        db=db_session,
-        consumers_config_path=consumers_config,
-        metric_resolver=metric_resolver,
-    )
 
 
 @pytest.fixture
