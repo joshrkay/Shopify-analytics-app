@@ -400,7 +400,8 @@ class TenantContextMiddleware:
         from src.models.user_tenant_roles import UserTenantRole
         from src.models.tenant import Tenant, TenantStatus
 
-        db = get_db_session_sync()
+        db_gen = get_db_session_sync()
+        db = next(db_gen)
         try:
             # Find user by clerk_user_id
             user = db.query(User).filter(
@@ -472,7 +473,13 @@ class TenantContextMiddleware:
             )
 
         finally:
-            db.close()
+            try:
+                db.close()
+            finally:
+                try:
+                    db_gen.close()
+                except Exception:
+                    pass
 
     async def __call__(self, request: Request, call_next):
         """
