@@ -1,0 +1,237 @@
+version: 2
+
+sources:
+  - name: raw_shopify
+    description: Raw Shopify data ingested via Airbyte
+    schema: "{{ var('raw_shopify_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after: {count: {{ get_freshness_threshold('shopify_orders', 'warn_after_minutes') }}, period: minute}
+      error_after: {count: {{ get_freshness_threshold('shopify_orders', 'error_after_minutes') }}, period: minute}
+    tables:
+      - name: orders
+        identifier: _airbyte_raw_shopify_orders
+        description: Raw Shopify orders data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual order data
+            tests:
+              - not_null
+
+      - name: customers
+        identifier: _airbyte_raw_shopify_customers
+        description: Raw Shopify customers data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual customer data
+            tests:
+              - not_null
+
+  - name: raw_facebook_ads
+    description: Raw Meta (Facebook/Instagram) Ads data ingested via Airbyte
+    schema: "{{ var('raw_facebook_ads_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after: {count: {{ get_freshness_threshold('facebook_ads', 'warn_after_minutes') }}, period: minute}
+      error_after: {count: {{ get_freshness_threshold('facebook_ads', 'error_after_minutes') }}, period: minute}
+    tables:
+      - name: ad_insights
+        identifier: _airbyte_raw_meta_ads
+        description: Raw Meta Ads insights data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+            tests:
+              - not_null
+
+  - name: raw_google_ads
+    description: Raw Google Ads data ingested via Airbyte
+    schema: "{{ var('raw_google_ads_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after: {count: {{ get_freshness_threshold('google_ads', 'warn_after_minutes') }}, period: minute}
+      error_after: {count: {{ get_freshness_threshold('google_ads', 'error_after_minutes') }}, period: minute}
+    tables:
+      - name: ad_stats
+        identifier: _airbyte_raw_google_ads
+        description: Raw Google Ads performance data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+            tests:
+              - not_null
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+            tests:
+              - not_null
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+            tests:
+              - not_null
+
+  - name: raw_tiktok_ads
+    description: Raw TikTok Ads data ingested via Airbyte
+    schema: "{{ var('raw_tiktok_ads_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after: {count: {{ get_freshness_threshold('tiktok_ads', 'warn_after_minutes') }}, period: minute}
+      error_after: {count: {{ get_freshness_threshold('tiktok_ads', 'error_after_minutes') }}, period: minute}
+    tables:
+      - name: ad_reports
+        identifier: _airbyte_raw_tiktok_ads
+        description: Raw TikTok Ads performance data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+
+  - name: raw_snapchat_ads
+    description: Raw Snapchat Ads data ingested via Airbyte
+    schema: "{{ var('raw_snapchat_ads_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after: {count: {{ get_freshness_threshold('snapchat_ads', 'warn_after_minutes') }}, period: minute}
+      error_after: {count: {{ get_freshness_threshold('snapchat_ads', 'error_after_minutes') }}, period: minute}
+    tables:
+      - name: ad_reports
+        identifier: _airbyte_raw_snapchat_ads
+        description: Raw Snapchat Ads performance data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+
+  - name: raw_email
+    description: Raw email marketing data ingested via Airbyte (Klaviyo, Shopify Email)
+    schema: "{{ var('raw_email_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after: {count: {{ get_freshness_threshold('email', 'warn_after_minutes') }}, period: minute}
+      error_after: {count: {{ get_freshness_threshold('email', 'error_after_minutes') }}, period: minute}
+    tables:
+      - name: klaviyo_events
+        identifier: _airbyte_raw_klaviyo_events
+        description: Raw Klaviyo email event data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the email event data
+
+      - name: shopify_email_activities
+        identifier: _airbyte_raw_shopify_email_activities
+        description: Raw Shopify Email activity data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the email activity data
+
+  - name: raw_sms
+    description: Raw SMS marketing data ingested via Airbyte (Attentive, Postscript, SMSBump)
+    schema: "{{ var('raw_sms_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after: {count: {{ get_freshness_threshold('sms', 'warn_after_minutes') }}, period: minute}
+      error_after: {count: {{ get_freshness_threshold('sms', 'error_after_minutes') }}, period: minute}
+    tables:
+      - name: attentive_events
+        identifier: _airbyte_raw_attentive_events
+        description: Raw Attentive SMS event data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the SMS event data
+
+      - name: postscript_events
+        identifier: _airbyte_raw_postscript_events
+        description: Raw Postscript SMS event data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the SMS event data
+
+      - name: smsbump_events
+        identifier: _airbyte_raw_smsbump_events
+        description: Raw SMSBump event data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the SMS event data
+
+  - name: platform
+    description: Platform tables for tenant mapping and configuration
+    schema: "{{ var('platform_schema', 'platform') }}"
+    tables:
+      - name: tenant_airbyte_connections
+        description: Maps Airbyte connections to tenants for data isolation
+        columns:
+          - name: airbyte_connection_id
+            description: Airbyte connection ID
+            tests:
+              - not_null
+          - name: tenant_id
+            description: Tenant identifier
+            tests:
+              - not_null
+          - name: source_type
+            description: Type of data source (e.g., shopify)
+            tests:
+              - not_null
+          - name: status
+            description: Connection status
+            tests:
+              - not_null
+          - name: is_enabled
+            description: Whether connection is enabled
+            tests:
+              - not_null
+          - name: configuration
+            description: JSONB configuration containing source-specific metadata (e.g., shop_domain for Shopify)

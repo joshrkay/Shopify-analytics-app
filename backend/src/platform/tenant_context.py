@@ -39,8 +39,22 @@ from jwt.exceptions import InvalidTokenError, DecodeError
 import json
 
 from src.constants.permissions import has_multi_tenant_access, RoleCategory, get_primary_role_category
+from src.database.session import get_db_session_sync
 
 logger = logging.getLogger(__name__)
+
+# Lazy import for TenantGuard to avoid circular imports
+# Imported at module level so it can be mocked in tests
+_tenant_guard_class = None
+
+
+def _get_tenant_guard_class():
+    """Get TenantGuard class (lazy import to avoid circular dependencies)."""
+    global _tenant_guard_class
+    if _tenant_guard_class is None:
+        from src.services.tenant_guard import TenantGuard
+        _tenant_guard_class = TenantGuard
+    return _tenant_guard_class
 
 
 class TenantViolationType(str, Enum):
@@ -48,6 +62,7 @@ class TenantViolationType(str, Enum):
     MISSING_AUTH_TOKEN = "missing_auth_token"
     INVALID_TOKEN = "invalid_token"
     MISSING_ORG_ID = "missing_org_id"
+    AUTHORIZATION_ENFORCEMENT_FAILED = "authorization_enforcement_failed"
     MISSING_USER_ID = "missing_user_id"
     SERVICE_UNAVAILABLE = "service_unavailable"
     TENANT_SELECTION_REQUIRED = "tenant_selection_required"
@@ -127,7 +142,8 @@ def _emit_tenant_violation_audit_log(
         }
     )
 
-    # Try to write to audit database (lazy import to avoid circular deps)
+    # Try to write to audit database (lazy import for audit module to avoid circular deps)
+    # Note: get_db_session_sync is already imported at module level
     try:
         from src.platform.audit import (
             AuditEvent,
@@ -135,9 +151,9 @@ def _emit_tenant_violation_audit_log(
             AuditOutcome,
             write_audit_log_sync,
         )
-        from src.database.session import get_db_session_sync
 
-        db = get_db_session_sync()
+        db_gen = get_db_session_sync()
+        db = next(db_gen)
         try:
             event = AuditEvent(
                 tenant_id=org_id or "UNKNOWN",
@@ -198,7 +214,7 @@ class TenantContext:
         tenant_id: str,
         user_id: str,
         roles: list[str],
-        org_id: str,  # Original Frontegg org_id for reference
+        org_id: str,  # Clerk org_id for reference
         allowed_tenants: Optional[list[str]] = None,
         billing_tier: Optional[str] = None,
     ):
@@ -313,10 +329,6 @@ class ClerkJWKSClient:
         except Exception as e:
             logger.error("Unexpected error getting signing key", extra={"error": str(e)})
             raise
-
-
-# Backwards compatibility alias
-FronteggJWKSClient = ClerkJWKSClient
 
 
 class TenantContextMiddleware:
@@ -676,10 +688,76 @@ class TenantContextMiddleware:
                 allowed_tenants=allowed_tenants if allowed_tenants else None,
                 billing_tier=billing_tier,
             )
-            
+
+            # =================================================================
+            # DB-AS-SOURCE-OF-TRUTH AUTHORIZATION ENFORCEMENT
+            # =================================================================
+            # Verify authorization against database on every request.
+            # This ensures immediate enforcement for:
+            # - Tenant access revoked mid-session
+            # - Role changes mid-session
+            # - Billing downgrades that invalidate roles
+            TenantGuard = _get_tenant_guard_class()
+
+            db_gen = get_db_session_sync()
+            db = next(db_gen)
+            try:
+                guard = TenantGuard(db)
+                authz_result = guard.enforce_authorization(
+                    clerk_user_id=str(user_id),
+                    active_tenant_id=active_tenant_id,
+                    jwt_roles=roles if isinstance(roles, list) else [],
+                    request_path=str(request.url.path),
+                    request_method=request.method,
+                )
+
+                if not authz_result.is_authorized:
+                    # Emit audit event for the enforcement
+                    guard.emit_enforcement_audit_event(request, authz_result)
+
+                    # Emit violation audit log
+                    _emit_tenant_violation_audit_log(
+                        request=request,
+                        violation_type=TenantViolationType.AUTHORIZATION_ENFORCEMENT_FAILED,
+                        error_message=authz_result.denial_reason or "Authorization denied",
+                        user_id=str(user_id),
+                        org_id=str(org_id),
+                        extra_metadata={
+                            "error_code": authz_result.error_code,
+                            "tenant_id": active_tenant_id,
+                        },
+                    )
+
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=authz_result.denial_reason or "Access denied",
+                        headers={
+                            "X-Error-Code": authz_result.error_code or "ACCESS_DENIED",
+                        },
+                    )
+
+                # Update tenant context with DB-verified roles and billing tier
+                # This ensures the request uses current DB state, not stale JWT claims
+                if authz_result.roles:
+                    tenant_context = TenantContext(
+                        tenant_id=active_tenant_id,
+                        user_id=str(user_id),
+                        roles=authz_result.roles,  # Use DB-verified roles
+                        org_id=str(org_id),
+                        allowed_tenants=allowed_tenants if allowed_tenants else None,
+                        billing_tier=authz_result.billing_tier or billing_tier,
+                    )
+
+                # Emit audit event for role changes (if any)
+                if authz_result.roles_changed and authz_result.audit_action:
+                    guard.emit_enforcement_audit_event(request, authz_result)
+
+            finally:
+                db.close()
+
             # Attach to request state
             request.state.tenant_context = tenant_context
-            
+
             # Log with tenant context (for audit trail)
             log_extra = {
                 "tenant_id": tenant_context.tenant_id,

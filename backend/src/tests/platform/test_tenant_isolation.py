@@ -8,17 +8,19 @@ import pytest
 from fastapi import FastAPI, Request, status
 from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import json
 
 from src.platform.tenant_context import (
     TenantContext,
     TenantContextMiddleware,
     get_tenant_context,
-    FronteggJWKSClient,
+    ClerkJWKSClient,
 )
 from src.repositories.base_repo import BaseRepository, TenantIsolationError
 from src.db_base import Base
+
+# Note: mock_authorization_enforcement fixture is provided by conftest.py
 
 
 # Mock JWT payloads for testing (Clerk format)
@@ -43,9 +45,13 @@ TENANT_B_JWT_PAYLOAD = {
 }
 
 
+# ============================================================================
+# FIXTURES
+# ============================================================================
+
 @pytest.fixture
 def mock_jwks():
-    """Mock JWKS response from Frontegg."""
+    """Mock JWKS response from Clerk."""
     return {
         "keys": [
             {
@@ -133,7 +139,7 @@ class TestJWTVerification:
     """Test JWT verification and tenant extraction."""
     
     @pytest.mark.asyncio
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_missing_token_returns_403(self, mock_get_signing_key, app_with_middleware):
         """Test that requests without token return 403."""
         from fastapi import HTTPException
@@ -151,7 +157,7 @@ class TestJWTVerification:
                 assert "Missing or invalid authorization token" in str(e.detail)
     
     @pytest.mark.asyncio
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     @patch('src.platform.tenant_context.jwt.decode')
     async def test_invalid_token_returns_403(self, mock_jwt_decode, mock_get_signing_key, app_with_middleware):
         """Test that invalid tokens return 403."""
@@ -192,7 +198,7 @@ class TestCrossTenantProtection:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_tenant_a_cannot_access_tenant_b_data(
         self,
         mock_get_signing_key,
@@ -249,7 +255,7 @@ class TestCrossTenantProtection:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_tenant_b_cannot_access_tenant_a_data(
         self,
         mock_get_signing_key,
@@ -417,7 +423,7 @@ class TestPropertyBasedTenantIsolation:
         """
         from unittest.mock import MagicMock
         with patch('src.platform.tenant_context.jwt.decode') as mock_decode, \
-             patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key') as mock_key:
+             patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key') as mock_key:
             
             mock_signing_key = MagicMock()
             mock_signing_key.key = "mock-key"

@@ -17,6 +17,7 @@ import pytest
 import logging
 import os
 import re
+from dataclasses import dataclass, field
 from io import StringIO
 from unittest.mock import Mock, patch, MagicMock
 from fastapi import FastAPI, Request, status, HTTPException
@@ -29,6 +30,8 @@ from src.platform.tenant_context import (
 )
 from src.repositories.base_repo import BaseRepository, TenantIsolationError
 from src.db_base import Base
+
+# Note: mock_authorization_enforcement fixture is provided by conftest.py
 
 
 # ============================================================================
@@ -80,8 +83,8 @@ def mock_jwt_payload_tenant_b():
 @pytest.fixture(autouse=True)
 def setup_test_env(monkeypatch):
     """Set up test environment variables."""
-    monkeypatch.setenv("FRONTEGG_CLIENT_ID", "test-client-id")
-    monkeypatch.setenv("FRONTEGG_CLIENT_SECRET", "test-client-secret")
+    monkeypatch.setenv("CLERK_PUBLISHABLE_KEY", "test-clerk-publishable-key")
+    monkeypatch.setenv("CLERK_SECRET_KEY", "test-clerk-secret-key")
     monkeypatch.setenv("CLERK_FRONTEND_API", "test.clerk.accounts.dev")
 
 
@@ -181,7 +184,7 @@ class TestTenantIsolation:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_tenant_a_cannot_access_tenant_b_data(
         self,
         mock_get_signing_key,
@@ -227,7 +230,7 @@ class TestTenantIsolation:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_tenant_id_from_request_body_ignored(
         self,
         mock_get_signing_key,
@@ -322,7 +325,7 @@ class TestRBACEnforcement:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_admin_role_required_for_admin_endpoint(
         self,
         mock_get_signing_key,
@@ -484,7 +487,7 @@ class TestAuditLogging:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_all_requests_logged_with_tenant_context(
         self,
         mock_get_signing_key,
@@ -594,7 +597,7 @@ class TestFeatureFlagKillSwitch:
     
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_feature_flag_in_environment(
         self,
         mock_get_signing_key,

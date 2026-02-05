@@ -256,12 +256,12 @@ class TestRBACEndpointContracts:
         return app
 
     @pytest.fixture(autouse=True)
-    def setup_frontegg(self, monkeypatch):
-        """Set up Frontegg mock."""
-        monkeypatch.setenv("FRONTEGG_CLIENT_ID", "test-client")
+    def setup_clerk(self, monkeypatch):
+        """Set up Clerk mock."""
+        monkeypatch.setenv("CLERK_PUBLISHABLE_KEY", "test-client")
 
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     def test_unauthorized_returns_403(
         self, mock_signing_key, mock_jwt_decode, rbac_app
     ):
@@ -275,7 +275,7 @@ class TestRBACEndpointContracts:
             "sub": "user-1",
             "roles": ["viewer"],  # Viewer cannot access admin
             "aud": "test-client",
-            "iss": "https://api.frontegg.com",
+            "iss": "https://test.clerk.accounts.dev",
             "exp": 9999999999,
         }
 
@@ -288,7 +288,7 @@ class TestRBACEndpointContracts:
         assert response.status_code == 403
 
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     def test_authorized_returns_200(
         self, mock_signing_key, mock_jwt_decode, rbac_app
     ):
@@ -302,7 +302,7 @@ class TestRBACEndpointContracts:
             "sub": "user-1",
             "roles": ["admin"],
             "aud": "test-client",
-            "iss": "https://api.frontegg.com",
+            "iss": "https://test.clerk.accounts.dev",
             "exp": 9999999999,
         }
 

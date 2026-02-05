@@ -1,0 +1,44 @@
+# Approved columns for Google Ads staging models.
+# Columns listed here may be referenced in staging, facts, metrics, and marts layers.
+# New columns arriving in raw (_airbyte_data) are allowed automatically.
+# To promote a new column to staging/canonical, add it below and open a PR.
+#
+# Last reviewed: 2026-02-05
+
+source: google
+
+models:
+  stg_google_ads:
+    - tenant_id
+    - report_date
+    - date
+    - source
+    - ad_account_id
+    - campaign_id
+    - ad_group_id
+    - ad_id
+    - internal_account_id
+    - internal_campaign_id
+    - platform_channel
+    - canonical_channel
+    - spend
+    - impressions
+    - clicks
+    - conversions
+    - conversion_value
+    - currency
+    - cpm
+    - cpc
+    - ctr
+    - cpa
+    - roas_platform
+    - campaign_name
+    - ad_group_name
+    - ad_type
+    - device
+    - network
+    - average_cpc
+    - cost_per_conversion
+    - platform
+    - airbyte_record_id
+    - airbyte_emitted_at

@@ -84,6 +84,11 @@ class AuthContext:
     - tenant_access: Dict of tenant_id -> TenantAccess
     - current_tenant_id: Currently selected tenant (from JWT org_id or default)
     - is_authenticated: Whether request is authenticated
+    - is_super_admin: Whether user is a super admin (DB-only, NEVER from JWT)
+
+    SECURITY:
+    - is_super_admin is ALWAYS resolved from database, NEVER from JWT claims
+    - Super admin grants access to all tenants
 
     Usage in route handlers:
         @router.get("/data")
@@ -107,6 +112,10 @@ class AuthContext:
     tenant_access: Dict[str, TenantAccess] = field(default_factory=dict)
     current_tenant_id: Optional[str] = None
 
+    # Super admin status (DB-only - NEVER from JWT claims)
+    # SECURITY: This is resolved from the database, ignoring any JWT role claims
+    _is_super_admin: bool = field(default=False, repr=False)
+
     # Organization context from JWT
     org_id: Optional[str] = None
     org_role: Optional[str] = None
@@ -119,6 +128,16 @@ class AuthContext:
     def is_authenticated(self) -> bool:
         """Check if context represents an authenticated user."""
         return self.clerk_user_id is not None and self.user is not None
+
+    @property
+    def is_super_admin(self) -> bool:
+        """
+        Check if user is a super admin.
+
+        SECURITY: This value is resolved from the database, NEVER from JWT claims.
+        Super admins have access to all tenants.
+        """
+        return self._is_super_admin
 
     @property
     def user_id(self) -> Optional[str]:
@@ -168,7 +187,15 @@ class AuthContext:
         return ta is not None and permission in ta.permissions
 
     def has_access_to_tenant(self, tenant_id: str) -> bool:
-        """Check if user has any access to a tenant."""
+        """
+        Check if user has any access to a tenant.
+
+        SECURITY: Super admins have access to all tenants.
+        """
+        # Super admins have access to all tenants
+        if self._is_super_admin:
+            return True
+
         ta = self.tenant_access.get(tenant_id)
         return ta is not None and ta.is_active
 
@@ -204,6 +231,7 @@ class AuthContext:
             "org_role": self.org_role,
             "is_authenticated": self.is_authenticated,
             "has_multi_tenant_access": self.has_multi_tenant_access,
+            "is_super_admin": self.is_super_admin,
         }
 
 
@@ -256,22 +284,27 @@ class AuthContextResolver:
             lazy_sync=lazy_sync,
         )
 
-        # 2. Load tenant access
+        # 2. Load super admin status from database
+        # SECURITY: This is NEVER taken from JWT claims
+        is_super_admin = self._resolve_super_admin(user)
+
+        # 3. Load tenant access
         tenant_access = self._load_tenant_access(user) if user else {}
 
-        # 3. Determine current tenant
+        # 4. Determine current tenant
         current_tenant_id = self._resolve_current_tenant(
             claims=claims,
             tenant_access=tenant_access,
         )
 
-        # 4. Build AuthContext
+        # 5. Build AuthContext
         context = AuthContext(
             user=user,
             clerk_user_id=claims.clerk_user_id,
             session_id=claims.session_id,
             tenant_access=tenant_access,
             current_tenant_id=current_tenant_id,
+            _is_super_admin=is_super_admin,
             org_id=claims.org_id,
             org_role=claims.org_role,
             org_slug=claims.org_slug,
@@ -329,6 +362,27 @@ class AuthContextResolver:
         self.session.flush()
 
         return user
+
+    def _resolve_super_admin(self, user: Optional[User]) -> bool:
+        """
+        Resolve super admin status from database.
+
+        SECURITY CRITICAL:
+        - This reads ONLY from the database
+        - NEVER from JWT claims or any client-provided data
+        - Any JWT claim for "super_admin" or similar role MUST be ignored
+
+        Args:
+            user: User record (may be None)
+
+        Returns:
+            True if user is a super admin, False otherwise
+        """
+        if not user:
+            return False
+
+        # Read directly from database field - NEVER trust JWT claims
+        return user.is_super_admin is True
 
     def _load_tenant_access(self, user: User) -> Dict[str, TenantAccess]:
         """

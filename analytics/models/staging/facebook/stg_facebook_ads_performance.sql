@@ -1,0 +1,307 @@
+{{
+    config(
+        materialized='incremental',
+        schema='staging',
+        unique_key='record_sk',
+        incremental_strategy='delete+insert'
+    )
+}}
+
+{#
+    Staging model for Meta Ads (Facebook/Instagram) with strict typing and standardization.
+
+    This model:
+    - Extracts and normalizes raw Meta Ads data from Airbyte
+    - Adds record_sk (stable surrogate key), source_system, source_primary_key
+    - Deduplicates by natural key keeping the latest Airbyte emission
+    - Adds internal IDs for cross-platform joins (Option B ID normalization)
+    - Maps to canonical channel taxonomy
+    - Supports incremental processing with configurable lookback window
+    - Does NOT calculate business metrics (cpm, cpc, ctr, cpa, roas) - deferred to canonical layer
+
+    SECURITY: Tenant isolation enforced via _tenant_airbyte_connections.
+#}
+
+with raw_meta_ads as (
+    select
+        _airbyte_ab_id as airbyte_record_id,
+        _airbyte_emitted_at as airbyte_emitted_at,
+        _airbyte_data as ad_data
+    from {{ source('raw_facebook_ads', 'ad_insights') }}
+    {% if is_incremental() %}
+    where _airbyte_emitted_at >= current_timestamp - interval '{{ get_lookback_days("meta_ads") }} days'
+    {% endif %}
+),
+
+meta_ads_extracted as (
+    select
+        raw.airbyte_record_id,
+        raw.airbyte_emitted_at,
+        raw.ad_data->>'account_id' as account_id_raw,
+        raw.ad_data->>'campaign_id' as campaign_id_raw,
+        raw.ad_data->>'adset_id' as adset_id_raw,
+        raw.ad_data->>'ad_id' as ad_id_raw,
+        raw.ad_data->>'date_start' as date_start_raw,
+        raw.ad_data->>'date_stop' as date_stop_raw,
+        raw.ad_data->>'spend' as spend_raw,
+        raw.ad_data->>'impressions' as impressions_raw,
+        raw.ad_data->>'clicks' as clicks_raw,
+        raw.ad_data->>'conversions' as conversions_raw,
+        raw.ad_data->>'conversion_value' as conversion_value_raw,
+        raw.ad_data->>'currency' as currency_code,
+        raw.ad_data->>'campaign_name' as campaign_name,
+        raw.ad_data->>'adset_name' as adset_name,
+        raw.ad_data->>'ad_name' as ad_name,
+        raw.ad_data->>'objective' as objective,
+        raw.ad_data->>'reach' as reach_raw,
+        raw.ad_data->>'frequency' as frequency_raw,
+        coalesce(raw.ad_data->>'placement', raw.ad_data->>'objective', 'feed') as platform_channel_raw
+    from raw_meta_ads raw
+),
+
+meta_ads_normalized as (
+    select
+        -- Primary identifiers: normalize IDs
+        case
+            when account_id_raw is null or trim(account_id_raw) = '' then null
+            else trim(account_id_raw)
+        end as ad_account_id,
+
+        case
+            when campaign_id_raw is null or trim(campaign_id_raw) = '' then null
+            else trim(campaign_id_raw)
+        end as campaign_id,
+
+        case
+            when adset_id_raw is null or trim(adset_id_raw) = '' then null
+            else trim(adset_id_raw)
+        end as adset_id,
+
+        case
+            when ad_id_raw is null or trim(ad_id_raw) = '' then null
+            else trim(ad_id_raw)
+        end as ad_id,
+
+        -- Date fields: normalize to date type
+        case
+            when date_start_raw is null or trim(date_start_raw) = '' then null
+            when date_start_raw ~ '^\d{4}-\d{2}-\d{2}'
+                then date_start_raw::date
+            else null
+        end as date,
+
+        case
+            when date_stop_raw is null or trim(date_stop_raw) = '' then null
+            when date_stop_raw ~ '^\d{4}-\d{2}-\d{2}'
+                then date_stop_raw::date
+            else null
+        end as date_stop,
+
+        -- Spend: convert to numeric, handle nulls and invalid values
+        case
+            when spend_raw is null or trim(spend_raw) = '' then 0.0
+            when trim(spend_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
+                then least(greatest(trim(spend_raw)::numeric, -999999999.99), 999999999.99)
+            else 0.0
+        end as spend,
+
+        -- Impressions: convert to integer
+        case
+            when impressions_raw is null or trim(impressions_raw) = '' then 0
+            when trim(impressions_raw) ~ '^-?[0-9]+$'
+                then least(greatest(trim(impressions_raw)::integer, 0), 2147483647)
+            else 0
+        end as impressions,
+
+        -- Clicks: convert to integer
+        case
+            when clicks_raw is null or trim(clicks_raw) = '' then 0
+            when trim(clicks_raw) ~ '^-?[0-9]+$'
+                then least(greatest(trim(clicks_raw)::integer, 0), 2147483647)
+            else 0
+        end as clicks,
+
+        -- Conversions: convert to numeric
+        case
+            when conversions_raw is null or trim(conversions_raw) = '' then 0.0
+            when trim(conversions_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
+                then least(greatest(trim(conversions_raw)::numeric, 0.0), 999999999.99)
+            else 0.0
+        end as conversions,
+
+        -- Conversion value: convert to numeric
+        case
+            when conversion_value_raw is null or trim(conversion_value_raw) = '' then 0.0
+            when trim(conversion_value_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
+                then least(greatest(trim(conversion_value_raw)::numeric, 0.0), 999999999.99)
+            else 0.0
+        end as conversion_value,
+
+        -- Currency: standardize to uppercase, validate format
+        case
+            when currency_code is null or trim(currency_code) = '' then 'USD'
+            when upper(trim(currency_code)) ~ '^[A-Z]{3}$'
+                then upper(trim(currency_code))
+            else 'USD'
+        end as currency,
+
+        -- Additional fields
+        campaign_name,
+        adset_name,
+        ad_name,
+        objective,
+
+        -- Platform channel (raw value from platform)
+        coalesce(platform_channel_raw, 'feed') as platform_channel,
+
+        -- Reach: convert to integer
+        case
+            when reach_raw is null or trim(reach_raw) = '' then null
+            when trim(reach_raw) ~ '^-?[0-9]+$'
+                then least(greatest(trim(reach_raw)::integer, 0), 2147483647)
+            else null
+        end as reach,
+
+        -- Frequency: convert to numeric
+        case
+            when frequency_raw is null or trim(frequency_raw) = '' then null
+            when trim(frequency_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
+                then least(greatest(trim(frequency_raw)::numeric, 0.0), 100.0)
+            else null
+        end as frequency,
+
+        -- Platform/source identifiers
+        'meta_ads' as platform,
+        'meta_ads' as source,
+
+        -- Metadata
+        airbyte_record_id,
+        airbyte_emitted_at
+
+    from meta_ads_extracted
+),
+
+-- Join to tenant mapping to get tenant_id
+meta_ads_with_tenant as (
+    select
+        ads.*,
+        coalesce(
+            (select tenant_id
+             from {{ ref('_tenant_airbyte_connections') }}
+             where source_type = 'source-facebook-marketing'
+               and status = 'active'
+               and is_enabled = true
+             limit 1),
+            null
+        ) as tenant_id
+    from meta_ads_normalized ads
+),
+
+-- Add internal IDs, canonical channel, and dedup
+meta_ads_enriched as (
+    select
+        tenant_id,
+        date,
+        date as report_date,
+        date_stop,
+        source,
+        ad_account_id,
+        campaign_id,
+        adset_id,
+        ad_id,
+
+        -- Internal IDs (Option B ID normalization)
+        {{ generate_internal_id('tenant_id', 'source', 'ad_account_id') }} as internal_account_id,
+        {{ generate_internal_id('tenant_id', 'source', 'campaign_id') }} as internal_campaign_id,
+
+        -- Channel taxonomy
+        platform_channel,
+        {{ map_canonical_channel('source', 'platform_channel') }} as canonical_channel,
+
+        -- Core metrics only (no derived business metrics)
+        spend,
+        impressions,
+        clicks,
+        conversions,
+        conversion_value,
+        currency,
+
+        -- Additional fields
+        campaign_name,
+        adset_name,
+        ad_name,
+        objective,
+        reach,
+        frequency,
+
+        platform,
+        airbyte_record_id,
+        airbyte_emitted_at,
+
+        -- Dedup: keep latest record per natural key
+        row_number() over (
+            partition by tenant_id, ad_account_id, campaign_id, adset_id, ad_id, date
+            order by airbyte_emitted_at desc
+        ) as _row_num
+
+    from meta_ads_with_tenant
+    where tenant_id is not null
+        and ad_account_id is not null
+        and trim(ad_account_id) != ''
+        and campaign_id is not null
+        and trim(campaign_id) != ''
+        and date is not null
+)
+
+select
+    -- Surrogate key: md5(tenant_id || source_system || source_primary_key)
+    md5(concat(
+        tenant_id, '|', 'meta_ads', '|',
+        ad_account_id, '|', campaign_id, '|',
+        coalesce(adset_id, ''), '|', coalesce(ad_id, ''), '|',
+        date::text
+    )) as record_sk,
+
+    -- Source tracking
+    'meta_ads' as source_system,
+    concat(
+        ad_account_id, '|', campaign_id, '|',
+        coalesce(adset_id, ''), '|', coalesce(ad_id, ''), '|',
+        date::text
+    ) as source_primary_key,
+
+    -- All staging columns
+    tenant_id,
+    report_date,
+    date,
+    date_stop,
+    source,
+    ad_account_id,
+    campaign_id,
+    adset_id,
+    ad_id,
+    internal_account_id,
+    internal_campaign_id,
+    platform_channel,
+    canonical_channel,
+    spend,
+    impressions,
+    clicks,
+    conversions,
+    conversion_value,
+    currency,
+    campaign_name,
+    adset_name,
+    ad_name,
+    objective,
+    reach,
+    frequency,
+    platform,
+    airbyte_record_id,
+    airbyte_emitted_at
+
+from meta_ads_enriched
+where _row_num = 1
+    {% if is_incremental() %}
+    and date >= current_date - {{ get_lookback_days('meta_ads') }}
+    {% endif %}

@@ -226,7 +226,7 @@ class TestPermissionDecorators:
 
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_admin_can_access_admin_endpoint(
         self,
         mock_get_signing_key,
@@ -257,7 +257,7 @@ class TestPermissionDecorators:
 
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_viewer_cannot_access_admin_endpoint(
         self,
         mock_get_signing_key,
@@ -289,7 +289,7 @@ class TestPermissionDecorators:
 
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_require_any_permission_allows_one_match(
         self,
         mock_get_signing_key,
@@ -321,7 +321,7 @@ class TestPermissionDecorators:
 
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_require_all_permissions_requires_all(
         self,
         mock_get_signing_key,
@@ -353,7 +353,7 @@ class TestPermissionDecorators:
 
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
     async def test_require_role_decorator(
         self,
         mock_get_signing_key,
