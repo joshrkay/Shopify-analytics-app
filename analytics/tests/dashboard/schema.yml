@@ -18,7 +18,7 @@ tests:
   - name: test_metric_validation
     description: >
       Validates that dbt revenue metrics exactly match dashboard queries.
-      Uses SUM(revenue) from orders for last 30 days.
+      Uses SUM(revenue) from fact_orders for last 30 days.
     config:
       severity: error
       tags:
@@ -29,7 +29,7 @@ tests:
   - name: test_roas_validation
     description: >
       Validates that dbt ROAS calculations exactly match dashboard ROAS.
-      Uses revenue/spend ratio from campaign_performance.
+      Uses revenue/spend ratio from fact_campaign_performance.
       Handles zero-spend edge case (returns NULL -> displayed as N/A).
     config:
       severity: error

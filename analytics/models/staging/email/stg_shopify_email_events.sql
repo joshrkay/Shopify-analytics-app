@@ -37,7 +37,7 @@
 #}
 
 -- Check if source table exists; if not, return empty result set
-{% if not source_exists('raw_email', 'shopify_email_activities') %}
+{% if not source_exists('airbyte_raw', '_airbyte_raw_shopify_email_activities') %}
 
 select
     cast(null as text) as tenant_id,
@@ -72,7 +72,7 @@ with raw_shopify_email as (
         _airbyte_ab_id as airbyte_record_id,
         _airbyte_emitted_at as airbyte_emitted_at,
         _airbyte_data as activity_data
-    from {{ source('raw_email', 'shopify_email_activities') }}
+    from {{ source('airbyte_raw', '_airbyte_raw_shopify_email_activities') }}
     {% if is_incremental() %}
     where _airbyte_emitted_at >= current_timestamp - interval '{{ var("shopify_email_lookback_days", 3) }} days'
     {% endif %}

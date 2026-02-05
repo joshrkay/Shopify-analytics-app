@@ -530,105 +530,6 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
     ],
 
     # =========================================================================
-    # METRIC VERSION GOVERNANCE (Story 2.2)
-    # =========================================================================
-    # Track all metric version lifecycle events for audit and compliance.
-    # These events support the versioned metric framework where:
-    #   - Metrics must support multiple versions (v1, v2, ...)
-    #   - Exactly one version may be marked as current
-    #   - Dashboards must explicitly reference metric versions
-    #   - Deprecated metrics remain queryable until sunset
-    #   - No auto-migration of dashboards
-
-    "metric.version_created": [
-        "metric_name",           # Name of the metric (e.g., roas, cac)
-        "version",               # Version identifier (e.g., v1, v2)
-        "definition",            # Formula definition
-        "dbt_model",             # Associated dbt model
-        "created_by",            # User who created the version
-        "breaking_change",       # Boolean: whether this is a breaking change
-        "approval_ticket",       # Ticket ID for approval tracking
-    ],
-
-    "metric.version_status_changed": [
-        "metric_name",
-        "version",
-        "previous_status",       # draft, active, deprecated, sunset, retired
-        "new_status",
-        "changed_by",
-        "reason",                # Reason for status change
-        "sunset_date",           # If transitioning to deprecated
-    ],
-
-    "metric.version_approval_requested": [
-        "metric_name",
-        "version",
-        "requested_by",
-        "approval_ticket",
-        "breaking_change",
-        "affected_dashboard_count",
-    ],
-
-    "metric.version_approval_granted": [
-        "metric_name",
-        "version",
-        "approved_by",
-        "approval_notes",
-        "approval_ticket",
-    ],
-
-    "metric.version_approval_rejected": [
-        "metric_name",
-        "version",
-        "rejected_by",
-        "rejection_reason",
-        "approval_ticket",
-    ],
-
-    "metric.version_sunset_scheduled": [
-        "metric_name",
-        "version",
-        "sunset_date",
-        "scheduled_by",
-        "affected_dashboard_count",
-        "migration_guide_url",
-    ],
-
-    "metric.dashboard_version_pinned": [
-        "dashboard_id",
-        "metric_name",
-        "pinned_version",
-        "pinned_by",
-        "auto_upgrade",          # Boolean: whether auto-upgrade is enabled
-    ],
-
-    "metric.dashboard_version_unpinned": [
-        "dashboard_id",
-        "metric_name",
-        "unpinned_version",
-        "unpinned_by",
-        "reason",
-    ],
-
-    "metric.deprecated_query_logged": [
-        "tenant_id",
-        "metric_name",
-        "version",
-        "dashboard_id",
-        "days_until_sunset",
-        "warning_level",         # INFO, WARN, BLOCK
-    ],
-
-    "metric.rollback_executed": [
-        "metric_name",
-        "from_version",
-        "to_version",
-        "rolled_back_by",
-        "reason",
-        "affected_dashboard_count",
-    ],
-
-    # =========================================================================
     # DATASET SYNC & CACHE OPERATIONS
     # =========================================================================
     # Track data pipeline operations for debugging and monitoring.
@@ -993,73 +894,6 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "clerk_org_id",        # Clerk organization ID
         "reason",              # Enum: org_deleted, admin_action, billing
     ],
-
-    # =========================================================================
-    # SUPER ADMIN LIFECYCLE EVENTS
-    # =========================================================================
-    # Track all super admin status changes. CRITICAL for security auditing.
-    # Super admin is DB-backed only - NEVER from JWT claims.
-
-    "identity.super_admin_granted": [
-        "clerk_user_id",       # User receiving super admin status
-        "granted_by",          # clerk_user_id of granting super admin (or "migration")
-        "source",              # Enum: migration, admin_api
-    ],
-
-    "identity.super_admin_revoked": [
-        "clerk_user_id",       # User losing super admin status
-        "revoked_by",          # clerk_user_id of revoking super admin
-        "reason",              # Reason for revocation
-    ],
-
-    # =========================================================================
-    # IDENTITY COLLISION EVENTS
-    # =========================================================================
-    # Track identity collision when invite is accepted by a different
-    # clerk_user_id than expected (same email, different identity).
-
-    "identity.identity_collision_detected": [
-        "invite_id",           # The invite being accepted
-        "tenant_id",           # Tenant context
-        "email",               # Email that matched
-        "accepting_clerk_user_id",  # Clerk user ID accepting the invite
-        "existing_clerk_user_id",   # Clerk user ID of existing user with same email
-        "action_taken",        # Enum: new_user_created, blocked
-    ],
-
-    # =========================================================================
-    # AUTHORIZATION ENFORCEMENT EVENTS
-    # =========================================================================
-    # Track mid-session authorization enforcement when access is revoked,
-    # roles change, or billing downgrades remove permissions.
-
-    "identity.access_revoked_enforced": [
-        "clerk_user_id",       # User whose access was revoked
-        "tenant_id",           # Tenant access was revoked from
-        "previous_roles",      # Roles the user had before revocation
-        "enforcement_reason",  # Enum: membership_deleted, role_deactivated, tenant_suspended
-        "request_path",        # The request path that was blocked
-        "request_method",      # HTTP method of blocked request
-    ],
-
-    "identity.role_change_enforced": [
-        "clerk_user_id",       # User whose role changed
-        "tenant_id",           # Tenant where role changed
-        "previous_roles",      # Roles before the change
-        "new_roles",           # Roles after the change
-        "change_source",       # Enum: clerk_webhook, admin_action, agency_grant
-        "permissions_removed", # List of permissions no longer available
-    ],
-
-    "billing.role_revoked_due_to_downgrade": [
-        "clerk_user_id",       # User whose role was invalidated
-        "tenant_id",           # Tenant that was downgraded
-        "previous_billing_tier",  # Billing tier before downgrade
-        "new_billing_tier",    # Billing tier after downgrade
-        "invalid_role",        # The role that's no longer valid
-        "allowed_roles",       # Roles that are valid for new tier
-        "request_path",        # The request path that was blocked
-    ],
 }
 
 
@@ -1129,18 +963,6 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "metric.deprecated",
         "metric.deleted",
     ],
-    "metric_versioning": [
-        "metric.version_created",
-        "metric.version_status_changed",
-        "metric.version_approval_requested",
-        "metric.version_approval_granted",
-        "metric.version_approval_rejected",
-        "metric.version_sunset_scheduled",
-        "metric.dashboard_version_pinned",
-        "metric.dashboard_version_unpinned",
-        "metric.deprecated_query_logged",
-        "metric.rollback_executed",
-    ],
     "operations": [
         "dataset.synced",
         "dataset.sync_failed",
@@ -1194,14 +1016,6 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "identity.role_revoked",
         "identity.tenant_created",
         "identity.tenant_deactivated",
-        "identity.super_admin_granted",
-        "identity.super_admin_revoked",
-        "identity.identity_collision_detected",
-    ],
-    "authorization_enforcement": [
-        "identity.access_revoked_enforced",
-        "identity.role_change_enforced",
-        "billing.role_revoked_due_to_downgrade",
     ],
 }
 
@@ -1278,28 +1092,6 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
     "identity.role_revoked": "medium",
     "identity.tenant_created": "medium",
     "identity.tenant_deactivated": "high",
-    # Super admin events - CRITICAL (highest risk)
-    "identity.super_admin_granted": "critical",
-    "identity.super_admin_revoked": "critical",
-    # Identity collision events - HIGH (security concern)
-    "identity.identity_collision_detected": "high",
-
-    # Authorization enforcement events - all high severity (security-critical)
-    "identity.access_revoked_enforced": "high",
-    "identity.role_change_enforced": "medium",
-    "billing.role_revoked_due_to_downgrade": "high",
-
-    # Metric versioning events
-    "metric.version_created": "medium",
-    "metric.version_status_changed": "high",
-    "metric.version_approval_requested": "medium",
-    "metric.version_approval_granted": "high",
-    "metric.version_approval_rejected": "high",
-    "metric.version_sunset_scheduled": "high",
-    "metric.dashboard_version_pinned": "medium",
-    "metric.dashboard_version_unpinned": "medium",
-    "metric.deprecated_query_logged": "low",
-    "metric.rollback_executed": "critical",
 }
 
 

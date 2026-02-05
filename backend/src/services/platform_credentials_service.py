@@ -18,9 +18,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Union
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.models.connector_credential import CredentialStatus
 from src.services.platform_executors import (
     MetaCredentials,
     GoogleAdsCredentials,
@@ -44,8 +44,17 @@ class Platform(str, Enum):
     SHOPIFY = "shopify"
 
 
-# CredentialStatus is imported from src.models.connector_credential
-# (canonical source of truth for credential lifecycle status)
+# =============================================================================
+# Credential Status
+# =============================================================================
+
+class CredentialStatus(str, Enum):
+    """Status of platform credentials."""
+    ACTIVE = "active"          # Credentials are valid and usable
+    EXPIRED = "expired"        # OAuth tokens have expired
+    REVOKED = "revoked"        # Access has been revoked by user
+    INVALID = "invalid"        # Credentials failed validation
+    MISSING = "missing"        # No credentials configured
 
 
 @dataclass

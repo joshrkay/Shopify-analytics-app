@@ -30,7 +30,6 @@ from src.services.tenant_selection_service import (
     TenantAccessDeniedError,
     TenantNotFoundError,
 )
-from src.constants.permissions import is_role_allowed_for_billing_tier
 
 logger = logging.getLogger(__name__)
 
@@ -48,22 +47,10 @@ class UserTenantResponse(BaseModel):
     billing_tier: str = Field(default="free", description="Billing tier")
     status: str = Field(default="active", description="Tenant status")
     roles: List[str] = Field(default=[], description="User's roles in this tenant")
-    valid_roles: List[str] = Field(
-        default=[],
-        description="Roles that are valid for the current billing tier"
-    )
-    invalid_roles: List[str] = Field(
-        default=[],
-        description="Roles that are NOT valid for the current billing tier (may lose access)"
-    )
     is_admin: bool = Field(default=False, description="Whether user has admin role")
     is_active_tenant: bool = Field(
         default=False,
         description="Whether this is the currently active tenant"
-    )
-    has_valid_access: bool = Field(
-        default=True,
-        description="Whether user has at least one valid role for this tenant"
     )
 
 
@@ -134,33 +121,18 @@ async def get_my_tenants(request: Request):
         service = TenantMembersService(db)
         tenants = service.get_user_tenants(tenant_context.user_id)
 
-        # Mark the active tenant and validate roles against billing tier
+        # Mark the active tenant
         tenant_responses = []
         for t in tenants:
-            roles = t.get("roles", [])
-            billing_tier = t.get("billing_tier", "free")
-
-            # Validate each role against the billing tier
-            valid_roles = []
-            invalid_roles = []
-            for role in roles:
-                if is_role_allowed_for_billing_tier(role, billing_tier):
-                    valid_roles.append(role)
-                else:
-                    invalid_roles.append(role)
-
             tenant_responses.append(UserTenantResponse(
                 id=t["id"],
                 name=t["name"],
                 slug=t.get("slug"),
-                billing_tier=billing_tier,
+                billing_tier=t.get("billing_tier", "free"),
                 status=t.get("status", "active"),
-                roles=roles,
-                valid_roles=valid_roles,
-                invalid_roles=invalid_roles,
+                roles=t.get("roles", []),
                 is_admin=t.get("is_admin", False),
                 is_active_tenant=(t["id"] == tenant_context.tenant_id),
-                has_valid_access=len(valid_roles) > 0,
             ))
 
         # Determine if user has multi-tenant access

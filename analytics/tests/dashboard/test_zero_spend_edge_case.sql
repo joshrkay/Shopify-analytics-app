@@ -25,7 +25,7 @@ WITH campaign_metrics AS (
             WHEN SUM(spend) = 0 THEN 'N/A'
             ELSE CAST(SUM(conversions) / NULLIF(SUM(spend), 0) AS TEXT)
         END AS roas_display
-    FROM {{ ref('campaign_performance') }}
+    FROM {{ ref('fact_campaign_performance') }}
     GROUP BY campaign_id, campaign_name, platform
 ),
 

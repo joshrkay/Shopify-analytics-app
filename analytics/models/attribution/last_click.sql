@@ -26,7 +26,7 @@ with raw_orders as (
         _airbyte_ab_id as airbyte_record_id,
         _airbyte_emitted_at as airbyte_emitted_at,
         _airbyte_data as order_data
-    from {{ source('raw_shopify', 'orders') }}
+    from {{ source('airbyte_raw', '_airbyte_raw_shopify_orders') }}
 ),
 
 tenant_mapping as (
@@ -89,7 +89,7 @@ orders_fact as (
         revenue_gross as revenue,
         currency,
         tenant_id
-    from {{ ref('orders') }}
+    from {{ ref('fact_orders') }}
 ),
 
 -- Get campaign performance data
@@ -107,7 +107,7 @@ campaigns as (
         conversions,
         currency as campaign_currency,
         tenant_id
-    from {{ ref('campaign_performance') }}
+    from {{ ref('fact_campaign_performance') }}
 ),
 
 -- Join orders with UTM to campaigns

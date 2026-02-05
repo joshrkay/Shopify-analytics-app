@@ -1,4 +1,4 @@
-# Render Blueprint for MarkInsight App
+# Render Blueprint for Shopify Analytics App
 # This file enables one-click deployment of the entire application stack
 # Deploy via: https://render.com/docs/blueprint-spec
 
@@ -7,7 +7,7 @@ services:
   # FRONTEND (React + Vite Static Site)
   # ============================================
   - type: web
-    name: markinsight-frontend
+    name: shopify-analytics-frontend
     runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
@@ -29,17 +29,18 @@ services:
       - key: VITE_API_URL
         fromService:
           type: web
-          name: markinsight-api
+          name: shopify-analytics-api
           property: host
-      # Clerk authentication (set via Render dashboard)
-      - key: VITE_CLERK_PUBLISHABLE_KEY
+      - key: VITE_FRONTEGG_BASE_URL
+        sync: false
+      - key: VITE_FRONTEGG_CLIENT_ID
         sync: false
 
   # ============================================
   # WEB API SERVICE (FastAPI)
   # ============================================
   - type: web
-    name: markinsight-api
+    name: shopify-analytics-api
     runtime: docker
     # Dockerfile path relative to repo root
     dockerfilePath: ./docker/backend.Dockerfile
@@ -60,18 +61,18 @@ services:
       # Database connection (auto-injected from database service)
       - key: DATABASE_URL
         fromDatabase:
-          name: markinsight-db
+          name: shopify-analytics-db
           property: connectionString
       # Redis connection (auto-injected from Redis service)
       - key: REDIS_URL
         fromService:
           type: redis
-          name: markinsight-redis
+          name: shopify-analytics-redis
           property: connectionString
-      # Clerk authentication (set via Render dashboard)
-      - key: CLERK_SECRET_KEY
+      # Frontend authentication (set via Render dashboard)
+      - key: FRONTEGG_CLIENT_ID
         sync: false
-      - key: CLERK_WEBHOOK_SECRET
+      - key: FRONTEGG_CLIENT_SECRET
         sync: false
       # Shopify API credentials (set via Render dashboard)
       - key: SHOPIFY_API_KEY
@@ -89,7 +90,7 @@ services:
   # BACKGROUND WORKER SERVICE
   # ============================================
   - type: worker
-    name: markinsight-worker
+    name: shopify-analytics-worker
     runtime: docker
     # Uses worker Dockerfile
     dockerfilePath: ./docker/worker.Dockerfile
@@ -105,17 +106,16 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: markinsight-db
+          name: shopify-analytics-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
-          name: markinsight-redis
+          name: shopify-analytics-redis
           property: connectionString
-      # Clerk authentication (set via Render dashboard)
-      - key: CLERK_SECRET_KEY
+      - key: FRONTEGG_CLIENT_ID
         sync: false
-      - key: CLERK_WEBHOOK_SECRET
+      - key: FRONTEGG_CLIENT_SECRET
         sync: false
       - key: SHOPIFY_API_KEY
         sync: false
@@ -142,7 +142,7 @@ services:
   # CRON JOB: RECONCILE SUBSCRIPTIONS
   # ============================================
   - type: cron
-    name: markinsight-reconcile-subscriptions
+    name: shopify-analytics-reconcile-subscriptions
     # Schedule: runs every hour
     schedule: "0 * * * *"
     # Uses worker Dockerfile (same runtime environment)
@@ -157,17 +157,16 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: markinsight-db
+          name: shopify-analytics-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
-          name: markinsight-redis
+          name: shopify-analytics-redis
           property: connectionString
-      # Clerk authentication (set via Render dashboard)
-      - key: CLERK_SECRET_KEY
+      - key: FRONTEGG_CLIENT_ID
         sync: false
-      - key: CLERK_WEBHOOK_SECRET
+      - key: FRONTEGG_CLIENT_SECRET
         sync: false
       - key: SHOPIFY_API_KEY
         sync: false
@@ -182,7 +181,7 @@ services:
   # REDIS: IN-MEMORY CACHE & QUEUE
   # ============================================
   - type: redis
-    name: markinsight-redis
+    name: shopify-analytics-redis
     plan: starter
     region: oregon
     # Redis eviction policy
@@ -192,9 +191,9 @@ services:
 # DATABASE: POSTGRES
 # ============================================
 databases:
-  - name: markinsight-db
-    databaseName: markinsight
-    user: markinsight_user
+  - name: shopify-analytics-db
+    databaseName: shopify_analytics
+    user: shopify_analytics_user
     plan: starter
     region: oregon
     # PostgreSQL version

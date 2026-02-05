@@ -108,18 +108,6 @@ class User(Base, TimestampMixin):
         comment="Whether the user is active (false = soft deleted)"
     )
 
-    # Super Admin status (DB-backed only - NEVER from JWT claims)
-    # SECURITY: This field can ONLY be modified via:
-    # 1. Database migration
-    # 2. SuperAdminService (which requires existing super admin)
-    is_super_admin = Column(
-        Boolean,
-        nullable=False,
-        default=False,
-        index=True,
-        comment="Super admin status - grants access to all tenants. DB-only, never from JWT."
-    )
-
     # Additional metadata from Clerk (named extra_metadata to avoid SQLAlchemy conflict)
     extra_metadata = Column(
         "metadata",  # Column name in database is still 'metadata'
