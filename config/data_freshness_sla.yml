@@ -1,6 +1,7 @@
 # Data Freshness SLAs
 # Single source of truth for freshness thresholds by source and billing tier.
-# All values expressed in minutes.
+# All values expressed in minutes. warn_after_minutes and error_after_minutes
+# are set equal (same SLA value).
 #
 # Consumers:
 #   - dbt macros: analytics/macros/get_freshness_threshold.sql (via load_file_contents)
@@ -16,76 +17,76 @@ sources:
   shopify_orders:
     free:
       warn_after_minutes: 1440    # 24 h
-      error_after_minutes: 2880   # 48 h
+      error_after_minutes: 1440
     growth:
-      warn_after_minutes: 360     #  6 h
-      error_after_minutes: 720    # 12 h
+      warn_after_minutes: 360     # 6 h
+      error_after_minutes: 360
     enterprise:
-      warn_after_minutes: 60      #  1 h
-      error_after_minutes: 120    #  2 h
+      warn_after_minutes: 60     # 1 h
+      error_after_minutes: 60
 
   facebook_ads:
     free:
       warn_after_minutes: 1440
-      error_after_minutes: 2880
+      error_after_minutes: 1440
     growth:
       warn_after_minutes: 360
-      error_after_minutes: 720
+      error_after_minutes: 360
     enterprise:
       warn_after_minutes: 60
-      error_after_minutes: 120
+      error_after_minutes: 60
 
   google_ads:
     free:
       warn_after_minutes: 1440
-      error_after_minutes: 2880
+      error_after_minutes: 1440
     growth:
       warn_after_minutes: 360
-      error_after_minutes: 720
+      error_after_minutes: 360
     enterprise:
       warn_after_minutes: 60
-      error_after_minutes: 120
+      error_after_minutes: 60
 
   tiktok_ads:
     free:
       warn_after_minutes: 1440
-      error_after_minutes: 2880
+      error_after_minutes: 1440
     growth:
       warn_after_minutes: 360
-      error_after_minutes: 720
+      error_after_minutes: 360
     enterprise:
       warn_after_minutes: 60
-      error_after_minutes: 120
+      error_after_minutes: 60
 
   snapchat_ads:
     free:
       warn_after_minutes: 1440
-      error_after_minutes: 2880
+      error_after_minutes: 1440
     growth:
       warn_after_minutes: 360
-      error_after_minutes: 720
+      error_after_minutes: 360
     enterprise:
       warn_after_minutes: 60
-      error_after_minutes: 120
+      error_after_minutes: 60
 
   email:
     free:
-      warn_after_minutes: 1440
-      error_after_minutes: 2880
+      warn_after_minutes: 1440    # 24 h
+      error_after_minutes: 1440
     growth:
       warn_after_minutes: 720     # 12 h
-      error_after_minutes: 1440   # 24 h
+      error_after_minutes: 720
     enterprise:
-      warn_after_minutes: 360     #  6 h
-      error_after_minutes: 720    # 12 h
+      warn_after_minutes: 360     # 6 h
+      error_after_minutes: 360
 
   sms:
     free:
       warn_after_minutes: 1440
-      error_after_minutes: 2880
+      error_after_minutes: 1440
     growth:
       warn_after_minutes: 720
-      error_after_minutes: 1440
+      error_after_minutes: 720
     enterprise:
       warn_after_minutes: 360
-      error_after_minutes: 720
+      error_after_minutes: 360

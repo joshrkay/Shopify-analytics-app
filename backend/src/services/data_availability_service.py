@@ -28,74 +28,14 @@ Usage:
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.governance.base import load_yaml_config
+from src.config.freshness_sla import get_sla_thresholds, resolve_sla_key
 
 logger = logging.getLogger(__name__)
-
-# ─── SLA config loading ─────────────────────────────────────────────────────
-
-_SLA_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "data_freshness_sla.yml"
-_sla_cache: Optional[dict] = None
-
-
-def _load_sla_config() -> dict:
-    """Load and cache SLA config. Raises FileNotFoundError if missing."""
-    global _sla_cache
-    if _sla_cache is None:
-        _sla_cache = load_yaml_config(_SLA_CONFIG_PATH, logger=logger)
-    return _sla_cache
-
-
-def get_sla_thresholds(
-    source_name: str,
-    tier: str = "free",
-) -> Tuple[int, int]:
-    """
-    Return (warn_after_minutes, error_after_minutes) for a source and tier.
-
-    Falls back to the free tier, then to defaults (1440, 2880).
-    """
-    config = _load_sla_config()
-    default_tier = config.get("default_tier", "free")
-    effective_tier = tier or default_tier
-
-    sources = config.get("sources", {})
-    source_cfg = sources.get(source_name, {})
-    tier_cfg = source_cfg.get(effective_tier) or source_cfg.get("free") or {}
-
-    warn = tier_cfg.get("warn_after_minutes", 1440)
-    error = tier_cfg.get("error_after_minutes", 2880)
-    return warn, error
-
-
-# ─── Connection source_type → SLA config key mapping ────────────────────────
-
-CONNECTION_SOURCE_TO_SLA_KEY: Dict[str, str] = {
-    "shopify": "shopify_orders",
-    "facebook": "facebook_ads",
-    "meta": "facebook_ads",
-    "google": "google_ads",
-    "tiktok": "tiktok_ads",
-    "snapchat": "snapchat_ads",
-    "klaviyo": "email",
-    "shopify_email": "email",
-    "attentive": "sms",
-    "postscript": "sms",
-    "smsbump": "sms",
-}
-
-
-def resolve_sla_key(connection_source_type: Optional[str]) -> Optional[str]:
-    """Map a TenantAirbyteConnection.source_type to an SLA config key."""
-    if not connection_source_type:
-        return None
-    return CONNECTION_SOURCE_TO_SLA_KEY.get(connection_source_type.lower())
 
 
 # ─── Shared helpers (also used by FreshnessService) ─────────────────────────

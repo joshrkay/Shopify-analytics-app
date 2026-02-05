@@ -32,8 +32,8 @@ assertions as (
         -- Freshness warn should be 1440 minutes (24h) for free tier
         case when freshness_warn_shopify = 1440 then 'PASS' else 'FAIL: warn_minutes=' || freshness_warn_shopify::text end as test_freshness_warn,
 
-        -- Freshness error should be 2880 minutes (48h) for free tier
-        case when freshness_error_shopify = 2880 then 'PASS' else 'FAIL: error_minutes=' || freshness_error_shopify::text end as test_freshness_error
+        -- Freshness error equals warn (1440 min / 24h) for free tier
+        case when freshness_error_shopify = 1440 then 'PASS' else 'FAIL: error_minutes=' || freshness_error_shopify::text end as test_freshness_error
     from test_cases
 )
 

@@ -32,8 +32,8 @@
     {%- set tier_cfg = source_cfg.get('free', {}) -%}
 {%- endif -%}
 
-{#- Hardcoded last resort: 24 h warn / 48 h error -#}
-{%- set defaults = {'warn_after_minutes': 1440, 'error_after_minutes': 2880} -%}
+{#- Hardcoded last resort: 24 h (warn and error equal) -#}
+{%- set defaults = {'warn_after_minutes': 1440, 'error_after_minutes': 1440} -%}
 
 {{ tier_cfg.get(threshold_type, defaults.get(threshold_type, 1440)) }}
 {%- endmacro -%}

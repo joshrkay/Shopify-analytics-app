@@ -22,7 +22,7 @@ from src.models.dq_models import (
     DQCheck, DQResult, DQIncident, SyncRun, BackfillJob,
     DQCheckType, DQSeverity, DQResultStatus, DQIncidentStatus,
     SyncRunStatus, ConnectorSourceType, BackfillJobStatus,
-    FRESHNESS_THRESHOLDS, get_freshness_threshold, is_critical_source,
+    get_freshness_threshold, get_freshness_thresholds, is_critical_source,
     MAX_MERCHANT_BACKFILL_DAYS,
 )
 from src.models.ai_insight import AIInsight, InsightType, InsightSeverity
@@ -125,8 +125,8 @@ __all__ = [
     "SyncRunStatus",
     "ConnectorSourceType",
     "BackfillJobStatus",
-    "FRESHNESS_THRESHOLDS",
     "get_freshness_threshold",
+    "get_freshness_thresholds",
     "is_critical_source",
     "MAX_MERCHANT_BACKFILL_DAYS",
     # AI Insight models

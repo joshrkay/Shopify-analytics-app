@@ -38,7 +38,7 @@ from src.models.dq_models import (
     DQCheck, DQResult, DQIncident, SyncRun,
     DQCheckType, DQSeverity, DQResultStatus, DQIncidentStatus,
     SyncRunStatus, ConnectorSourceType,
-    FRESHNESS_THRESHOLDS, get_freshness_threshold, is_critical_source,
+    get_freshness_threshold, get_freshness_thresholds, is_critical_source,
 )
 from src.models.airbyte_connection import TenantAirbyteConnection
 
@@ -171,13 +171,19 @@ class DQService:
     SECURITY: All methods require tenant_id from JWT context.
     """
 
-    def __init__(self, db_session: Session, tenant_id: str):
+    def __init__(
+        self,
+        db_session: Session,
+        tenant_id: str,
+        billing_tier: str = "free",
+    ):
         """
         Initialize DQ service.
 
         Args:
             db_session: Database session
             tenant_id: Tenant ID from JWT (org_id)
+            billing_tier: Billing tier for SLA lookup (free, growth, enterprise)
 
         Raises:
             ValueError: If tenant_id is empty or None
@@ -187,6 +193,7 @@ class DQService:
 
         self.db = db_session
         self.tenant_id = tenant_id
+        self.billing_tier = billing_tier
         self._event_queue: List[DQEvent] = []
 
     def _generate_run_id(self) -> str:
@@ -231,36 +238,27 @@ class DQService:
     def _calculate_freshness_severity(
         self,
         minutes_since_sync: int,
-        source_type: ConnectorSourceType
+        source_type: ConnectorSourceType,
     ) -> Optional[DQSeverity]:
         """
         Calculate severity based on minutes since sync and source type.
 
-        Severity Multipliers:
+        Uses config-driven SLA (per tier). Severity multipliers:
         - warning: exceeded threshold up to 2x
         - high: exceeded threshold up to 4x
         - critical: exceeded > 4x OR critical source
         """
-        thresholds = FRESHNESS_THRESHOLDS.get(source_type)
-        if not thresholds:
-            return None
-
+        thresholds = get_freshness_thresholds(source_type, self.billing_tier)
         warning_threshold = thresholds["warning"]
         high_threshold = thresholds["high"]
         critical_threshold = thresholds["critical"]
 
-        # Check if beyond critical
         if minutes_since_sync > critical_threshold:
             return DQSeverity.CRITICAL
-
-        # Check if beyond high (2x to 4x)
         if minutes_since_sync > high_threshold:
             return DQSeverity.HIGH
-
-        # Check if beyond warning (up to 2x)
         if minutes_since_sync > warning_threshold:
             return DQSeverity.WARNING
-
         return None
 
     def check_freshness(
@@ -312,7 +310,7 @@ class DQService:
         # Calculate time since last sync
         if not connector.last_sync_at:
             # Never synced
-            threshold = get_freshness_threshold(source_type, DQSeverity.WARNING)
+            threshold = get_freshness_threshold(source_type, DQSeverity.WARNING, self.billing_tier)
             return FreshnessCheckResult(
                 connector_id=connector_id,
                 connector_name=connector.connection_name,
@@ -334,7 +332,7 @@ class DQService:
             last_sync = last_sync.replace(tzinfo=timezone.utc)
 
         minutes_since_sync = int((now - last_sync).total_seconds() / 60)
-        threshold = get_freshness_threshold(source_type, DQSeverity.WARNING)
+        threshold = get_freshness_threshold(source_type, DQSeverity.WARNING, self.billing_tier)
 
         # Calculate severity
         severity = self._calculate_freshness_severity(minutes_since_sync, source_type)

@@ -22,6 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
+from src.config.freshness_sla import get_sla_thresholds
 from src.db_base import Base
 from src.models.base import TimestampMixin, TenantScopedMixin, generate_uuid
 
@@ -97,31 +98,66 @@ class BackfillJobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-# Freshness thresholds per source type (in minutes)
-FRESHNESS_THRESHOLDS = {
-    # 2-hour SLA sources
-    ConnectorSourceType.SHOPIFY_ORDERS: {"warning": 120, "high": 240, "critical": 480},
-    ConnectorSourceType.SHOPIFY_REFUNDS: {"warning": 120, "high": 240, "critical": 480},
-    ConnectorSourceType.RECHARGE: {"warning": 120, "high": 240, "critical": 480},
-
-    # 24-hour SLA sources
-    ConnectorSourceType.META_ADS: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.GOOGLE_ADS: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.TIKTOK_ADS: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.PINTEREST_ADS: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.SNAP_ADS: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.AMAZON_ADS: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.KLAVIYO: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.POSTSCRIPT: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.ATTENTIVE: {"warning": 1440, "high": 2880, "critical": 5760},
-    ConnectorSourceType.GA4: {"warning": 1440, "high": 2880, "critical": 5760},
+# Map ConnectorSourceType to SLA config key (config/data_freshness_sla.yml).
+# Sources not in config use the key of a similar source; config defaults apply.
+CONNECTOR_SOURCE_TYPE_TO_SLA_KEY = {
+    ConnectorSourceType.SHOPIFY_ORDERS: "shopify_orders",
+    ConnectorSourceType.SHOPIFY_REFUNDS: "shopify_orders",
+    ConnectorSourceType.RECHARGE: "shopify_orders",
+    ConnectorSourceType.META_ADS: "facebook_ads",
+    ConnectorSourceType.GOOGLE_ADS: "google_ads",
+    ConnectorSourceType.TIKTOK_ADS: "tiktok_ads",
+    ConnectorSourceType.PINTEREST_ADS: "facebook_ads",
+    ConnectorSourceType.SNAP_ADS: "snapchat_ads",
+    ConnectorSourceType.AMAZON_ADS: "facebook_ads",
+    ConnectorSourceType.KLAVIYO: "email",
+    ConnectorSourceType.POSTSCRIPT: "sms",
+    ConnectorSourceType.ATTENTIVE: "sms",
+    ConnectorSourceType.GA4: "google_ads",
 }
 
 
-def get_freshness_threshold(source_type: ConnectorSourceType, severity: DQSeverity) -> int:
-    """Get freshness threshold in minutes for a source type and severity."""
-    thresholds = FRESHNESS_THRESHOLDS.get(source_type, {"warning": 1440, "high": 2880, "critical": 5760})
-    return thresholds.get(severity.value, 1440)
+def get_freshness_threshold(
+    source_type: ConnectorSourceType,
+    severity: DQSeverity,
+    tier: str = "free",
+) -> int:
+    """
+    Get freshness threshold in minutes for a source type, severity, and billing tier.
+
+    Reads from config/data_freshness_sla.yml. Severity multipliers: warning = SLA,
+    high = 2x, critical = 4x.
+    """
+    sla_key = CONNECTOR_SOURCE_TYPE_TO_SLA_KEY.get(
+        source_type, "shopify_orders"
+    )
+    warn_minutes, _ = get_sla_thresholds(sla_key, tier)
+    thresholds = {
+        DQSeverity.WARNING.value: warn_minutes,
+        DQSeverity.HIGH.value: warn_minutes * 2,
+        DQSeverity.CRITICAL.value: warn_minutes * 4,
+    }
+    return thresholds.get(severity.value, warn_minutes)
+
+
+def get_freshness_thresholds(
+    source_type: ConnectorSourceType,
+    tier: str = "free",
+) -> dict:
+    """
+    Get warning, high, and critical thresholds in minutes (for severity calculation).
+
+    Returns dict with keys "warning", "high", "critical".
+    """
+    sla_key = CONNECTOR_SOURCE_TYPE_TO_SLA_KEY.get(
+        source_type, "shopify_orders"
+    )
+    warn_minutes, _ = get_sla_thresholds(sla_key, tier)
+    return {
+        "warning": warn_minutes,
+        "high": warn_minutes * 2,
+        "critical": warn_minutes * 4,
+    }
 
 
 def is_critical_source(source_type: ConnectorSourceType) -> bool:
