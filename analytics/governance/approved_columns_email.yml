@@ -1,0 +1,99 @@
+# Approved columns for Email staging models (Klaviyo + Shopify Email).
+# Columns listed here may be referenced in staging, facts, metrics, and marts layers.
+# New columns arriving in raw (_airbyte_data) are allowed automatically.
+# To promote a new column to staging/canonical, add it below and open a PR.
+#
+# Last reviewed: 2026-02-05
+
+source: email
+
+models:
+  stg_klaviyo_events:
+    - tenant_id
+    - event_id
+    - event_type
+    - event_type_raw
+    - event_timestamp
+    - report_date
+    - source
+    - profile_id_hash
+    - campaign_id
+    - campaign_name
+    - message_id
+    - flow_id
+    - flow_name
+    - flow_message_id
+    - attribution_source
+    - internal_campaign_id
+    - platform_channel
+    - canonical_channel
+    - email_subject
+    - list_name
+    - clicked_url
+    - bounce_type
+    - revenue
+    - currency
+    - order_id
+    - platform
+    - metric_id
+    - airbyte_record_id
+    - airbyte_emitted_at
+
+  stg_klaviyo_campaigns:
+    - tenant_id
+    - campaign_id
+    - campaign_name
+    - report_date
+    - source
+    - internal_campaign_id
+    - platform_channel
+    - canonical_channel
+    - sends
+    - deliveries
+    - opens
+    - unique_opens
+    - clicks
+    - unique_clicks
+    - bounces
+    - spam_complaints
+    - unsubscribes
+    - conversions
+    - unique_recipients
+    - revenue
+    - currency
+    - delivery_rate
+    - open_rate
+    - click_rate
+    - click_to_open_rate
+    - bounce_rate
+    - unsubscribe_rate
+    - spam_rate
+    - conversion_rate
+    - revenue_per_email
+    - platform
+    - airbyte_emitted_at
+
+  stg_shopify_email_events:
+    - tenant_id
+    - activity_id
+    - event_type
+    - event_type_raw
+    - event_timestamp
+    - report_date
+    - source
+    - customer_id_hash
+    - campaign_id
+    - campaign_name
+    - marketing_channel
+    - internal_campaign_id
+    - platform_channel
+    - canonical_channel
+    - email_subject
+    - clicked_url
+    - bounce_type
+    - revenue
+    - currency
+    - order_id
+    - platform
+    - airbyte_record_id
+    - airbyte_emitted_at
