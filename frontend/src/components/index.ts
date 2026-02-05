@@ -16,8 +16,5 @@ export {
   PendingApprovalsBadge,
 } from './approvals';
 
-// Metric Version Banner (Story 2.3)
-export { MetricVersionBanner } from './MetricVersionBanner';
-
 // Hook exports
 export { useEntitlements } from '../hooks/useEntitlements';

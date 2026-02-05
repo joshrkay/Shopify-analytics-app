@@ -5,19 +5,18 @@ Provides mock servers for:
 - Shopify API (OAuth, Admin API, Webhooks)
 - Airbyte Cloud API (sync orchestration)
 - OpenRouter API (LLM responses)
-- Clerk API (authentication)
+- Frontegg API (authentication)
 """
 
 from .mock_shopify import MockShopifyServer, ShopifyWebhookSimulator
 from .mock_airbyte import MockAirbyteServer
 from .mock_openrouter import MockOpenRouterServer
-from .mock_clerk import MockClerkServer, MockFronteggServer  # MockFronteggServer is alias for backwards compat
+from .mock_frontegg import MockFronteggServer
 
 __all__ = [
     "MockShopifyServer",
     "ShopifyWebhookSimulator",
     "MockAirbyteServer",
     "MockOpenRouterServer",
-    "MockClerkServer",
-    "MockFronteggServer",  # Backwards compatibility alias
+    "MockFronteggServer",
 ]

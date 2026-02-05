@@ -35,7 +35,7 @@ with all_orders as (
         revenue_gross,
         currency,
         financial_status
-    from {{ ref('orders') }}
+    from {{ ref('fact_orders') }}
     where tenant_id is not null
         and order_id is not null
         and customer_key is not null  -- Must have customer identifier
@@ -150,7 +150,7 @@ ad_spend as (
         currency,
         campaign_id,
         sum(spend) as total_spend
-    from {{ ref('marketing_spend') }}
+    from {{ ref('fact_ad_spend') }}
     where tenant_id is not null
         and source_platform in ('meta_ads', 'google_ads')
         and spend is not null
@@ -383,10 +383,6 @@ select
         period_type, '|',
         coalesce(period_start::text, 'all_time')
     )) as id,
-
-    -- Metric versioning (Story 2.2)
-    'cac' as metric_name,
-    'v1' as metric_version,
 
     tenant_id,
     platform,

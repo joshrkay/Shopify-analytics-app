@@ -2,10 +2,10 @@
 Platform-level modules for multi-tenant enforcement and security.
 
 This package contains the Epic 0 platform foundations:
-- tenant_context: Multi-tenant context enforcement (Clerk authentication)
+- tenant_context: Multi-tenant context enforcement
 - rbac: Role-based access control
 - audit: Audit logging
-- feature_flags: Feature flag management
+- feature_flags: Feature flag management (Frontegg)
 - secrets: Secrets management and encryption
 - errors: Consistent error handling
 """

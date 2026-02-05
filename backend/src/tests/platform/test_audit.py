@@ -310,7 +310,7 @@ class TestAuditEventScenarios:
             user_agent="Mozilla/5.0",
             metadata={
                 "login_method": "oauth",
-                "provider": "clerk",
+                "provider": "frontegg",
             }
         )
 

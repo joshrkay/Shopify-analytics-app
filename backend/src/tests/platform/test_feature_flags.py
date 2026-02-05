@@ -12,8 +12,7 @@ from fastapi.testclient import TestClient
 
 from src.platform.feature_flags import (
     FeatureFlag,
-    FeatureFlagClient,
-    FronteggFeatureFlagClient,  # Backwards compatibility alias
+    FronteggFeatureFlagClient,
     get_feature_flag_client,
     is_feature_enabled,
     is_kill_switch_active,
@@ -29,24 +28,17 @@ from src.platform.tenant_context import TenantContext, TenantContextMiddleware
 # ============================================================================
 
 @pytest.fixture
-def mock_feature_flag_client():
-    """Create a mock feature flag client."""
-    client = FeatureFlagClient()
+def mock_frontegg_client():
+    """Create a mock Frontegg feature flag client."""
+    client = FronteggFeatureFlagClient()
     client._initialized = True
     return client
-
-
-# Backwards compatibility alias
-@pytest.fixture
-def mock_frontegg_client(mock_feature_flag_client):
-    """Backwards compatibility alias for mock_feature_flag_client."""
-    return mock_feature_flag_client
 
 
 @pytest.fixture(autouse=True)
 def setup_test_env(monkeypatch):
     """Set up test environment variables."""
-    monkeypatch.setenv("CLERK_PUBLISHABLE_KEY", "test-clerk-publishable-key")
+    monkeypatch.setenv("FRONTEGG_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("CLERK_FRONTEND_API", "test.clerk.accounts.dev")
 
 
@@ -93,18 +85,18 @@ class TestFeatureFlagEnumeration:
 
 
 # ============================================================================
-# TEST SUITE: FEATURE FLAG CLIENT
+# TEST SUITE: FRONTEGG FEATURE FLAG CLIENT
 # ============================================================================
 
-class TestFeatureFlagClient:
-    """Test feature flag client wrapper."""
+class TestFronteggFeatureFlagClient:
+    """Test Frontegg feature flag client wrapper."""
 
     def test_client_returns_default_when_not_configured(self, monkeypatch):
-        """Client returns default value when not configured."""
-        # Remove Clerk publishable key
-        monkeypatch.delenv("CLERK_PUBLISHABLE_KEY", raising=False)
+        """Client returns default value when Frontegg not configured."""
+        # Remove client ID
+        monkeypatch.delenv("FRONTEGG_CLIENT_ID", raising=False)
 
-        client = FeatureFlagClient()
+        client = FronteggFeatureFlagClient()
         result = client.is_enabled(
             FeatureFlag.AI_WRITE_BACK,
             tenant_id="tenant-123",
@@ -119,7 +111,7 @@ class TestFeatureFlagClient:
         # Set feature flag via environment
         monkeypatch.setenv("FEATURE_FLAG_AI_WRITE_BACK", "true")
 
-        client = FeatureFlagClient()
+        client = FronteggFeatureFlagClient()
         result = client.is_enabled(
             FeatureFlag.AI_WRITE_BACK,
             tenant_id="tenant-123",
@@ -134,7 +126,7 @@ class TestFeatureFlagClient:
         # Set feature flag to false via environment
         monkeypatch.setenv("FEATURE_FLAG_AI_WRITE_BACK", "false")
 
-        client = FeatureFlagClient()
+        client = FronteggFeatureFlagClient()
         result = client.is_enabled(
             FeatureFlag.AI_WRITE_BACK,
             tenant_id="tenant-123",
@@ -174,7 +166,7 @@ class TestFeatureFlagFunctions:
     @pytest.mark.asyncio
     async def test_is_feature_enabled_returns_bool(self, monkeypatch):
         """is_feature_enabled returns boolean."""
-        monkeypatch.delenv("CLERK_PUBLISHABLE_KEY", raising=False)
+        monkeypatch.delenv("FRONTEGG_CLIENT_ID", raising=False)
 
         result = await is_feature_enabled(
             FeatureFlag.AI_WRITE_BACK,
@@ -188,7 +180,7 @@ class TestFeatureFlagFunctions:
     @pytest.mark.asyncio
     async def test_is_kill_switch_active_global_check(self, monkeypatch):
         """is_kill_switch_active checks global flag status."""
-        monkeypatch.delenv("CLERK_PUBLISHABLE_KEY", raising=False)
+        monkeypatch.delenv("FRONTEGG_CLIENT_ID", raising=False)
 
         # Without configuration, should return False (not active, using default True)
         result = await is_kill_switch_active(FeatureFlag.AI_WRITE_BACK)
@@ -205,7 +197,7 @@ class TestFeatureFlagFunctions:
 
         # Reset the client to pick up new env var
         from src.platform import feature_flags
-        feature_flags._client = FeatureFlagClient()
+        feature_flags._client = FronteggFeatureFlagClient()
 
         result = await is_kill_switch_active(FeatureFlag.AI_WRITE_BACK)
 
@@ -250,7 +242,7 @@ class TestFeatureFlagDecorators:
 
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
     @patch('src.platform.feature_flags.is_feature_enabled')
     async def test_require_feature_flag_blocks_when_disabled(
         self,
@@ -287,7 +279,7 @@ class TestFeatureFlagDecorators:
 
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
     @patch('src.platform.feature_flags.is_feature_enabled')
     async def test_require_feature_flag_allows_when_enabled(
         self,
@@ -323,7 +315,7 @@ class TestFeatureFlagDecorators:
 
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
-    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
+    @patch('src.platform.tenant_context.FronteggJWKSClient.get_signing_key')
     @patch('src.platform.feature_flags.is_kill_switch_active')
     async def test_require_kill_switch_inactive_blocks_when_active(
         self,
@@ -438,13 +430,13 @@ class TestFeatureFlagDefaults:
     @pytest.mark.asyncio
     async def test_default_false_blocks_access(self, monkeypatch):
         """When default is False and not configured, feature is disabled."""
-        monkeypatch.delenv("CLERK_PUBLISHABLE_KEY", raising=False)
+        monkeypatch.delenv("FRONTEGG_CLIENT_ID", raising=False)
         # Make sure no env override exists
         monkeypatch.delenv("FEATURE_FLAG_AI_WRITE_BACK", raising=False)
 
         # Reset client to pick up env changes
         from src.platform import feature_flags
-        feature_flags._client = FeatureFlagClient()
+        feature_flags._client = FronteggFeatureFlagClient()
 
         result = await is_feature_enabled(
             FeatureFlag.AI_WRITE_BACK,
@@ -457,13 +449,13 @@ class TestFeatureFlagDefaults:
     @pytest.mark.asyncio
     async def test_default_true_allows_access(self, monkeypatch):
         """When default is True and not configured, feature is enabled."""
-        monkeypatch.delenv("CLERK_PUBLISHABLE_KEY", raising=False)
+        monkeypatch.delenv("FRONTEGG_CLIENT_ID", raising=False)
         # Make sure no env override exists
         monkeypatch.delenv("FEATURE_FLAG_AI_INSIGHTS", raising=False)
 
         # Reset client to pick up env changes
         from src.platform import feature_flags
-        feature_flags._client = FeatureFlagClient()
+        feature_flags._client = FronteggFeatureFlagClient()
 
         result = await is_feature_enabled(
             FeatureFlag.AI_INSIGHTS,
@@ -488,7 +480,7 @@ class TestEnvironmentConfiguration:
         for value in true_values:
             monkeypatch.setenv("FEATURE_FLAG_AI_WRITE_BACK", value)
 
-            client = FeatureFlagClient()
+            client = FronteggFeatureFlagClient()
             result = client.is_enabled(
                 FeatureFlag.AI_WRITE_BACK,
                 tenant_id="tenant-123",
@@ -504,7 +496,7 @@ class TestEnvironmentConfiguration:
         for value in false_values:
             monkeypatch.setenv("FEATURE_FLAG_AI_WRITE_BACK", value)
 
-            client = FeatureFlagClient()
+            client = FronteggFeatureFlagClient()
             result = client.is_enabled(
                 FeatureFlag.AI_WRITE_BACK,
                 tenant_id="tenant-123",

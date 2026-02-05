@@ -36,7 +36,7 @@
 #}
 
 -- Check if source table exists; if not, return empty result set
-{% if not source_exists('raw_sms', 'smsbump_events') %}
+{% if not source_exists('airbyte_raw', '_airbyte_raw_smsbump_events') %}
 
 select
     cast(null as text) as tenant_id,
@@ -79,7 +79,7 @@ with raw_smsbump_events as (
         _airbyte_ab_id as airbyte_record_id,
         _airbyte_emitted_at as airbyte_emitted_at,
         _airbyte_data as event_data
-    from {{ source('raw_sms', 'smsbump_events') }}
+    from {{ source('airbyte_raw', '_airbyte_raw_smsbump_events') }}
     {% if is_incremental() %}
     where _airbyte_emitted_at >= current_timestamp - interval '{{ var("smsbump_lookback_days", 3) }} days'
     {% endif %}
