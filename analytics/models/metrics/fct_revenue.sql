@@ -53,7 +53,7 @@ with orders_base as (
         tags,
         note,
         ingested_at
-    from {{ ref('fact_orders') }}
+    from {{ ref('orders') }}
 
     {% if is_incremental() %}
         where ingested_at > (

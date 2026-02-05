@@ -45,8 +45,8 @@ models:
       ### Data Reconciliation
 
       These metrics reconcile exactly with raw fact tables:
-      - **ROAS**: Matches `fact_orders.revenue_net / fact_ad_spend.spend`
-      - **CAC**: Matches `fact_ad_spend.spend / COUNT(first-time customers)`
+      - **ROAS**: Matches `orders.revenue_net / marketing_spend.spend`
+      - **CAC**: Matches `marketing_spend.spend / COUNT(first-time customers)`
 
       No dashboard-side calculations required.
 
