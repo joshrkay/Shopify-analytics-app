@@ -18,19 +18,29 @@ clean-targets:
 
 models:
   markinsight:
+    raw_sources:
+      +enabled: true
     staging:
       +materialized: view
       shopify:
         +schema: staging
       ads:
         +schema: staging
+      email:
+        +schema: staging
+      sms:
+        +schema: staging
       dimensions:
         +materialized: table
         +schema: staging
-    facts:
+    canonical:
       +materialized: incremental
       +unique_key: id
       +schema: analytics
+      +on_schema_change: append_new_columns
+    semantic_views:
+      +materialized: view
+      +schema: semantic
     metrics:
       +materialized: view
       +schema: analytics
@@ -56,11 +66,18 @@ data_tests:
 vars:
   tenant_isolation_enforced: true
 
-  # Source schema configuration - override these when Airbyte/platform tables
-  # are in different schemas than the defaults
-  # Example: dbt run --vars '{airbyte_raw_schema: my_raw_schema, platform_schema: my_platform}'
-  airbyte_raw_schema: airbyte_raw  # Schema containing _airbyte_raw_* tables
-  platform_schema: platform  # Schema containing tenant_airbyte_connections table
+  # Per-source raw schema configuration
+  # All default to airbyte_raw for backward compatibility with existing Airbyte setup.
+  # Override when migrating to per-source schemas:
+  #   dbt run --vars '{raw_shopify_schema: raw_shopify, raw_facebook_ads_schema: raw_facebook_ads}'
+  raw_shopify_schema: airbyte_raw
+  raw_facebook_ads_schema: airbyte_raw
+  raw_google_ads_schema: airbyte_raw
+  raw_tiktok_ads_schema: airbyte_raw
+  raw_snapchat_ads_schema: airbyte_raw
+  raw_email_schema: airbyte_raw
+  raw_sms_schema: airbyte_raw
+  platform_schema: platform
 
   # Lookback window configuration for incremental models
   # Controls how far back to look for late-arriving data during incremental runs

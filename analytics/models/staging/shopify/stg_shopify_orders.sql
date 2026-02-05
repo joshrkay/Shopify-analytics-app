@@ -10,7 +10,7 @@ with raw_orders as (
         _airbyte_ab_id as airbyte_record_id,
         _airbyte_emitted_at as airbyte_emitted_at,
         _airbyte_data as order_data
-    from {{ source('airbyte_raw', '_airbyte_raw_shopify_orders') }}
+    from {{ source('raw_shopify', 'orders') }}
 ),
 
 tenant_mapping as (

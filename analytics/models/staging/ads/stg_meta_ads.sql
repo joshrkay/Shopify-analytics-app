@@ -29,7 +29,7 @@ with raw_meta_ads as (
         _airbyte_ab_id as airbyte_record_id,
         _airbyte_emitted_at as airbyte_emitted_at,
         _airbyte_data as ad_data
-    from {{ source('airbyte_raw', '_airbyte_raw_meta_ads') }}
+    from {{ source('raw_facebook_ads', 'ad_insights') }}
     {% if is_incremental() %}
     where _airbyte_emitted_at >= current_timestamp - interval '{{ get_lookback_days("meta_ads") }} days'
     {% endif %}

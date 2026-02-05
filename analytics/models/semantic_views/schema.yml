@@ -1,0 +1,136 @@
+version: 2
+
+models:
+  - name: v_orders
+    description: |
+      Stable semantic view over canonical orders.
+
+      This view provides a stable interface for downstream consumers (dashboards,
+      APIs, BI tools). Column names and types are guaranteed stable across
+      upstream schema changes. Only consumer-relevant columns are exposed.
+
+      SECURITY: Tenant isolation enforced via tenant_id.
+    columns:
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        tests:
+          - not_null
+      - name: order_key
+        description: Stable surrogate key for the order
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        description: Shopify order ID
+        tests:
+          - not_null
+      - name: customer_key
+        description: Pseudonymized customer identifier
+        tests:
+          - not_null
+      - name: source_platform
+        description: Source platform (shopify)
+        tests:
+          - not_null
+      - name: date
+        description: Order date in tenant's local timezone
+        tests:
+          - not_null
+      - name: order_created_at
+        description: Order creation timestamp (UTC)
+        tests:
+          - not_null
+      - name: revenue_gross
+        description: Total order revenue including tax
+        tests:
+          - not_null
+      - name: revenue_net
+        description: Order subtotal before tax
+        tests:
+          - not_null
+      - name: currency
+        description: ISO 4217 currency code
+        tests:
+          - not_null
+
+  - name: v_marketing_spend
+    description: |
+      Stable semantic view over canonical marketing spend.
+
+      This view provides a stable interface for downstream consumers. Unifies
+      ad spend from Meta, Google, TikTok, and Snapchat into a single view.
+
+      SECURITY: Tenant isolation enforced via tenant_id.
+    columns:
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        tests:
+          - not_null
+      - name: spend_key
+        description: Stable surrogate key for the spend record
+        tests:
+          - not_null
+          - unique
+      - name: date
+        description: Date of the spend
+        tests:
+          - not_null
+      - name: source_platform
+        description: Source platform identifier
+        tests:
+          - not_null
+      - name: channel
+        description: Marketing channel (paid_social, paid_search, other)
+        tests:
+          - not_null
+      - name: spend
+        description: Amount spent
+        tests:
+          - not_null
+      - name: currency
+        description: ISO 4217 currency code
+        tests:
+          - not_null
+
+  - name: v_campaign_performance
+    description: |
+      Stable semantic view over canonical campaign performance.
+
+      This view provides a stable interface for downstream consumers. Exposes
+      campaign-level performance metrics with calculated rates.
+
+      SECURITY: Tenant isolation enforced via tenant_id.
+    columns:
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        tests:
+          - not_null
+      - name: campaign_performance_key
+        description: Stable surrogate key for the performance record
+        tests:
+          - not_null
+          - unique
+      - name: date
+        description: Date of the performance metrics
+        tests:
+          - not_null
+      - name: source_platform
+        description: Source platform identifier
+        tests:
+          - not_null
+      - name: channel
+        description: Marketing channel (paid_social, paid_search, other)
+        tests:
+          - not_null
+      - name: campaign_id
+        description: Campaign ID
+        tests:
+          - not_null
+      - name: spend
+        description: Amount spent
+        tests:
+          - not_null
+      - name: currency
+        description: ISO 4217 currency code
+        tests:
+          - not_null

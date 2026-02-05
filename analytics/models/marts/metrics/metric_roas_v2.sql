@@ -44,7 +44,7 @@ ad_spend as (
         currency,
         campaign_id,
         sum(spend) as total_spend
-    from {{ ref('fact_ad_spend') }}
+    from {{ ref('marketing_spend') }}
     where tenant_id is not null
         and source_platform in ('meta_ads', 'google_ads')
         and spend is not null
