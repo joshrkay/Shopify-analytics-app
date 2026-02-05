@@ -26,7 +26,7 @@ Usage:
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -96,6 +96,55 @@ def resolve_sla_key(connection_source_type: Optional[str]) -> Optional[str]:
     if not connection_source_type:
         return None
     return CONNECTION_SOURCE_TO_SLA_KEY.get(connection_source_type.lower())
+
+
+# ─── Shared helpers (also used by FreshnessService) ─────────────────────────
+
+def get_tenant_connections(db: Session, tenant_id: str):
+    """
+    Return enabled, non-deleted TenantAirbyteConnections for a tenant.
+
+    Shared by DataAvailabilityService and FreshnessService to avoid
+    duplicating the query.
+    """
+    from src.models.airbyte_connection import (
+        TenantAirbyteConnection,
+        ConnectionStatus,
+    )
+
+    stmt = (
+        select(TenantAirbyteConnection)
+        .where(TenantAirbyteConnection.tenant_id == tenant_id)
+        .where(TenantAirbyteConnection.is_enabled.is_(True))
+        .where(
+            TenantAirbyteConnection.status.notin_([
+                ConnectionStatus.DELETED,
+            ])
+        )
+    )
+    return db.execute(stmt).scalars().all()
+
+
+def minutes_since_sync(
+    ts: Optional[datetime],
+    now: Optional[datetime] = None,
+) -> Optional[int]:
+    """
+    Minutes elapsed since a timestamp.
+
+    Shared by DataAvailabilityService and FreshnessService.
+
+    Args:
+        ts:  The timestamp to measure from (e.g. last_sync_at).
+        now: Current time; defaults to utcnow if omitted.
+    """
+    if ts is None:
+        return None
+    if now is None:
+        now = datetime.now(timezone.utc)
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return int((now - ts).total_seconds() / 60)
 
 
 # ─── Return dataclass ────────────────────────────────────────────────────────
@@ -183,7 +232,7 @@ class DataAvailabilityService:
         warn, error = get_sla_thresholds(source_type, self.billing_tier)
 
         last_sync_at, last_sync_status = self._get_latest_sync(source_type)
-        minutes = self._minutes_since(last_sync_at, now)
+        minutes = minutes_since_sync(last_sync_at, now)
 
         state, reason = self._compute_state(
             last_sync_at=last_sync_at,
@@ -353,22 +402,7 @@ class DataAvailabilityService:
 
     def _get_connections(self):
         """Return enabled TenantAirbyteConnections for this tenant."""
-        from src.models.airbyte_connection import (
-            TenantAirbyteConnection,
-            ConnectionStatus,
-        )
-
-        stmt = (
-            select(TenantAirbyteConnection)
-            .where(TenantAirbyteConnection.tenant_id == self.tenant_id)
-            .where(TenantAirbyteConnection.is_enabled.is_(True))
-            .where(
-                TenantAirbyteConnection.status.notin_([
-                    ConnectionStatus.DELETED,
-                ])
-            )
-        )
-        return self.db.execute(stmt).scalars().all()
+        return get_tenant_connections(self.db, self.tenant_id)
 
     def _get_latest_sync(
         self,
@@ -398,18 +432,6 @@ class DataAvailabilityService:
                     best_status = conn.last_sync_status
 
         return best_sync_at, best_status
-
-    @staticmethod
-    def _minutes_since(
-        ts: Optional[datetime],
-        now: datetime,
-    ) -> Optional[int]:
-        """Minutes elapsed since a timestamp."""
-        if ts is None:
-            return None
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        return int((now - ts).total_seconds() / 60)
 
     def _get_existing(self, source_type: str):
         """Load the current DataAvailability row (or None)."""

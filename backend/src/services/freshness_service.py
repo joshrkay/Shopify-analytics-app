@@ -25,20 +25,22 @@ Usage:
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 # ─── Thresholds ──────────────────────────────────────────────────────────────
-# Re-export canonical thresholds from DataHealthService so consumers only
-# import from one place.
-DEFAULT_FRESHNESS_THRESHOLD_MINUTES = 120   # 2 hours — STALE boundary
-DEFAULT_CRITICAL_THRESHOLD_MINUTES = 1440   # 24 hours — CRITICAL boundary
-AI_STALENESS_BLOCK_THRESHOLD_MINUTES = 1440  # AI blocked when ANY source ≥ 24 h
+# Import canonical thresholds from DataHealthService — single source of truth.
+from src.services.data_health_service import (  # noqa: E402
+    DEFAULT_FRESHNESS_THRESHOLD_MINUTES,
+    DEFAULT_CRITICAL_THRESHOLD_MINUTES,
+)
+
+AI_STALENESS_BLOCK_THRESHOLD_MINUTES = DEFAULT_CRITICAL_THRESHOLD_MINUTES
 
 
 # ─── Data classes ─────────────────────────────────────────────────────────────
@@ -152,22 +154,8 @@ class FreshnessService:
 
     def _get_connections(self):
         """Return enabled TenantAirbyteConnections for this tenant."""
-        from src.models.airbyte_connection import (
-            TenantAirbyteConnection,
-            ConnectionStatus,
-        )
-
-        stmt = (
-            select(TenantAirbyteConnection)
-            .where(TenantAirbyteConnection.tenant_id == self.tenant_id)
-            .where(TenantAirbyteConnection.is_enabled.is_(True))
-            .where(
-                TenantAirbyteConnection.status.notin_([
-                    ConnectionStatus.DELETED,
-                ])
-            )
-        )
-        return self.db.execute(stmt).scalars().all()
+        from src.services.data_availability_service import get_tenant_connections
+        return get_tenant_connections(self.db, self.tenant_id)
 
     @staticmethod
     def _parse_sync_frequency(raw: Optional[str]) -> int:
@@ -180,12 +168,8 @@ class FreshnessService:
 
     @staticmethod
     def _minutes_since(ts: Optional[datetime]) -> Optional[int]:
-        if ts is None:
-            return None
-        now = datetime.now(timezone.utc)
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        return int((now - ts).total_seconds() / 60)
+        from src.services.data_availability_service import minutes_since_sync
+        return minutes_since_sync(ts)
 
     def _classify_freshness(
         self,
