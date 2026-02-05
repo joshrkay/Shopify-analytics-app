@@ -9,12 +9,13 @@
     Arguments:
         model_name  (string) - The dbt model name, e.g. 'stg_shopify_orders'
         source_name (string) - The allowlist source key, e.g. 'shopify'
+                               (used in error messages only)
 
     Usage in a test:
         {{ assert_columns_approved('stg_shopify_orders', 'shopify') }}
 
     How it works:
-        1. Reads governance/approved_columns_<source_name>.yml at compile time.
+        1. Calls get_approved_columns() to retrieve the compile-time allowlist.
         2. Extracts the list of approved column names for the given model.
         3. Queries information_schema to find actual columns in the relation.
         4. Returns rows for any column present in the relation but absent from
@@ -23,19 +24,18 @@
 
 {% macro assert_columns_approved(model_name, source_name) %}
 
-{#-- Load the allowlist YAML file --#}
-{%- set allowlist_path = 'governance/approved_columns_' ~ source_name ~ '.yml' -%}
-{%- set allowlist_yaml = fromyaml(load_file_contents(allowlist_path)) -%}
-
-{#-- Extract approved columns for this model --#}
-{%- set models_dict = allowlist_yaml.get('models', {}) -%}
-{%- set approved_columns = models_dict.get(model_name, []) -%}
+{#-- Load the allowlist from the compiled macro --#}
+{%- set all_approved = get_approved_columns() -%}
+{%- set approved_columns = all_approved.get(model_name, []) -%}
 
 {#-- Build a set of lowercase approved column names for comparison --#}
 {%- set approved_set = [] -%}
 {%- for col in approved_columns -%}
     {%- do approved_set.append(col | lower) -%}
 {%- endfor -%}
+
+{#-- Reference file path for error messages --#}
+{%- set allowlist_path = 'governance/approved_columns_' ~ source_name ~ '.yml' -%}
 
 {#-- Get the relation for the model --#}
 {%- set model_relation = ref(model_name) -%}

@@ -20,11 +20,14 @@ _airbyte_raw_shopify_orders  stg_shopify_orders
     -> new_field appears        new_field       <-- BLOCKED until approved
 ```
 
-1. **Allowlist files** in `analytics/governance/` define which columns each
-   staging model is permitted to output.
-2. **A dbt macro** (`macros/assert_columns_approved.sql`) reads the allowlist
-   at compile time and compares it against the actual columns in the database.
-3. **A dbt test** (`tests/test_schema_drift_guard.sql`) calls the macro for
+1. **Allowlist files** in `analytics/governance/` document which columns each
+   staging model is permitted to output (YAML reference files).
+2. **A compiled allowlist macro** (`macros/get_approved_columns.sql`) provides
+   the column lists at dbt compile time. This must be kept in sync with the
+   governance YAML files.
+3. **A validation macro** (`macros/assert_columns_approved.sql`) compares the
+   allowlist against the actual columns in the database.
+4. **A dbt test** (`tests/test_schema_drift_guard.sql`) calls the macro for
    every governed model. If any column exists in the model but not in the
    allowlist, the test fails with a clear error message.
 
@@ -73,10 +76,11 @@ LIMIT 5;
 Edit `analytics/models/staging/shopify/stg_shopify_orders.sql` and add the
 column extraction logic in the appropriate CTE.
 
-**3. Add the column to the allowlist**
+**3. Add the column to the allowlist (both files)**
+
+Update the governance YAML file:
 
 ```bash
-# Open the allowlist file
 cd analytics
 nano governance/approved_columns_shopify.yml
 ```
@@ -90,6 +94,17 @@ models:
     - order_id
     # ... existing columns ...
     - discount_codes    # <-- ADD THIS LINE
+```
+
+Also update the compiled macro (`macros/get_approved_columns.sql`):
+
+```sql
+'stg_shopify_orders': [
+  'tenant_id',
+  'order_id',
+  ...
+  'discount_codes'    {# <-- ADD THIS LINE #}
+],
 ```
 
 **4. Add the column to the schema.yml contract**
@@ -129,6 +144,7 @@ error_message: SCHEMA DRIFT DETECTED: Column "discount_codes" in model
 ```bash
 git checkout -b feat/add-discount-codes-to-shopify
 git add governance/approved_columns_shopify.yml
+git add macros/get_approved_columns.sql
 git add models/staging/shopify/stg_shopify_orders.sql
 git add models/staging/schema.yml
 git commit -m "feat: add discount_codes to stg_shopify_orders allowlist"
