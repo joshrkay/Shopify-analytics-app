@@ -47,6 +47,7 @@ models:
     semantic_views:
       +materialized: view
       +schema: semantic
+      +tags: ['semantic', 'governed']
     metrics:
       +materialized: view
       +schema: analytics
