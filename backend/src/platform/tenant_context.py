@@ -407,12 +407,13 @@ class TenantContextMiddleware:
             TenantSelectionRequiredException: User has >1 tenants and no selection
             NoTenantAccessException: User has no tenant access
         """
-        from src.database.session import get_db_session_sync
+        # Note: get_db_session_sync is already imported at module level (line 42)
         from src.models.user import User
         from src.models.user_tenant_roles import UserTenantRole
         from src.models.tenant import Tenant, TenantStatus
 
-        db = get_db_session_sync()
+        db_gen = get_db_session_sync()
+        db = next(db_gen)
         try:
             # Find user by clerk_user_id
             user = db.query(User).filter(

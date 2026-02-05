@@ -61,6 +61,9 @@ def mock_authorization_enforcement():
         # Use side_effect to return a fresh generator for each call
         with patch('src.platform.tenant_context.get_db_session_sync') as mock_db:
             mock_session = MagicMock()
+            # Make query().filter().first() return None so _resolve_tenant_from_db
+            # takes the "user not in DB" early return path (uses JWT tenant_id)
+            mock_session.query.return_value.filter.return_value.first.return_value = None
             # side_effect with a callable creates a fresh iterator for each call
             mock_db.side_effect = lambda: iter([mock_session])
             yield mock_guard
