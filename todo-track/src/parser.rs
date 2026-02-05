@@ -20,11 +20,12 @@ pub struct TodoItem {
 const COMMENT_MARKERS: &[&str] = &["//", "#", "/*", "<!--", "*", "--"];
 
 static TODO_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(TODO|FIXME|HACK|XXX)(?:\(([^)]+)\))?:?\s*(.+)").unwrap()
+    Regex::new(r"(?i)\b(TODO|FIXME|HACK|XXX)\b(?:\(([^)]+)\))?:?\s*(.+)")
+        .expect("TODO_RE pattern must be valid")
 });
 
 static ISSUE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"#(\d+)").unwrap()
+    Regex::new(r"#(\d+)").expect("ISSUE_RE pattern must be valid")
 });
 
 /// Check whether a line contains a comment marker.
@@ -135,6 +136,13 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].line_number, 2);
         assert_eq!(items[1].line_number, 4);
+    }
+
+    #[test]
+    fn test_no_false_positive_substring() {
+        // "TodoItem" should NOT match — "Todo" is a substring, not the word TODO
+        let line = "/// A parsed TodoItem extracted from source code.";
+        assert!(parse_line(line, 1).is_none());
     }
 
     #[test]

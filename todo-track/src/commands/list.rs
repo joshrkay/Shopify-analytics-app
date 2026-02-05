@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -30,25 +31,46 @@ pub fn run(path: &Path, oldest: Option<usize>, blame: bool) -> Result<()> {
     );
     println!();
 
-    // If --blame is passed, run git blame for each TODO
+    // If --blame is passed, batch git blame by file (1 spawn per file, not per TODO)
     if blame && git::is_git_repo(&root) {
         println!("{}", "Running git blame (this may take a moment)...".dimmed());
-        for todo in &mut todos {
-            match git::blame_line(&root, &todo.file_path, todo.line_number as usize) {
-                Ok(info) => {
-                    // Update in-memory
-                    todo.git_author = Some(info.author.clone());
-                    todo.git_date = Some(info.date.clone());
-                    // Persist to DB
-                    let _ = storage::update_git_blame(
-                        &conn,
-                        todo.id,
-                        &info.author,
-                        &info.date,
-                    );
+
+        // Group TODOs by file path
+        let mut by_file: HashMap<String, Vec<usize>> = HashMap::new();
+        for (idx, todo) in todos.iter().enumerate() {
+            by_file
+                .entry(todo.file_path.clone())
+                .or_default()
+                .push(idx);
+        }
+
+        // Blame each file once, then distribute results
+        for (file_path, indices) in &by_file {
+            let line_numbers: Vec<usize> = indices
+                .iter()
+                .map(|&i| todos[i].line_number as usize)
+                .collect();
+
+            match git::blame_file_lines(&root, file_path, &line_numbers) {
+                Ok(blame_map) => {
+                    for &idx in indices {
+                        let ln = todos[idx].line_number as usize;
+                        if let Some(info) = blame_map.get(&ln) {
+                            todos[idx].git_author = Some(info.author.clone());
+                            todos[idx].git_date = Some(info.date.clone());
+                            if let Err(e) = storage::update_git_blame(
+                                &conn,
+                                todos[idx].id,
+                                &info.author,
+                                &info.date,
+                            ) {
+                                eprintln!("{}", format!("Warning: failed to save blame for {}:{}: {}", file_path, ln, e).dimmed());
+                            }
+                        }
+                    }
                 }
                 Err(_) => {
-                    // Silently skip blame failures for individual lines
+                    // Skip blame failures for individual files
                 }
             }
         }

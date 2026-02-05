@@ -67,6 +67,7 @@ pub fn open_db(root: &Path) -> Result<Connection, TodoTrackError> {
 }
 
 /// Insert a new snapshot and all its TODOs. Returns the snapshot ID.
+/// Uses an explicit transaction for bulk inserts (10-100x faster).
 pub fn save_snapshot(
     conn: &Connection,
     todos: &[FileTodo],
@@ -74,31 +75,46 @@ pub fn save_snapshot(
     let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let todo_count = todos.len() as i64;
 
-    conn.execute(
-        "INSERT INTO snapshots (timestamp, todo_count) VALUES (?1, ?2)",
-        params![timestamp, todo_count],
-    )?;
+    conn.execute("BEGIN", [])?;
 
-    let snapshot_id = conn.last_insert_rowid();
+    let result = (|| -> Result<i64, TodoTrackError> {
+        conn.execute(
+            "INSERT INTO snapshots (timestamp, todo_count) VALUES (?1, ?2)",
+            params![timestamp, todo_count],
+        )?;
 
-    let mut stmt = conn.prepare(
-        "INSERT INTO todos (snapshot_id, file_path, line_number, keyword, author, issue_ref, description)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-    )?;
+        let snapshot_id = conn.last_insert_rowid();
 
-    for ft in todos {
-        stmt.execute(params![
-            snapshot_id,
-            ft.file_path.to_string_lossy().to_string(),
-            ft.item.line_number as i64,
-            ft.item.keyword,
-            ft.item.author,
-            ft.item.issue_ref,
-            ft.item.description,
-        ])?;
+        let mut stmt = conn.prepare(
+            "INSERT INTO todos (snapshot_id, file_path, line_number, keyword, author, issue_ref, description)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )?;
+
+        for ft in todos {
+            stmt.execute(params![
+                snapshot_id,
+                ft.file_path.to_string_lossy().to_string(),
+                ft.item.line_number as i64,
+                ft.item.keyword,
+                ft.item.author,
+                ft.item.issue_ref,
+                ft.item.description,
+            ])?;
+        }
+
+        Ok(snapshot_id)
+    })();
+
+    match result {
+        Ok(id) => {
+            conn.execute("COMMIT", [])?;
+            Ok(id)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
     }
-
-    Ok(snapshot_id)
 }
 
 /// Update git blame info for a specific todo row.
