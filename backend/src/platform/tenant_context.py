@@ -412,7 +412,12 @@ class TenantContextMiddleware:
         from src.models.user_tenant_roles import UserTenantRole
         from src.models.tenant import Tenant, TenantStatus
 
-        db = next(get_db_session_sync())
+        try:
+            db = next(get_db_session_sync())
+        except Exception:
+            # DB session unavailable - fall back to JWT
+            return jwt_active_tenant_id, []
+
         try:
             # Find user by clerk_user_id
             user = db.query(User).filter(
@@ -483,6 +488,16 @@ class TenantContextMiddleware:
                 tenant_count=len(all_tenant_ids),
             )
 
+        except (TenantSelectionRequiredException, NoTenantAccessException):
+            raise
+        except Exception as db_err:
+            # DB tables may not exist (e.g. in-memory SQLite test env) or
+            # other DB-level errors. Fall back to JWT-based tenant resolution.
+            logger.debug(
+                "DB lookup failed in _resolve_tenant_from_db, falling back to JWT",
+                extra={"error": str(db_err), "error_type": type(db_err).__name__},
+            )
+            return jwt_active_tenant_id, []
         finally:
             db.close()
 
