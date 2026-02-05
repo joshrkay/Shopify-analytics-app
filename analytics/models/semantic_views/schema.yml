@@ -1,0 +1,398 @@
+version: 2
+
+models:
+  - name: fact_orders_current
+    description: |
+      Governed semantic view for Shopify order data.
+
+      This is the ONLY entry point downstream consumers (Superset dashboards,
+      AI marts) should use for order data. It hides physical table names,
+      version changes, and internal columns.
+
+      Current target: fact_orders v1 (registered 2025-06-01)
+
+      Column contract: 21 approved columns. Excluded columns:
+        - platform (deprecated, use source_platform)
+        - refunds_json (internal, used by fct_revenue)
+        - airbyte_record_id (internal audit)
+        - ingested_at (internal audit)
+
+      Tenant isolation: WHERE tenant_id IS NOT NULL enforced in view SQL.
+    config:
+      tags: ['semantic', 'governed', 'orders']
+    tests:
+      - test_freshness:
+          arguments:
+            column_name: dbt_updated_at
+            error_after_hours: 48
+          config:
+            severity: error
+    columns:
+      - name: id
+        description: Surrogate key (MD5 hash of tenant_id + order_id)
+        tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        description: Tenant identifier for data isolation (mandatory on every row)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+              config:
+                where: "tenant_id is not null"
+      - name: order_id
+        description: Shopify order ID (normalized, without gid:// prefix)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: order_name
+        description: Order name/number from Shopify (e.g., #1001)
+        meta:
+          superset_expose: true
+      - name: order_number
+        description: Order number as integer
+      - name: customer_key
+        description: Pseudonymized customer identifier (MD5 hash, no PII exposed)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: source_platform
+        description: Source platform identifier (canonical)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['shopify']
+      - name: order_created_at
+        description: Order creation timestamp (UTC)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: order_updated_at
+        description: Order last update timestamp (UTC)
+      - name: order_cancelled_at
+        description: Order cancellation timestamp (UTC, nullable)
+      - name: order_closed_at
+        description: Order closure timestamp (UTC, nullable)
+      - name: date
+        description: Order date in tenant's local timezone (canonical per User Story 7.7.1)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: revenue_gross
+        description: Total order revenue including tax
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: revenue_net
+        description: Order subtotal before tax (default for ROAS per User Story 7.7.1)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: total_tax
+        description: Total tax amount (numeric)
+      - name: currency
+        description: ISO 4217 currency code (uppercase, 3-letter)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              config:
+                where: "currency is not null"
+      - name: financial_status
+        description: Financial status (paid, pending, refunded, etc.)
+      - name: fulfillment_status
+        description: Fulfillment status (fulfilled, unfulfilled, etc.)
+      - name: tags
+        description: Order tags (comma-separated)
+      - name: note
+        description: Order notes
+      - name: dbt_updated_at
+        description: Timestamp when the backing table was last refreshed by dbt
+        tests:
+          - not_null
+
+  - name: fact_marketing_spend_current
+    description: |
+      Governed semantic view for marketing spend data.
+
+      This is the ONLY entry point downstream consumers (Superset dashboards,
+      AI marts) should use for ad spend data. It hides the physical table name
+      (fact_ad_spend), version changes, and internal columns.
+
+      Current target: fact_ad_spend v1 (registered 2025-06-01)
+
+      Column contract: 21 approved columns. Excluded columns:
+        - platform (deprecated, use source_platform)
+        - airbyte_record_id (internal audit)
+        - ingested_at (internal audit)
+
+      Tenant isolation: WHERE tenant_id IS NOT NULL enforced in view SQL.
+    config:
+      tags: ['semantic', 'governed', 'marketing', 'spend']
+    tests:
+      - test_freshness:
+          arguments:
+            column_name: dbt_updated_at
+            error_after_hours: 48
+          config:
+            severity: error
+    columns:
+      - name: id
+        description: Surrogate key (MD5 hash of tenant_id + platform + account + campaign + ad + date)
+        tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        description: Tenant identifier for data isolation (mandatory on every row)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+              config:
+                where: "tenant_id is not null"
+      - name: date
+        description: Date of the ad spend (canonical)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: source_platform
+        description: Source platform (meta_ads, google_ads, tiktok_ads, snapchat_ads)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads', 'google_ads', 'tiktok_ads', 'snapchat_ads']
+      - name: channel
+        description: Marketing channel (paid_social, paid_search, other)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'other']
+      - name: ad_account_id
+        description: Ad account ID (platform-specific)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: campaign_id
+        description: Campaign ID (platform-specific)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: adset_id
+        description: Ad set/group ID (normalized across platforms)
+        meta:
+          superset_expose: true
+      - name: ad_id
+        description: Ad ID (platform-specific, nullable)
+        meta:
+          superset_expose: true
+      - name: spend
+        description: Amount spent (numeric, normalized currency)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: currency
+        description: ISO 4217 currency code (uppercase, 3-letter)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              config:
+                where: "currency is not null"
+      - name: impressions
+        description: Number of impressions (integer)
+        meta:
+          superset_expose: true
+      - name: clicks
+        description: Number of clicks (integer)
+        meta:
+          superset_expose: true
+      - name: conversions
+        description: Number of conversions (numeric)
+        meta:
+          superset_expose: true
+      - name: conversion_value
+        description: Value of conversions (numeric)
+        meta:
+          superset_expose: true
+      - name: cpm
+        description: Cost per mille (spend / impressions * 1000)
+        meta:
+          superset_expose: true
+      - name: cpc
+        description: Cost per click (spend / clicks)
+        meta:
+          superset_expose: true
+      - name: ctr
+        description: Click-through rate (clicks / impressions * 100, percentage)
+        meta:
+          superset_expose: true
+      - name: cpa
+        description: Cost per acquisition (spend / conversions)
+        meta:
+          superset_expose: true
+      - name: roas
+        description: Return on ad spend (conversion_value / spend)
+        meta:
+          superset_expose: true
+      - name: dbt_updated_at
+        description: Timestamp when the backing table was last refreshed by dbt
+        tests:
+          - not_null
+
+  - name: fact_campaign_performance_current
+    description: |
+      Governed semantic view for campaign performance data.
+
+      This is the ONLY entry point downstream consumers (Superset dashboards,
+      AI marts) should use for campaign performance data. It hides physical
+      table names, version changes, and internal columns.
+
+      Current target: fact_campaign_performance v1 (registered 2025-06-01)
+
+      Column contract: 17 approved columns. Excluded columns:
+        - platform (deprecated, use source_platform)
+        - airbyte_record_id (internal audit)
+        - ingested_at (internal audit)
+
+      Tenant isolation: WHERE tenant_id IS NOT NULL enforced in view SQL.
+    config:
+      tags: ['semantic', 'governed', 'campaigns']
+    tests:
+      - test_freshness:
+          arguments:
+            column_name: dbt_updated_at
+            error_after_hours: 48
+          config:
+            severity: error
+    columns:
+      - name: id
+        description: Surrogate key (MD5 hash of tenant_id + platform + account + campaign + date)
+        tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        description: Tenant identifier for data isolation (mandatory on every row)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - relationships:
+              to: ref('_tenant_airbyte_connections')
+              field: tenant_id
+              config:
+                where: "tenant_id is not null"
+      - name: date
+        description: Date of the performance metrics (canonical)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: source_platform
+        description: Source platform (meta_ads, google_ads)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['meta_ads', 'google_ads']
+      - name: channel
+        description: Marketing channel (paid_social, paid_search, other)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['paid_social', 'paid_search', 'other']
+      - name: ad_account_id
+        description: Ad account ID (platform-specific)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: campaign_id
+        description: Campaign ID (platform-specific)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: campaign_name
+        description: Campaign name
+        meta:
+          superset_expose: true
+      - name: spend
+        description: Amount spent (numeric, normalized currency)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: impressions
+        description: Number of impressions (integer)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: clicks
+        description: Number of clicks (integer)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: conversions
+        description: Number of conversions (numeric)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+      - name: ctr
+        description: Click-through rate (clicks / impressions * 100, percentage)
+        meta:
+          superset_expose: true
+      - name: cpc
+        description: Cost per click (spend / clicks)
+        meta:
+          superset_expose: true
+      - name: cpa
+        description: Cost per acquisition (spend / conversions)
+        meta:
+          superset_expose: true
+      - name: currency
+        description: ISO 4217 currency code (uppercase, 3-letter)
+        meta:
+          superset_expose: true
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY']
+              config:
+                where: "currency is not null"
+      - name: dbt_updated_at
+        description: Timestamp when the backing table was last refreshed by dbt
+        tests:
+          - not_null

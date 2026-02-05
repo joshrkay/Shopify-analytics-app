@@ -40,6 +40,10 @@ models:
     utils:
       +materialized: table
       +schema: utils
+    semantic_views:
+      +materialized: view
+      +schema: semantic
+      +tags: ['semantic', 'governed']
     marts:
       +materialized: table
       +schema: marts
