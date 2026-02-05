@@ -7,7 +7,7 @@ models:
       
       This model implements baseline last-click attribution by:
       1. Extracting UTM parameters from order note_attributes
-      2. Matching utm_campaign to campaign_name or campaign_id in fact_campaign_performance
+      2. Matching utm_campaign to campaign_name or campaign_id in campaign_performance
       3. Attributing revenue to the most recent matching campaign (last-click)
       
       ASSUMPTIONS & LIMITATIONS:
@@ -73,7 +73,7 @@ models:
       - name: utm_content
         description: UTM content parameter (optional, for A/B testing)
       - name: campaign_fact_id
-        description: Foreign key to fact_campaign_performance.id (null if no campaign match found)
+        description: Foreign key to campaign_performance.id (null if no campaign match found)
       - name: ad_account_id
         description: Ad account ID from attributed campaign (null if not attributed)
       - name: campaign_id

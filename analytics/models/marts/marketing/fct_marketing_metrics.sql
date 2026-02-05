@@ -49,7 +49,7 @@ with ad_spend_raw as (
         clicks,
         conversions,
         conversion_value
-    from {{ ref('fact_ad_spend') }}
+    from {{ ref('marketing_spend') }}
     where tenant_id is not null
         and date is not null
         and spend is not null
@@ -68,7 +68,7 @@ orders_revenue as (
         customer_key,
         revenue_net as revenue,  -- Use net revenue for ROAS (canonical per 7.7.1)
         currency
-    from {{ ref('fact_orders') }}
+    from {{ ref('orders') }}
     where tenant_id is not null
         and date is not null
         and revenue_net is not null
@@ -85,7 +85,7 @@ all_orders_for_customers as (
         customer_key,
         order_created_at,
         currency
-    from {{ ref('fact_orders') }}
+    from {{ ref('orders') }}
     where tenant_id is not null
         and order_id is not null
         and customer_key is not null

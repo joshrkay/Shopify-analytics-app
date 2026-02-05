@@ -17,7 +17,7 @@ WITH empty_tenant_revenue AS (
     SELECT
         COALESCE(SUM(revenue_gross), 0) AS total_revenue,
         COUNT(*) AS order_count
-    FROM {{ ref('fact_orders') }}
+    FROM {{ ref('orders') }}
     WHERE tenant_id = 'non_existent_tenant_xyz_12345'
       AND order_created_at >= CURRENT_DATE - INTERVAL '30 days'
 ),
