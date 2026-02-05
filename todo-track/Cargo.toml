@@ -1,0 +1,15 @@
+[package]
+name = "todo-track"
+version = "0.1.0"
+edition = "2021"
+description = "A CLI tool to scan, track, and trend TODO/FIXME/HACK/XXX comments in codebases"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+regex = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+thiserror = "1"
+walkdir = "2"
+chrono = "0.4"
