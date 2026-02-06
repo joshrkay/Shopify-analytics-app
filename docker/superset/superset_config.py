@@ -8,12 +8,21 @@ from explore_guardrails import (
     ExploreGuardrailEnforcer,
 )
 
+# Import JWT authentication handler
+from security.jwt_auth import authenticate_embed_request
+
 # Flask App Configuration
 SECRET_KEY = os.getenv('SUPERSET_SECRET_KEY')
 SQLALCHEMY_DATABASE_URI = os.getenv(
     'SUPERSET_METADATA_DB_URI',
     'postgresql://user:password@postgres:5432/superset'
 )
+
+# SQLAlchemy Connection Pool (production-ready)
+SQLALCHEMY_POOL_SIZE = int(os.getenv('SUPERSET_POOL_SIZE', '5'))
+SQLALCHEMY_POOL_TIMEOUT = 30
+SQLALCHEMY_POOL_RECYCLE = 300
+SQLALCHEMY_MAX_OVERFLOW = 10
 
 # Security & HTTPS
 PREFERRED_URL_SCHEME = 'https'
@@ -34,6 +43,14 @@ HTTP_HEADERS = {
 # JWT Embedded Authentication
 SUPERSET_JWT_SECRET = os.getenv('SUPERSET_JWT_SECRET_CURRENT')
 SUPERSET_JWT_SECRET_PREVIOUS = os.getenv('SUPERSET_JWT_SECRET_PREVIOUS')
+
+# Guest token configuration for Superset 3.x embedded SDK
+GUEST_TOKEN_JWT_SECRET = os.getenv('SUPERSET_JWT_SECRET_CURRENT')
+GUEST_TOKEN_JWT_ALGO = 'HS256'
+GUEST_TOKEN_HEADER_NAME = 'X-GuestToken'
+
+# Register JWT before_request handler for deny-by-default auth
+FLASK_APP_MUTATOR = lambda app: app.before_request(authenticate_embed_request)
 
 # Feature Flags
 # Base flags merged with Explore guardrail flags
@@ -142,11 +159,11 @@ SUPERSET_WEBSERVER_TIMEOUT = PERFORMANCE_GUARDRAILS.query_timeout_seconds + 10
 # Public role disabled (no public dashboards)
 PUBLIC_ROLE_LIKE_GAMMA = False
 
-# Allow only HTTPS connections
-TALISMAN_ENABLED = True
+# Allow HTTPS to be disabled for local development (env override)
+TALISMAN_ENABLED = os.getenv('TALISMAN_ENABLED', 'true').lower() == 'true'
 TALISMAN_CONFIG = {
-    'force_https': True,
-    'strict_transport_security': True,
+    'force_https': TALISMAN_ENABLED,
+    'strict_transport_security': TALISMAN_ENABLED,
     'strict_transport_security_max_age': 31536000,
 }
 

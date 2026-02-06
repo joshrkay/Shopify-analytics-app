@@ -7,12 +7,20 @@ ROLE-BASED RLS STRATEGY:
 - Agency users: tenant_id IN ({{ current_user.allowed_tenants | tojson }})
 - Super admin: 1=1 (no filtering)
 
+DENY-BY-DEFAULT:
+- Any dataset without explicit RLS rules gets clause "1=0" (returns zero rows)
+- Any request without valid tenant context gets clause "1=0"
+- validate_all_datasets_have_rls() checks completeness at startup
+
 CRITICAL: RLS rules are the LAST line of defense for tenant isolation.
 Even if other security layers fail, RLS ensures data cannot leak.
 """
 
+import logging
 from enum import Enum
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class UserRoleType(Enum):
@@ -20,6 +28,10 @@ class UserRoleType(Enum):
     MERCHANT = "merchant"
     AGENCY = "agency"
     SUPER_ADMIN = "super_admin"
+
+
+# Deny-by-default clause: returns zero rows when no valid context exists
+DENY_BY_DEFAULT_CLAUSE = "1=0"
 
 
 # Base RLS clause templates by role type
@@ -137,6 +149,13 @@ RLS_RULES = {
 }
 
 
+# Unified registry of ALL datasets that require RLS
+# Combines RLS_PROTECTED_TABLES (role-based) and RLS_RULES (legacy per-table)
+ALL_DATASETS_REQUIRING_RLS = sorted(
+    set(RLS_PROTECTED_TABLES) | set(RLS_RULES.keys())
+)
+
+
 # SQL to validate RLS enforcement (manual test)
 RLS_VALIDATION_SQL = """
 -- Run this query in Superset as a logged-in user
@@ -193,13 +212,14 @@ def get_rls_clause_for_role(role: str) -> str:
     if role_config:
         return role_config['clause']
 
-    # Default to strict merchant-style isolation
+    # Default to strict merchant-style isolation (deny unknown roles broad access)
     return RLS_CLAUSE_TEMPLATES[UserRoleType.MERCHANT]
 
 
 def get_rls_clause_for_user(
     is_agency_user: bool,
-    is_super_admin: bool = False
+    is_super_admin: bool = False,
+    has_valid_context: bool = True,
 ) -> str:
     """
     Get the appropriate RLS clause based on user type.
@@ -207,10 +227,14 @@ def get_rls_clause_for_user(
     Args:
         is_agency_user: True if user has multi-tenant access
         is_super_admin: True if user is super admin
+        has_valid_context: False if no valid auth context exists
 
     Returns:
-        RLS WHERE clause template
+        RLS WHERE clause template. Returns "1=0" (deny all) when
+        has_valid_context is False to enforce deny-by-default.
     """
+    if not has_valid_context:
+        return DENY_BY_DEFAULT_CLAUSE
     if is_super_admin:
         return RLS_CLAUSE_TEMPLATES[UserRoleType.SUPER_ADMIN]
     if is_agency_user:
@@ -337,6 +361,77 @@ def create_role_based_rls_rules(superset_client):
         role_rule_ids[role] = rule_ids
 
     return role_rule_ids
+
+
+def validate_all_datasets_have_rls(superset_client) -> tuple[bool, list[str]]:
+    """
+    Validate that ALL datasets in Superset have RLS rules applied.
+
+    Returns:
+        Tuple of (is_valid, list_of_unprotected_dataset_names).
+        Any dataset without RLS is a critical security violation.
+    """
+    # Fetch all datasets from Superset
+    response = superset_client.get('/api/v1/dataset/')
+    all_datasets = [d['table_name'] for d in response.json().get('result', [])]
+
+    # Fetch all RLS rules
+    response = superset_client.get('/api/v1/rowlevelsecurity/')
+    rls_rules = response.json().get('result', [])
+    protected_datasets = set()
+    for rule in rls_rules:
+        for table in rule.get('tables', []):
+            protected_datasets.add(table.get('table_name', ''))
+
+    # Find unprotected datasets
+    unprotected = [d for d in all_datasets if d not in protected_datasets]
+
+    return len(unprotected) == 0, unprotected
+
+
+def enforce_deny_by_default(superset_client):
+    """
+    Ensure deny-by-default: any dataset without explicit RLS gets "1=0" clause.
+
+    This function should be called during Superset initialization or as a
+    periodic health check to guarantee no dataset is ever queryable without
+    tenant isolation.
+    """
+    is_valid, unprotected = validate_all_datasets_have_rls(superset_client)
+
+    if is_valid:
+        logger.info("All datasets have RLS rules applied")
+        return
+
+    logger.critical(
+        "SECURITY: Datasets without RLS found! Applying deny-by-default.",
+        extra={"unprotected_datasets": unprotected},
+    )
+
+    for dataset_name in unprotected:
+        payload = {
+            'name': f'{dataset_name}_deny_default',
+            'description': f'DENY BY DEFAULT — No explicit RLS configured for {dataset_name}',
+            'filter_type': 'Regular',
+            'tables': [dataset_name],
+            'clause': DENY_BY_DEFAULT_CLAUSE,
+            'group_key': 'deny_by_default',
+        }
+
+        try:
+            response = superset_client.post(
+                '/api/v1/rowlevelsecurity/rules/',
+                json=payload
+            )
+            if response.status_code in (201, 409):
+                logger.info(f"Deny-by-default rule applied to {dataset_name}")
+            else:
+                logger.error(
+                    f"Failed to apply deny-by-default to {dataset_name}: "
+                    f"{response.status_code} {response.text}"
+                )
+        except Exception:
+            logger.exception(f"Error applying deny-by-default to {dataset_name}")
 
 
 # JWT Claims to Superset User Context Mapping

@@ -128,6 +128,7 @@ class EmbedTokenService:
             "tenant_id": tenant_context.tenant_id,
             "roles": tenant_context.roles,
             "allowed_tenants": tenant_context.allowed_tenants,
+            "billing_tier": tenant_context.billing_tier,
             "dashboard_id": dashboard_id,
             "iss": self.config.issuer,
             "iat": int(now.timestamp()),

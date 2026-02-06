@@ -68,7 +68,8 @@ CRITICAL_SLOW_QUERY_THRESHOLD_MS: Final[int] = 20000
 
 # Query timeout in seconds
 # Queries are terminated if they exceed this limit
-QUERY_TIMEOUT_SECONDS: Final[int] = 300
+# NOTE: Must match PERFORMANCE_GUARDRAILS.query_timeout_seconds in explore_guardrails.py
+QUERY_TIMEOUT_SECONDS: Final[int] = 20
 
 
 # =============================================================================
