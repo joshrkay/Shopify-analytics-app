@@ -15,6 +15,13 @@ from src.api.schemas.action_proposals import (
     ProposedChange,
 )
 
+from src.api.schemas.backfill_request import (
+    CreateBackfillRequest,
+    BackfillRequestResponse,
+    BackfillRequestCreatedResponse,
+    SourceSystem,
+)
+
 __all__ = [
     # Action Proposals (Story 8.4)
     "ActionProposalResponse",
@@ -25,4 +32,9 @@ __all__ = [
     "AuditTrailResponse",
     "TargetInfo",
     "ProposedChange",
+    # Backfill Requests (Story 3.4)
+    "CreateBackfillRequest",
+    "BackfillRequestResponse",
+    "BackfillRequestCreatedResponse",
+    "SourceSystem",
 ]

@@ -123,6 +123,7 @@ class AuditAction(str, Enum):
     ADMIN_CONFIG_CHANGED = "admin.config_changed"
 
     # Backfill events
+    BACKFILL_REQUESTED = "backfill.requested"
     BACKFILL_STARTED = "backfill.started"
     BACKFILL_COMPLETED = "backfill.completed"
     BACKFILL_FAILED = "backfill.failed"
@@ -1125,6 +1126,13 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
     AuditAction.ADMIN_CONFIG_CHANGED: AuditableEventMetadata(
         description="Admin configuration changed",
         required_fields=("config_key",),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    # Backfill events - HIGH RISK (admin-initiated)
+    AuditAction.BACKFILL_REQUESTED: AuditableEventMetadata(
+        description="Historical backfill requested by admin",
+        required_fields=("source_system", "start_date", "end_date"),
         risk_level="high",
         compliance_tags=("SOC2",),
     ),
