@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from src.services.schema_compatibility_checker import (
     SchemaCompatibilityChecker,
-    build_snapshot_from_manifest,
+    build_snapshot_from_db,
 )
 from src.services.superset_dataset_sync import SupersetDatasetSync, SyncResult
 
