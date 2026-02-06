@@ -53,6 +53,7 @@ class TestCheckVolumeAnomaly:
         """10% deviation with 50% threshold returns is_anomaly=False."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 50.0
+        loader.resolve_severity_label.return_value = "low"
         mock_loader.return_value = loader
 
         result = dq_service.check_volume_anomaly(
@@ -67,6 +68,7 @@ class TestCheckVolumeAnomaly:
         assert result.observed_value == Decimal(90)
         assert result.expected_value == Decimal(100)
         assert result.metadata["anomaly_score"] == 0.2
+        assert result.metadata["severity_label"] == "low"
         assert result.metadata["pct_change"] == 10.0
 
     @patch("src.api.dq.service.get_quality_thresholds_loader")
@@ -74,6 +76,7 @@ class TestCheckVolumeAnomaly:
         """60% drop with 50% threshold returns is_anomaly=True."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 50.0
+        loader.resolve_severity_label.return_value = "high"
         mock_loader.return_value = loader
 
         result = dq_service.check_volume_anomaly(
@@ -87,6 +90,7 @@ class TestCheckVolumeAnomaly:
         assert result.check_type == DQCheckType.VOLUME_ANOMALY
         assert result.severity == DQSeverity.HIGH
         assert result.metadata["anomaly_score"] == 1.0
+        assert result.metadata["severity_label"] == "high"
         assert result.metadata["pct_change"] == 60.0
         assert "dropped" in result.message
 
@@ -95,6 +99,7 @@ class TestCheckVolumeAnomaly:
         """Volume spike beyond threshold is also flagged."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 50.0
+        loader.resolve_severity_label.return_value = "high"
         mock_loader.return_value = loader
 
         result = dq_service.check_volume_anomaly(
@@ -113,6 +118,7 @@ class TestCheckVolumeAnomaly:
         """Free tier uses 50% threshold."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 50.0
+        loader.resolve_severity_label.return_value = "high"
         mock_loader.return_value = loader
 
         # 45% drop - under 50% threshold
@@ -132,6 +138,7 @@ class TestCheckVolumeAnomaly:
         """Growth tier uses 30% threshold - same drop triggers anomaly."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 30.0
+        loader.resolve_severity_label.return_value = "high"
         mock_loader.return_value = loader
 
         # 45% drop - over 30% threshold
@@ -151,6 +158,7 @@ class TestCheckVolumeAnomaly:
         """Enterprise tier uses 15% threshold - even small drops trigger."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 15.0
+        loader.resolve_severity_label.return_value = "high"
         mock_loader.return_value = loader
 
         # 20% drop - over 15% threshold
@@ -204,6 +212,7 @@ class TestCheckVolumeAnomaly:
         """Verify anomaly_score is correctly calculated in metadata."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 50.0
+        loader.resolve_severity_label.return_value = "medium"
         mock_loader.return_value = loader
 
         # 25% drop → anomaly_score = 25/50 = 0.5
@@ -215,6 +224,7 @@ class TestCheckVolumeAnomaly:
         )
 
         assert result.metadata["anomaly_score"] == 0.5
+        assert result.metadata["severity_label"] == "medium"
         assert result.metadata["rolling_avg"] == 100.0
         assert result.metadata["lookback_days"] == 7
 
@@ -223,6 +233,7 @@ class TestCheckVolumeAnomaly:
         """Anomaly score is capped at 1.0 even for extreme deviations."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 50.0
+        loader.resolve_severity_label.return_value = "high"
         mock_loader.return_value = loader
 
         # 90% drop → anomaly_score = min(90/50, 1.0) = 1.0
@@ -237,22 +248,13 @@ class TestCheckVolumeAnomaly:
 
     @patch("src.api.dq.service.get_quality_thresholds_loader")
     def test_severity_high_above_0_8(self, mock_loader, dq_service):
-        """Anomaly score >= 0.8 maps to HIGH severity."""
+        """Anomaly score >= 0.8 maps to HIGH severity and 'high' label."""
         loader = Mock()
         loader.get_volume_anomaly_threshold.return_value = 50.0
+        loader.resolve_severity_label.return_value = "high"
         mock_loader.return_value = loader
 
-        # 45% drop → score = 45/50 = 0.9 → HIGH
-        result = dq_service.check_volume_anomaly(
-            connector_id="conn-001",
-            daily_counts=[100, 100, 100, 100, 100, 100, 100],
-            today_count=55,
-            billing_tier="free",
-        )
-
-        # Under threshold so not anomaly, but if it were anomaly the score would be 0.9
-        # Actually 45% < 50% so no anomaly. Let's use exact threshold.
-        # 50% drop → score = 50/50 = 1.0 → anomaly
+        # 50% drop → score = 50/50 = 1.0 → anomaly with high severity
         result = dq_service.check_volume_anomaly(
             connector_id="conn-001",
             daily_counts=[100, 100, 100, 100, 100, 100, 100],
@@ -262,3 +264,42 @@ class TestCheckVolumeAnomaly:
 
         assert result.is_anomaly is True
         assert result.severity == DQSeverity.HIGH
+        assert result.metadata["severity_label"] == "high"
+
+    @patch("src.api.dq.service.get_quality_thresholds_loader")
+    def test_severity_medium_mid_range(self, mock_loader, dq_service):
+        """Anomaly score 0.5-0.8 maps to WARNING severity and 'medium' label."""
+        loader = Mock()
+        loader.get_volume_anomaly_threshold.return_value = 30.0
+        loader.resolve_severity_label.return_value = "medium"
+        mock_loader.return_value = loader
+
+        # 20% drop with 30% threshold → score = 20/30 ≈ 0.667 → medium
+        result = dq_service.check_volume_anomaly(
+            connector_id="conn-001",
+            daily_counts=[100, 100, 100, 100, 100, 100, 100],
+            today_count=80,
+            billing_tier="growth",
+        )
+
+        assert result.severity == DQSeverity.WARNING
+        assert result.metadata["severity_label"] == "medium"
+
+    @patch("src.api.dq.service.get_quality_thresholds_loader")
+    def test_severity_low_small_deviation(self, mock_loader, dq_service):
+        """Anomaly score < 0.5 maps to WARNING severity and 'low' label."""
+        loader = Mock()
+        loader.get_volume_anomaly_threshold.return_value = 50.0
+        loader.resolve_severity_label.return_value = "low"
+        mock_loader.return_value = loader
+
+        # 10% drop → score = 10/50 = 0.2 → low
+        result = dq_service.check_volume_anomaly(
+            connector_id="conn-001",
+            daily_counts=[100, 100, 100, 100, 100, 100, 100],
+            today_count=90,
+            billing_tier="free",
+        )
+
+        assert result.severity == DQSeverity.WARNING
+        assert result.metadata["severity_label"] == "low"

@@ -594,14 +594,13 @@ class DQService:
         anomaly_score = min(abs(pct_change) / threshold_pct, 1.0)
         is_anomaly = abs(pct_change) >= threshold_pct
 
-        # Map anomaly score to severity
-        if anomaly_score >= 0.8:
-            severity = DQSeverity.HIGH
-        else:
-            severity = DQSeverity.WARNING
+        # Map anomaly score to severity via config (low / medium / high)
+        severity_label = loader.resolve_severity_label(anomaly_score)
+        severity = DQSeverity.HIGH if severity_label == "high" else DQSeverity.WARNING
 
         metadata = {
             "anomaly_score": round(anomaly_score, 3),
+            "severity_label": severity_label,
             "pct_change": round(pct_change, 2),
             "threshold_pct": threshold_pct,
             "billing_tier": billing_tier,

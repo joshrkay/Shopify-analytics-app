@@ -147,3 +147,24 @@ class TestQualityThresholdsLoader:
         loader1 = get_quality_thresholds_loader(config_path=config_file)
         loader2 = get_quality_thresholds_loader()
         assert loader1 is loader2
+
+    def test_resolve_severity_label_low(self, config_file):
+        """Score < 0.5 resolves to 'low'."""
+        loader = get_quality_thresholds_loader(config_path=config_file)
+        assert loader.resolve_severity_label(0.0) == "low"
+        assert loader.resolve_severity_label(0.2) == "low"
+        assert loader.resolve_severity_label(0.49) == "low"
+
+    def test_resolve_severity_label_medium(self, config_file):
+        """Score 0.5-0.8 resolves to 'medium'."""
+        loader = get_quality_thresholds_loader(config_path=config_file)
+        assert loader.resolve_severity_label(0.5) == "medium"
+        assert loader.resolve_severity_label(0.6) == "medium"
+        assert loader.resolve_severity_label(0.79) == "medium"
+
+    def test_resolve_severity_label_high(self, config_file):
+        """Score >= 0.8 resolves to 'high'."""
+        loader = get_quality_thresholds_loader(config_path=config_file)
+        assert loader.resolve_severity_label(0.8) == "high"
+        assert loader.resolve_severity_label(0.9) == "high"
+        assert loader.resolve_severity_label(1.0) == "high"

@@ -134,6 +134,23 @@ class QualityThresholdsLoader:
             "high": {"min_score": 0.8},
         })
 
+    def resolve_severity_label(self, anomaly_score: float) -> str:
+        """
+        Map an anomaly score (0-1) to a severity label using the config.
+
+        Returns:
+            'low', 'medium', or 'high'
+        """
+        mapping = self.get_severity_mapping()
+        low_max = mapping.get("low", {}).get("max_score", 0.5)
+        high_min = mapping.get("high", {}).get("min_score", 0.8)
+
+        if anomaly_score >= high_min:
+            return "high"
+        if anomaly_score >= low_max:
+            return "medium"
+        return "low"
+
     def get_metric_constraints(self) -> Dict[str, Dict[str, Any]]:
         """
         Return all metric consistency constraint definitions.
