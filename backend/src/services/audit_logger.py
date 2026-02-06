@@ -456,3 +456,243 @@ def emit_quality_recovered(
             extra={"tenant_id": tenant_id, "dataset": dataset},
             exc_info=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Superset analytics audit event emitters (Story 5.1.7)
+# ---------------------------------------------------------------------------
+
+_ANALYTICS_RESOURCE_TYPE = "superset_analytics"
+
+
+def emit_dashboard_viewed(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit analytics.dashboard.viewed when a user views an embedded dashboard."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.ANALYTICS_DASHBOARD_VIEWED,
+            resource_type=_ANALYTICS_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            metadata={
+                "dashboard_id": dashboard_id,
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+            },
+            correlation_id=correlation_id,
+            source="superset",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_dashboard_viewed_failed",
+            extra={"tenant_id": tenant_id, "dashboard_id": dashboard_id},
+            exc_info=True,
+        )
+
+
+def emit_explore_accessed(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dataset_name: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit analytics.explore.accessed when a user accesses Explore mode."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.ANALYTICS_EXPLORE_ACCESSED,
+            resource_type=_ANALYTICS_RESOURCE_TYPE,
+            metadata={
+                "dataset_name": dataset_name,
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+            },
+            correlation_id=correlation_id,
+            source="superset",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_explore_accessed_failed",
+            extra={"tenant_id": tenant_id, "dataset_name": dataset_name},
+            exc_info=True,
+        )
+
+
+def emit_access_denied(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    reason: str,
+    path: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit analytics.access.denied when JWT auth fails."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id or "unknown",
+            action=AuditAction.ANALYTICS_ACCESS_DENIED,
+            resource_type=_ANALYTICS_RESOURCE_TYPE,
+            metadata={
+                "reason": reason,
+                "path": path,
+                "user_id": user_id or "unknown",
+                "tenant_id": tenant_id or "unknown",
+            },
+            correlation_id=correlation_id,
+            source="superset",
+            outcome=AuditOutcome.DENIED,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_access_denied_failed",
+            extra={"tenant_id": tenant_id, "reason": reason},
+            exc_info=True,
+        )
+
+
+def emit_cross_tenant_blocked(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    attempted_tenant_id: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit analytics.cross_tenant.blocked when cross-tenant access is attempted."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.ANALYTICS_CROSS_TENANT_BLOCKED,
+            resource_type=_ANALYTICS_RESOURCE_TYPE,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "attempted_tenant_id": attempted_tenant_id,
+            },
+            correlation_id=correlation_id,
+            source="superset",
+            outcome=AuditOutcome.DENIED,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_cross_tenant_blocked_failed",
+            extra={"tenant_id": tenant_id, "attempted_tenant_id": attempted_tenant_id},
+            exc_info=True,
+        )
+
+
+def emit_token_generated(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit analytics.token.generated when an embed token is created."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.ANALYTICS_TOKEN_GENERATED,
+            resource_type=_ANALYTICS_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            metadata={
+                "dashboard_id": dashboard_id,
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_token_generated_failed",
+            extra={"tenant_id": tenant_id, "dashboard_id": dashboard_id},
+            exc_info=True,
+        )
+
+
+def emit_token_refreshed(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit analytics.token.refreshed when an embed token is refreshed."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.ANALYTICS_TOKEN_REFRESHED,
+            resource_type=_ANALYTICS_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            metadata={
+                "dashboard_id": dashboard_id,
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_token_refreshed_failed",
+            extra={"tenant_id": tenant_id, "dashboard_id": dashboard_id},
+            exc_info=True,
+        )

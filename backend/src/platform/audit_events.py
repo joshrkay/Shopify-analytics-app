@@ -1177,6 +1177,54 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "allowed_roles",       # Roles that are valid for new tier
         "request_path",        # The request path that was blocked
     ],
+
+    # =========================================================================
+    # SUPERSET ANALYTICS EVENTS (Story 5.1.7)
+    # =========================================================================
+    # Track all Superset access events for compliance and security monitoring.
+
+    "analytics.dashboard.viewed": [
+        "user_id",
+        "tenant_id",
+        "dashboard_id",
+    ],
+
+    "analytics.explore.accessed": [
+        "user_id",
+        "tenant_id",
+        "dataset_name",
+    ],
+
+    "analytics.access.denied": [
+        "user_id",
+        "tenant_id",
+        "reason",              # Enum: missing_token, invalid_token, expired_token, tenant_mismatch
+        "path",
+    ],
+
+    "analytics.cross_tenant.blocked": [
+        "user_id",
+        "tenant_id",
+        "attempted_tenant_id",
+    ],
+
+    "analytics.token.generated": [
+        "user_id",
+        "tenant_id",
+        "dashboard_id",
+    ],
+
+    "analytics.token.refreshed": [
+        "user_id",
+        "tenant_id",
+        "dashboard_id",
+    ],
+
+    "analytics.token.expired": [
+        "user_id",
+        "tenant_id",
+        "reason",
+    ],
 }
 
 

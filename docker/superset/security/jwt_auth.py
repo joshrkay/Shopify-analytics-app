@@ -23,8 +23,10 @@ JWT CLAIMS EXPECTED (from backend EmbedTokenService):
 - exp: expiration (unix timestamp, max 60 min)
 """
 
+import json
 import os
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import jwt as pyjwt
@@ -33,6 +35,33 @@ logger = logging.getLogger(__name__)
 
 # Maximum allowed token lifetime (seconds) — enforced even if exp is further out
 MAX_TOKEN_LIFETIME_SECONDS = 3600  # 60 minutes
+
+
+# =============================================================================
+# Superset-side audit logging (Story 5.1.7)
+# =============================================================================
+# The Superset container cannot access the backend's PostgreSQL audit table.
+# Instead, emit structured JSON to stdout for collection by log aggregator
+# (Datadog, CloudWatch, etc.).
+
+def _emit_superset_audit_log(action: str, outcome: str, **extra):
+    """Emit structured audit log for Superset-side events.
+
+    Logs as structured JSON for collection by log aggregator.
+    The backend audit DB is not accessible from the Superset container.
+    """
+    audit_entry = {
+        "audit_source": "superset",
+        "action": action,
+        "outcome": outcome,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    audit_entry.update(extra)
+    logger.info(
+        "AUDIT_EVENT: %s",
+        json.dumps(audit_entry),
+        extra={"audit": audit_entry},
+    )
 
 
 class EmbedUser:
@@ -196,6 +225,10 @@ def authenticate_embed_request():
             "No JWT token in request",
             extra={"path": request.path, "method": request.method},
         )
+        _emit_superset_audit_log(
+            "analytics.access.denied", "denied",
+            reason="missing_token", path=request.path,
+        )
         abort(401, description="Authentication required")
 
     payload = verify_embed_jwt(token)
@@ -203,6 +236,10 @@ def authenticate_embed_request():
         logger.warning(
             "Invalid or expired JWT",
             extra={"path": request.path, "method": request.method},
+        )
+        _emit_superset_audit_log(
+            "analytics.access.denied", "denied",
+            reason="invalid_token", path=request.path,
         )
         abort(401, description="Invalid or expired token")
 
@@ -215,7 +252,7 @@ def authenticate_embed_request():
         billing_tier=payload.get("billing_tier", "free"),
     )
 
-    # Validate tenant_id is in allowed_tenants
+    # Validate tenant_id is in allowed_tenants (runtime guard)
     if user.tenant_id not in user.allowed_tenants:
         logger.warning(
             "JWT tenant_id not in allowed_tenants",
@@ -224,6 +261,11 @@ def authenticate_embed_request():
                 "tenant_id": user.tenant_id,
                 "allowed_tenants": user.allowed_tenants,
             },
+        )
+        _emit_superset_audit_log(
+            "analytics.cross_tenant.blocked", "denied",
+            user_id=user.id, tenant_id=user.tenant_id,
+            attempted_tenant_id=user.tenant_id,
         )
         abort(401, description="Invalid tenant context")
 
@@ -234,6 +276,21 @@ def authenticate_embed_request():
     g.rls_filter = payload.get(
         "rls_filter", f"tenant_id = '{user.tenant_id}'"
     )
+
+    # Audit: determine event type from request path
+    if "/superset/dashboard/" in request.path:
+        _emit_superset_audit_log(
+            "analytics.dashboard.viewed", "success",
+            user_id=user.id, tenant_id=user.tenant_id,
+            dashboard_id=payload.get("dashboard_id", ""),
+            path=request.path,
+        )
+    elif "/explore/" in request.path or "/api/v1/chart/" in request.path:
+        _emit_superset_audit_log(
+            "analytics.explore.accessed", "success",
+            user_id=user.id, tenant_id=user.tenant_id,
+            path=request.path,
+        )
 
     logger.info(
         "JWT authenticated",

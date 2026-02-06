@@ -18,6 +18,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
+from performance_config import PERFORMANCE_LIMITS
+
 
 class ExplorePersona(str, Enum):
     """
@@ -62,8 +64,16 @@ class PerformanceGuardrails:
     max_metrics_per_query: int = 5
 
 
-# Default guardrails instance
-PERFORMANCE_GUARDRAILS = PerformanceGuardrails()
+# Default guardrails instance — values sourced from centralized performance_config.py
+PERFORMANCE_GUARDRAILS = PerformanceGuardrails(
+    max_date_range_days=PERFORMANCE_LIMITS.max_date_range_days,
+    query_timeout_seconds=PERFORMANCE_LIMITS.query_timeout_seconds,
+    row_limit=PERFORMANCE_LIMITS.row_limit,
+    max_group_by_dimensions=PERFORMANCE_LIMITS.max_group_by_dimensions,
+    cache_ttl_minutes=PERFORMANCE_LIMITS.cache_ttl_minutes,
+    max_filters=PERFORMANCE_LIMITS.max_filters,
+    max_metrics_per_query=PERFORMANCE_LIMITS.max_metrics_per_query,
+)
 
 
 # =============================================================================

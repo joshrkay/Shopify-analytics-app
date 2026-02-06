@@ -35,6 +35,10 @@ COPY docker/superset/superset_config.py /app/
 COPY docker/superset/rls_rules.py /app/
 COPY docker/superset/explore_guardrails.py /app/
 COPY docker/superset/superset_feature_flags.py /app/
+COPY docker/superset/performance_config.py /app/
+COPY docker/superset/guards.py /app/
+COPY docker/superset/dataset_loader.py /app/
+COPY docker/superset/datasets/ /app/datasets/
 
 # Copy JWT security manager
 COPY docker/superset/security/ /app/security/
