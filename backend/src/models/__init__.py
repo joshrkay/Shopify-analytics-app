@@ -210,7 +210,10 @@ try:
             "timestamp": _now + 2,
         },
     ]
-    with open(_log_path, "a", encoding="utf-8") as _f:
+    # Write using the first candidate path
+    _primary_log_path = _log_paths[0]
+    _primary_log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(_primary_log_path, "a", encoding="utf-8") as _f:
         for _e in _entries:
             _f.write(json.dumps(_e) + "\n")
 except Exception:
