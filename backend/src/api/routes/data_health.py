@@ -85,6 +85,128 @@ class FreshnessSLAConfigResponse(BaseModel):
     sources: Dict[str, Dict[str, Dict[str, int]]]
 
 
+# Merchant data health response (Story 4.3)
+# region agent log helper (Debug Mode)
+import json, os, sys, time
+from pathlib import Path
+
+_payload_base = {
+    "sessionId": "debug-session",
+    "runId": "baseline",
+    "timestamp": int(time.time() * 1000),
+}
+_parents = list(Path(__file__).resolve().parents)
+_log_paths = []
+if len(_parents) >= 3:
+    _log_paths.append(_parents[2] / ".cursor" / "debug.log")
+if len(_parents) >= 4:
+    _log_paths.append(_parents[3] / ".cursor" / "debug.log")
+if len(_parents) >= 5:
+    _log_paths.append(_parents[4] / ".cursor" / "debug.log")
+_log_paths.append(Path("/tmp/shopify_analytics_debug.log"))
+_log_paths.append(Path("/opt/hostedtoolcache/tmp/shopify_analytics_debug.log"))
+_log_paths.append(Path("/home/runner/work/Shopify-analytics-app/Shopify-analytics-app/.cursor/debug.log"))
+_log_paths.append(Path("/home/runner/work/Shopify-analytics-app/.cursor/debug.log"))
+_log_paths.append(Path("/home/runner/.cursor/debug.log"))
+_log_paths.append(Path(__file__).resolve().parent / ".cursor" / "debug.log")
+
+def _write_log(payload: dict):
+    for _path in _log_paths:
+        try:
+            _path.parent.mkdir(parents=True, exist_ok=True)
+            with open(_path, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps(payload) + "\n")
+            return f"file:{_path}"
+        except Exception:
+            continue
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "http://127.0.0.1:7242/ingest/c1515561-3278-4fa4-b574-7082f5f827eb",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=2)
+        return "http:fallback"
+    except Exception:
+        return "none"
+# endregion
+
+_write_log({
+    **_payload_base,
+    "hypothesisId": "D",
+    "location": "src/api/routes/data_health.py:agent-log-1",
+    "message": "pre-import sys.path snapshot",
+    "data": {
+        "sys_path": sys.path,
+        "cwd": os.getcwd(),
+        "file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", "models", "merchant_data_health.py")),
+        "__file__": __file__,
+    },
+})
+
+# Additional HTTP-first logger (reliable in CI)
+try:
+    import urllib.request
+    def _agent_log_http(payload: dict):
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:7242/ingest/c1515561-3278-4fa4-b574-7082f5f827eb",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=2)
+        except Exception:
+            # Local fallback in this module directory
+            try:
+                local_path = Path(__file__).resolve().parent / "debug.log"
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(local_path, "a", encoding="utf-8") as _f:
+                    _f.write(json.dumps(payload) + "\n")
+            except Exception:
+                pass
+
+    _agent_log_http({
+        "sessionId": "debug-session",
+        "runId": "baseline",
+        "hypothesisId": "D",
+        "location": "src/api/routes/data_health.py:agent-log-HTTP-1",
+        "message": "pre-import http log",
+        "data": {
+            "sys_path": sys.path,
+            "cwd": os.getcwd(),
+            "__file__": __file__,
+        },
+        "timestamp": int(time.time() * 1000),
+    })
+except Exception:
+    pass
+
+try:
+    from ...models.merchant_data_health import MerchantDataHealthResponse
+except ModuleNotFoundError as exc:
+    payload = {
+        **_payload_base,
+        "hypothesisId": "E",
+        "location": "src/api/routes/data_health.py:agent-log-2",
+        "message": "merchant_data_health import failed",
+        "data": {
+            "error": str(exc),
+            "sys_path": sys.path,
+            "cwd": os.getcwd(),
+            "file_exists": os.path.exists(Path(__file__).resolve().parent.parent / "models" / "merchant_data_health.py"),
+        },
+    }
+    _write_log(payload)
+    # Retry by adding backend/src to sys.path
+    candidate = Path(__file__).resolve().parents[2]
+    if str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+    from ...models.merchant_data_health import MerchantDataHealthResponse
+
+
 # =============================================================================
 # Dependencies
 # =============================================================================
@@ -372,3 +494,58 @@ async def get_source_freshness_sla(
         all_tiers = {tier: all_tiers[tier]}
 
     return SourceSLAResponse(source_name=source_name, tiers=all_tiers)
+
+
+# =============================================================================
+# Merchant Data Health Endpoint (Story 4.3)
+# =============================================================================
+
+@router.get(
+    "/merchant",
+    response_model=MerchantDataHealthResponse,
+)
+async def get_merchant_data_health(
+    request: Request,
+    db_session=Depends(get_db_session),
+):
+    """
+    Get the merchant-facing data health state.
+
+    Returns a simplified trust indicator combining data availability
+    and data quality into one of three states:
+    - healthy: All data current, all features enabled
+    - delayed: Some data delayed, AI insights paused
+    - unavailable: Data temporarily unavailable
+
+    Response fields are merchant-safe and never expose internal
+    system details, SLA thresholds, or error codes.
+
+    SECURITY: tenant_id from JWT only. Response scoped to tenant.
+    """
+    from src.services.merchant_data_health import MerchantDataHealthService
+
+    tenant_ctx = get_tenant_context(request)
+
+    logger.info(
+        "Merchant data health requested",
+        extra={
+            "tenant_id": tenant_ctx.tenant_id,
+            "user_id": tenant_ctx.user_id,
+        },
+    )
+
+    service = MerchantDataHealthService(
+        db_session=db_session,
+        tenant_id=tenant_ctx.tenant_id,
+        billing_tier=getattr(tenant_ctx, "billing_tier", "free"),
+    )
+    result = service.evaluate()
+
+    return MerchantDataHealthResponse(
+        health_state=result.state.value,
+        last_updated=result.evaluated_at.isoformat(),
+        user_safe_message=result.message,
+        ai_insights_enabled=result.ai_insights_enabled,
+        dashboards_enabled=result.dashboards_enabled,
+        exports_enabled=result.exports_enabled,
+    )
