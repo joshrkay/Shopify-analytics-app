@@ -536,3 +536,204 @@ class TestSecurityConstraints:
         }
         active_set = set(ACTIVE_BACKFILL_STATUSES)
         assert active_set.isdisjoint(terminal)
+
+
+# =============================================================================
+# Backfill Planner Tests
+# =============================================================================
+
+
+from src.services.backfill_planner import (
+    BackfillPlanner,
+    MODEL_REGISTRY,
+    SOURCE_TO_STAGING,
+    SOURCE_INGESTION_TABLES,
+    ModelLayer,
+    _DEPENDENTS,
+)
+
+
+class TestBackfillPlannerDependencyGraph:
+    """Tests for the dependency graph resolution."""
+
+    def test_shopify_resolves_full_downstream(self):
+        planner = BackfillPlanner()
+        affected = planner._resolve_downstream(["stg_shopify_orders"])
+        # Must include the seed
+        assert "stg_shopify_orders" in affected
+        # Must include direct canonical dependents
+        assert "orders" in affected
+        assert "fact_orders_v1" in affected
+        # Must include transitive dependents
+        assert "fct_revenue" in affected
+        assert "sem_orders_v1" in affected
+        assert "fact_orders_current" in affected
+        assert "last_click" in affected
+        assert "fct_roas" in affected
+        assert "mart_revenue_metrics" in affected
+
+    def test_facebook_resolves_ads_downstream(self):
+        planner = BackfillPlanner()
+        affected = planner._resolve_downstream(["stg_facebook_ads_performance"])
+        assert "marketing_spend" in affected
+        assert "campaign_performance" in affected
+        assert "sem_marketing_spend_v1" in affected
+        assert "dim_ad_accounts" in affected
+        assert "dim_campaigns" in affected
+        # Should NOT include shopify-only models
+        assert "stg_shopify_orders" not in affected
+
+    def test_unknown_model_ignored(self):
+        planner = BackfillPlanner()
+        affected = planner._resolve_downstream(["nonexistent_model"])
+        assert len(affected) == 0
+
+    def test_empty_seeds_returns_empty(self):
+        planner = BackfillPlanner()
+        affected = planner._resolve_downstream([])
+        assert len(affected) == 0
+
+    def test_tiktok_only_affects_marketing_spend(self):
+        """TikTok should affect marketing_spend but NOT campaign_performance."""
+        planner = BackfillPlanner()
+        affected = planner._resolve_downstream(["stg_tiktok_ads_performance"])
+        assert "marketing_spend" in affected
+        assert "fact_marketing_spend_v1" in affected
+        # campaign_performance only depends on facebook + google
+        assert "campaign_performance" not in affected
+
+
+class TestBackfillPlannerPlan:
+    """Tests for the full plan() method."""
+
+    def test_shopify_plan_has_all_fields(self):
+        planner = BackfillPlanner()
+        plan = planner.plan(
+            tenant_id="tenant_123",
+            source_system="shopify",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 31),
+        )
+        assert plan.tenant_id == "tenant_123"
+        assert plan.source_system == "shopify"
+        assert plan.start_date == date(2024, 1, 1)
+        assert plan.end_date == date(2024, 1, 31)
+        assert len(plan.ingestion_tables) > 0
+        assert len(plan.affected_models) > 0
+        assert len(plan.execution_steps) > 0
+        assert plan.cost_estimate.date_range_days == 31
+        assert plan.cost_estimate.estimated_raw_rows > 0
+        assert plan.is_partial is True  # Shopify doesn't affect all models
+        assert "dbt run" in plan.dbt_run_command
+        assert "tenant_123" in plan.dbt_run_command
+
+    def test_execution_steps_are_ordered_by_layer(self):
+        planner = BackfillPlanner()
+        plan = planner.plan(
+            tenant_id="t1",
+            source_system="shopify",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 7),
+        )
+        layer_orders = []
+        for step in plan.execution_steps:
+            layer = ModelLayer(step.layer)
+            layer_orders.append(layer.order)
+        # Must be monotonically non-decreasing
+        assert layer_orders == sorted(layer_orders)
+
+    def test_ingestion_tables_for_shopify(self):
+        planner = BackfillPlanner()
+        plan = planner.plan("t1", "shopify", date(2024, 1, 1), date(2024, 1, 7))
+        assert "_airbyte_raw_shopify_orders" in plan.ingestion_tables
+        assert "_airbyte_raw_shopify_customers" in plan.ingestion_tables
+
+    def test_ingestion_tables_for_facebook(self):
+        planner = BackfillPlanner()
+        plan = planner.plan("t1", "facebook", date(2024, 1, 1), date(2024, 1, 7))
+        assert "_airbyte_raw_meta_ads" in plan.ingestion_tables
+
+    def test_unknown_source_returns_empty_plan(self):
+        planner = BackfillPlanner()
+        plan = planner.plan("t1", "nonexistent", date(2024, 1, 1), date(2024, 1, 7))
+        assert plan.affected_models == []
+        assert plan.ingestion_tables == []
+        assert plan.execution_steps == []
+
+
+class TestBackfillPlannerCostEstimate:
+    """Tests for cost estimation."""
+
+    def test_longer_range_costs_more(self):
+        planner = BackfillPlanner()
+        plan_7d = planner.plan("t1", "shopify", date(2024, 1, 1), date(2024, 1, 7))
+        plan_30d = planner.plan("t1", "shopify", date(2024, 1, 1), date(2024, 1, 30))
+        assert plan_30d.cost_estimate.estimated_raw_rows > plan_7d.cost_estimate.estimated_raw_rows
+        assert plan_30d.cost_estimate.estimated_seconds > plan_7d.cost_estimate.estimated_seconds
+
+    def test_single_day_cost(self):
+        planner = BackfillPlanner()
+        plan = planner.plan("t1", "shopify", date(2024, 1, 1), date(2024, 1, 1))
+        assert plan.cost_estimate.date_range_days == 1
+        assert plan.cost_estimate.estimated_raw_rows == 500  # shopify rows_per_day
+
+    def test_cost_estimate_fields_positive(self):
+        planner = BackfillPlanner()
+        plan = planner.plan("t1", "facebook", date(2024, 1, 1), date(2024, 1, 31))
+        assert plan.cost_estimate.estimated_raw_rows > 0
+        assert plan.cost_estimate.estimated_total_rows >= plan.cost_estimate.estimated_raw_rows
+        assert plan.cost_estimate.estimated_seconds >= 0
+
+
+class TestBackfillPlannerRegistry:
+    """Tests for the model registry and source mappings."""
+
+    def test_all_source_systems_have_staging_mapping(self):
+        """Every source in SourceSystem enum should have a staging mapping."""
+        from src.api.schemas.backfill_request import SourceSystem
+        for source in SourceSystem:
+            assert source.value in SOURCE_TO_STAGING, (
+                f"Missing SOURCE_TO_STAGING entry for {source.value}"
+            )
+
+    def test_all_source_systems_have_ingestion_mapping(self):
+        from src.api.schemas.backfill_request import SourceSystem
+        for source in SourceSystem:
+            assert source.value in SOURCE_INGESTION_TABLES, (
+                f"Missing SOURCE_INGESTION_TABLES entry for {source.value}"
+            )
+
+    def test_all_staging_models_exist_in_registry(self):
+        """Every model referenced in SOURCE_TO_STAGING must be in MODEL_REGISTRY."""
+        for source, models in SOURCE_TO_STAGING.items():
+            for model_name in models:
+                assert model_name in MODEL_REGISTRY, (
+                    f"Staging model '{model_name}' for source '{source}' "
+                    f"not found in MODEL_REGISTRY"
+                )
+
+    def test_all_depends_on_exist_in_registry(self):
+        """Every dependency reference must point to an existing model."""
+        for name, model in MODEL_REGISTRY.items():
+            for dep in model.depends_on:
+                assert dep in MODEL_REGISTRY, (
+                    f"Model '{name}' depends on '{dep}' which is not in MODEL_REGISTRY"
+                )
+
+    def test_dependents_index_is_consistent(self):
+        """The reverse index must be consistent with depends_on."""
+        for name, model in MODEL_REGISTRY.items():
+            for dep in model.depends_on:
+                assert name in _DEPENDENTS.get(dep, set()), (
+                    f"'{name}' depends on '{dep}' but is not in _DEPENDENTS['{dep}']"
+                )
+
+    def test_staging_models_have_no_internal_deps(self):
+        """Staging models (except aggregations) should have no depends_on."""
+        # stg_email_campaigns depends on stg_klaviyo_events — that's the exception
+        exceptions = {"stg_email_campaigns", "dim_ad_accounts", "dim_campaigns"}
+        for name, model in MODEL_REGISTRY.items():
+            if model.layer == ModelLayer.STAGING and name not in exceptions:
+                assert model.depends_on == (), (
+                    f"Staging model '{name}' has unexpected deps: {model.depends_on}"
+                )
