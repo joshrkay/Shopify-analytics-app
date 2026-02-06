@@ -46,6 +46,13 @@ class DQSeverity(str, Enum):
     CRITICAL = "critical"
 
 
+class DataQualityState(str, Enum):
+    """Aggregated data quality state."""
+    PASS_STATE = "pass"
+    WARN = "warn"
+    FAIL = "fail"
+
+
 class DQResultStatus(str, Enum):
     """Result status for a DQ check execution."""
     PASSED = "passed"

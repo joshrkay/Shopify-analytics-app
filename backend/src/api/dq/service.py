@@ -29,14 +29,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal
 from enum import Enum
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Union
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 
 from src.models.dq_models import (
     DQCheck, DQResult, DQIncident, SyncRun,
-    DQCheckType, DQSeverity, DQResultStatus, DQIncidentStatus,
+    DQCheckType, DQSeverity, DataQualityState, DQResultStatus, DQIncidentStatus,
     SyncRunStatus, ConnectorSourceType,
     FRESHNESS_THRESHOLDS, get_freshness_threshold, is_critical_source,
 )
@@ -158,6 +158,21 @@ class SyncHealthSummary:
     health_score: float  # 0-100
     connectors: List[ConnectorSyncHealth]
     has_blocking_issues: bool
+
+
+DQCheckResult = Union[FreshnessCheckResult, AnomalyCheckResult]
+
+
+@dataclass
+class DataQualityVerdict:
+    """Aggregated quality state across all check types."""
+    state: DataQualityState
+    total_checks: int
+    passed_count: int
+    warning_count: int
+    failure_count: int
+    failing_checks: List[str]
+    message: str
 
 
 class DQServiceError(Exception):
@@ -1376,6 +1391,79 @@ class DQService:
             health_score=round(health_score, 1),
             connectors=connector_health_list,
             has_blocking_issues=blocking_count > 0,
+        )
+
+    @staticmethod
+    def aggregate_quality_state(
+        freshness_results: List[FreshnessCheckResult],
+        anomaly_results: List[AnomalyCheckResult],
+    ) -> DataQualityVerdict:
+        """
+        Aggregate all quality signals into a single PASS/WARN/FAIL state.
+
+        Rules:
+            - Any CRITICAL or HIGH severity failure → FAIL
+            - Any WARNING severity → WARN
+            - All checks pass → PASS
+
+        Args:
+            freshness_results: Results from freshness checks
+            anomaly_results: Results from volume/metric anomaly checks
+
+        Returns:
+            DataQualityVerdict with aggregated state and diagnostics
+        """
+        failure_count = 0
+        warning_count = 0
+        passed_count = 0
+        failing_checks: List[str] = []
+
+        for fr in freshness_results:
+            if not fr.is_fresh and fr.severity in (DQSeverity.CRITICAL, DQSeverity.HIGH):
+                failure_count += 1
+                failing_checks.append(f"Freshness: {fr.connector_name} - {fr.message}")
+            elif not fr.is_fresh and fr.severity == DQSeverity.WARNING:
+                warning_count += 1
+            else:
+                passed_count += 1
+
+        for ar in anomaly_results:
+            if ar.is_anomaly and ar.severity in (DQSeverity.CRITICAL, DQSeverity.HIGH):
+                failure_count += 1
+                failing_checks.append(
+                    f"{ar.check_type.value}: {ar.connector_name} - {ar.message}"
+                )
+            elif ar.is_anomaly and ar.severity == DQSeverity.WARNING:
+                warning_count += 1
+            else:
+                passed_count += 1
+
+        total_checks = failure_count + warning_count + passed_count
+
+        if failure_count > 0:
+            state = DataQualityState.FAIL
+            message = (
+                f"FAIL: {failure_count} critical failure(s) detected"
+                f" across {total_checks} checks"
+            )
+        elif warning_count > 0:
+            state = DataQualityState.WARN
+            message = (
+                f"WARN: {warning_count} warning(s) detected"
+                f" across {total_checks} checks"
+            )
+        else:
+            state = DataQualityState.PASS_STATE
+            message = f"PASS: all {total_checks} checks passed"
+
+        return DataQualityVerdict(
+            state=state,
+            total_checks=total_checks,
+            passed_count=passed_count,
+            warning_count=warning_count,
+            failure_count=failure_count,
+            failing_checks=failing_checks,
+            message=message,
         )
 
     def is_dashboard_blocked(self) -> Tuple[bool, List[str]]:
