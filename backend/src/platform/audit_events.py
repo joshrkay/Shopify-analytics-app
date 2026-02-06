@@ -1028,6 +1028,39 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
     ],
 
     # =========================================================================
+    # DATA FRESHNESS EVENTS
+    # =========================================================================
+    # Track availability state transitions for compliance and operational
+    # monitoring. Emitted by DataAvailabilityService on state change.
+
+    "data.freshness.stale": [
+        "tenant_id",           # Affected tenant
+        "source",              # SLA source key (e.g. shopify_orders)
+        "previous_state",      # State before transition
+        "new_state",           # Always "stale" for this event
+        "detected_at",         # ISO-8601 UTC timestamp
+        "root_cause",          # Reason code (sla_exceeded, sync_failed, ...)
+    ],
+
+    "data.freshness.unavailable": [
+        "tenant_id",           # Affected tenant
+        "source",              # SLA source key
+        "previous_state",      # State before transition
+        "new_state",           # Always "unavailable" for this event
+        "detected_at",         # ISO-8601 UTC timestamp
+        "root_cause",          # Reason code (grace_window_exceeded, never_synced, ...)
+    ],
+
+    "data.freshness.recovered": [
+        "tenant_id",           # Affected tenant
+        "source",              # SLA source key
+        "previous_state",      # State before recovery (stale or unavailable)
+        "new_state",           # Always "fresh" for this event
+        "detected_at",         # ISO-8601 UTC timestamp
+        "root_cause",          # Always "sync_ok"
+    ],
+
+    # =========================================================================
     # AUTHORIZATION ENFORCEMENT EVENTS
     # =========================================================================
     # Track mid-session authorization enforcement when access is revoked,
@@ -1203,6 +1236,11 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "identity.role_change_enforced",
         "billing.role_revoked_due_to_downgrade",
     ],
+    "data_freshness": [
+        "data.freshness.stale",
+        "data.freshness.unavailable",
+        "data.freshness.recovered",
+    ],
 }
 
 
@@ -1300,6 +1338,11 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
     "metric.dashboard_version_unpinned": "medium",
     "metric.deprecated_query_logged": "low",
     "metric.rollback_executed": "critical",
+
+    # Data freshness events
+    "data.freshness.stale": "medium",
+    "data.freshness.unavailable": "high",
+    "data.freshness.recovered": "low",
 }
 
 

@@ -35,6 +35,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.governance.base import load_yaml_config
+from src.platform.audit import (
+    AuditAction,
+    AuditOutcome,
+    log_system_audit_event_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -276,6 +281,13 @@ class DataAvailabilityService:
                     "minutes_since_sync": minutes,
                 },
             )
+            self._emit_freshness_audit_event(
+                source_type=source_type,
+                previous_state=previous_state,
+                new_state=state,
+                reason=reason,
+                detected_at=now,
+            )
 
         return DataAvailabilityResult(
             tenant_id=self.tenant_id,
@@ -292,6 +304,54 @@ class DataAvailabilityService:
             evaluated_at=now,
             billing_tier=self.billing_tier,
         )
+
+    # ── Audit emission ────────────────────────────────────────────────────
+
+    _FRESHNESS_AUDIT_ACTIONS = {
+        "stale": AuditAction.DATA_FRESHNESS_STALE,
+        "unavailable": AuditAction.DATA_FRESHNESS_UNAVAILABLE,
+        "fresh": AuditAction.DATA_FRESHNESS_RECOVERED,
+    }
+
+    def _emit_freshness_audit_event(
+        self,
+        source_type: str,
+        previous_state: Optional[str],
+        new_state: str,
+        reason: str,
+        detected_at: datetime,
+    ) -> None:
+        """Emit a structured audit event for a freshness state transition."""
+        action = self._FRESHNESS_AUDIT_ACTIONS.get(new_state)
+        if action is None:
+            return
+
+        metadata = {
+            "tenant_id": self.tenant_id,
+            "source": source_type,
+            "previous_state": previous_state or "unknown",
+            "new_state": new_state,
+            "detected_at": detected_at.isoformat(),
+            "root_cause": reason,
+        }
+
+        try:
+            log_system_audit_event_sync(
+                db=self.db,
+                tenant_id=self.tenant_id,
+                action=action,
+                resource_type="data_source",
+                resource_id=source_type,
+                metadata=metadata,
+                source="system",
+                outcome=AuditOutcome.SUCCESS,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to emit freshness audit event",
+                extra={"action": action.value, "source_type": source_type},
+                exc_info=True,
+            )
 
     def evaluate_all(self) -> List[DataAvailabilityResult]:
         """
