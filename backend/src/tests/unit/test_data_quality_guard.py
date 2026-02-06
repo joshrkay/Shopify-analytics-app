@@ -10,30 +10,17 @@ Tests cover:
 - Result dataclass correctness
 """
 
-import sys
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 
-# ---------------------------------------------------------------------------
-# Mock heavy dependencies that are unavailable in the test environment
-# (jwt, cryptography, httpx) before importing middleware modules.
-# ---------------------------------------------------------------------------
-_mock_platform = Mock()
-_mock_platform.get_tenant_context = Mock()
-sys.modules.setdefault("src.platform", _mock_platform)
-sys.modules.setdefault("src.platform.tenant_context", _mock_platform)
-sys.modules.setdefault("src.database.session", Mock())
-
-from src.api.dq.service import DataQualityVerdict  # noqa: E402
-from src.models.dq_models import DataQualityState  # noqa: E402
-
-# Now import the middleware modules (they will use the mocked platform)
-from src.middleware.data_quality_guard import (  # noqa: E402
+from src.api.dq.service import DataQualityVerdict
+from src.models.dq_models import DataQualityState
+from src.middleware.data_quality_guard import (
     DataQualityCheckResult,
     DataQualityGuard,
     check_data_quality,
 )
-from src.middleware.superset_quality_hook import (  # noqa: E402
+from src.middleware.superset_quality_hook import (
     QueryQualityResult,
     SupersetQualityHook,
 )
