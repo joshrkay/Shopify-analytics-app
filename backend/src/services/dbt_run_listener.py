@@ -54,8 +54,8 @@ class DbtRunListener:
         Called when dbt run completes successfully.
 
         1. If run_results has test failures, skip sync and return a failed result.
-        2. Build current state from manifest (first run or CI: no prior snapshot).
-        3. Run schema compatibility check.
+        2. Build current state from prior ACTIVE dataset versions in DB (first run: empty baseline).
+        3. Run schema compatibility check (new manifest vs. deployed state).
         4. If compatible, run SupersetDatasetSync.sync().
         5. If breaking changes, sync() records blocked status and returns.
         """
@@ -82,7 +82,7 @@ class DbtRunListener:
 
         with open(path) as f:
             manifest = json.load(f)
-        current_state = build_snapshot_from_manifest(manifest)
+        current_state = build_snapshot_from_db(self.db)
 
         compat = self.checker.validate(current_state, manifest)
         if not compat.compatibility_passed:
