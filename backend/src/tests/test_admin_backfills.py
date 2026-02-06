@@ -737,3 +737,504 @@ class TestBackfillPlannerRegistry:
                 assert model.depends_on == (), (
                     f"Staging model '{name}' has unexpected deps: {model.depends_on}"
                 )
+
+
+# =============================================================================
+# Backfill Executor Tests - Story 3.4.3
+# =============================================================================
+
+
+from src.services.backfill_executor import (
+    BackfillExecutor,
+    calculate_backoff,
+    compute_chunks,
+    CHUNK_SIZE_DAYS,
+    BASE_RETRY_DELAY_SECONDS,
+    MAX_RETRY_DELAY_SECONDS,
+)
+from src.models.backfill_job import (
+    BackfillJob,
+    BackfillJobStatus,
+)
+
+
+class TestComputeChunks:
+    """Tests for date range chunking."""
+
+    def test_single_day(self):
+        chunks = compute_chunks(date(2024, 1, 1), date(2024, 1, 1))
+        assert chunks == [(date(2024, 1, 1), date(2024, 1, 1))]
+
+    def test_exact_chunk_size(self):
+        """7-day range produces exactly one chunk."""
+        chunks = compute_chunks(date(2024, 1, 1), date(2024, 1, 7))
+        assert len(chunks) == 1
+        assert chunks[0] == (date(2024, 1, 1), date(2024, 1, 7))
+
+    def test_two_chunks(self):
+        """8-day range produces two chunks: 7 + 1."""
+        chunks = compute_chunks(date(2024, 1, 1), date(2024, 1, 8))
+        assert len(chunks) == 2
+        assert chunks[0] == (date(2024, 1, 1), date(2024, 1, 7))
+        assert chunks[1] == (date(2024, 1, 8), date(2024, 1, 8))
+
+    def test_14_days_produces_two_chunks(self):
+        chunks = compute_chunks(date(2024, 1, 1), date(2024, 1, 14))
+        assert len(chunks) == 2
+        assert chunks[0] == (date(2024, 1, 1), date(2024, 1, 7))
+        assert chunks[1] == (date(2024, 1, 8), date(2024, 1, 14))
+
+    def test_90_days_produces_13_chunks(self):
+        """90 days = 12 full weeks + 6 days = 13 chunks."""
+        chunks = compute_chunks(date(2024, 1, 1), date(2024, 3, 30))
+        assert len(chunks) == 13
+        # First chunk
+        assert chunks[0] == (date(2024, 1, 1), date(2024, 1, 7))
+        # Last chunk
+        assert chunks[-1][1] == date(2024, 3, 30)
+
+    def test_chunks_are_contiguous(self):
+        """No gaps or overlaps between chunks."""
+        chunks = compute_chunks(date(2024, 1, 1), date(2024, 2, 15))
+        for i in range(len(chunks) - 1):
+            gap = (chunks[i + 1][0] - chunks[i][1]).days
+            assert gap == 1, f"Gap between chunk {i} and {i+1}: {gap} days"
+
+    def test_chunk_size_is_configurable(self):
+        """All chunks except possibly the last are CHUNK_SIZE_DAYS long."""
+        chunks = compute_chunks(date(2024, 1, 1), date(2024, 3, 30))
+        for i, (start, end) in enumerate(chunks[:-1]):
+            size = (end - start).days + 1
+            assert size == CHUNK_SIZE_DAYS, (
+                f"Chunk {i} is {size} days, expected {CHUNK_SIZE_DAYS}"
+            )
+
+
+class TestCalculateBackoff:
+    """Tests for exponential backoff calculation."""
+
+    def test_attempt_0_near_base_delay(self):
+        delay = calculate_backoff(0)
+        # base ± 25% jitter
+        assert BASE_RETRY_DELAY_SECONDS * 0.5 <= delay <= BASE_RETRY_DELAY_SECONDS * 1.5
+
+    def test_attempt_increases_delay(self):
+        """Higher attempt = longer delay on average."""
+        delays_0 = [calculate_backoff(0) for _ in range(50)]
+        delays_3 = [calculate_backoff(3) for _ in range(50)]
+        avg_0 = sum(delays_0) / len(delays_0)
+        avg_3 = sum(delays_3) / len(delays_3)
+        assert avg_3 > avg_0
+
+    def test_delay_capped_at_max(self):
+        delay = calculate_backoff(20)  # Very high attempt
+        assert delay <= MAX_RETRY_DELAY_SECONDS
+
+    def test_delay_always_positive(self):
+        for attempt in range(10):
+            assert calculate_backoff(attempt) >= 1.0
+
+
+class TestBackfillJobModel:
+    """Tests for BackfillJob model properties and lifecycle methods."""
+
+    def _make_job(self, **kwargs):
+        defaults = dict(
+            id="job_1",
+            backfill_request_id="req_1",
+            tenant_id="tenant_1",
+            source_system="shopify",
+            chunk_start_date=date(2024, 1, 1),
+            chunk_end_date=date(2024, 1, 7),
+            chunk_index=0,
+            status=BackfillJobStatus.QUEUED,
+            attempt=0,
+            max_retries=3,
+        )
+        defaults.update(kwargs)
+        job = BackfillJob(**defaults)
+        return job
+
+    def test_is_active_for_queued(self):
+        job = self._make_job(status=BackfillJobStatus.QUEUED)
+        assert job.is_active is True
+
+    def test_is_active_for_running(self):
+        job = self._make_job(status=BackfillJobStatus.RUNNING)
+        assert job.is_active is True
+
+    def test_is_active_false_for_success(self):
+        job = self._make_job(status=BackfillJobStatus.SUCCESS)
+        assert job.is_active is False
+
+    def test_is_terminal_for_success(self):
+        job = self._make_job(status=BackfillJobStatus.SUCCESS)
+        assert job.is_terminal is True
+
+    def test_is_terminal_for_failed(self):
+        job = self._make_job(status=BackfillJobStatus.FAILED)
+        assert job.is_terminal is True
+
+    def test_is_terminal_false_for_queued(self):
+        job = self._make_job(status=BackfillJobStatus.QUEUED)
+        assert job.is_terminal is False
+
+    def test_can_retry_when_failed_with_attempts_left(self):
+        job = self._make_job(
+            status=BackfillJobStatus.FAILED, attempt=1, max_retries=3
+        )
+        assert job.can_retry is True
+
+    def test_can_retry_false_when_max_reached(self):
+        job = self._make_job(
+            status=BackfillJobStatus.FAILED, attempt=3, max_retries=3
+        )
+        assert job.can_retry is False
+
+    def test_can_retry_false_when_not_failed(self):
+        job = self._make_job(status=BackfillJobStatus.SUCCESS, attempt=0)
+        assert job.can_retry is False
+
+    def test_mark_running_sets_status_and_increments_attempt(self):
+        job = self._make_job()
+        job.mark_running()
+        assert job.status == BackfillJobStatus.RUNNING
+        assert job.attempt == 1
+        assert job.started_at is not None
+
+    def test_mark_success(self):
+        job = self._make_job(status=BackfillJobStatus.RUNNING)
+        job.mark_success(rows_affected=100, duration=5.5)
+        assert job.status == BackfillJobStatus.SUCCESS
+        assert job.rows_affected == 100
+        assert job.duration_seconds == 5.5
+        assert job.completed_at is not None
+
+    def test_mark_failed(self):
+        job = self._make_job(status=BackfillJobStatus.RUNNING)
+        job.mark_failed("Something broke")
+        assert job.status == BackfillJobStatus.FAILED
+        assert job.error_message == "Something broke"
+        assert job.completed_at is not None
+
+    def test_mark_failed_truncates_error(self):
+        job = self._make_job(status=BackfillJobStatus.RUNNING)
+        long_error = "x" * 2000
+        job.mark_failed(long_error)
+        assert len(job.error_message) == 1000
+
+    def test_mark_cancelled(self):
+        job = self._make_job()
+        job.mark_cancelled()
+        assert job.status == BackfillJobStatus.CANCELLED
+        assert job.completed_at is not None
+
+    def test_mark_paused(self):
+        job = self._make_job()
+        job.mark_paused()
+        assert job.status == BackfillJobStatus.PAUSED
+
+    def test_schedule_retry_resets_to_queued(self):
+        job = self._make_job(status=BackfillJobStatus.FAILED)
+        job.schedule_retry(120.0)
+        assert job.status == BackfillJobStatus.QUEUED
+        assert job.next_retry_at is not None
+        assert job.completed_at is None
+        assert job.started_at is None
+
+    def test_status_enum_values(self):
+        expected = {"queued", "running", "success", "failed", "cancelled", "paused"}
+        actual = {s.value for s in BackfillJobStatus}
+        assert actual == expected
+
+    def test_repr(self):
+        job = self._make_job(id="job_abc", chunk_index=2)
+        r = repr(job)
+        assert "job_abc" in r
+        assert "2" in r
+
+
+class TestBackfillExecutorCreateJobs:
+    """Tests for BackfillExecutor.create_jobs_for_request."""
+
+    def test_creates_correct_number_of_chunks(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        request = MagicMock()
+        request.id = "req_1"
+        request.tenant_id = "t1"
+        request.source_system = "shopify"
+        request.start_date = date(2024, 1, 1)
+        request.end_date = date(2024, 1, 14)  # 14 days = 2 chunks
+
+        jobs = executor.create_jobs_for_request(request)
+        assert len(jobs) == 2
+        assert jobs[0].chunk_index == 0
+        assert jobs[1].chunk_index == 1
+
+    def test_transitions_request_to_running(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        request = MagicMock()
+        request.id = "req_1"
+        request.tenant_id = "t1"
+        request.source_system = "shopify"
+        request.start_date = date(2024, 1, 1)
+        request.end_date = date(2024, 1, 7)
+
+        executor.create_jobs_for_request(request)
+        assert request.status == HistoricalBackfillStatus.RUNNING
+        assert request.started_at is not None
+        mock_db.commit.assert_called_once()
+
+    def test_single_day_creates_one_chunk(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        request = MagicMock()
+        request.id = "req_1"
+        request.tenant_id = "t1"
+        request.source_system = "shopify"
+        request.start_date = date(2024, 1, 1)
+        request.end_date = date(2024, 1, 1)
+
+        jobs = executor.create_jobs_for_request(request)
+        assert len(jobs) == 1
+        assert jobs[0].chunk_start_date == date(2024, 1, 1)
+        assert jobs[0].chunk_end_date == date(2024, 1, 1)
+
+    def test_90_day_range_creates_13_chunks(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        request = MagicMock()
+        request.id = "req_1"
+        request.tenant_id = "t1"
+        request.source_system = "shopify"
+        request.start_date = date(2024, 1, 1)
+        request.end_date = date(2024, 3, 30)
+
+        jobs = executor.create_jobs_for_request(request)
+        assert len(jobs) == 13
+
+
+class TestBackfillExecutorRetry:
+    """Tests for retry logic in the executor."""
+
+    def test_maybe_schedule_retry_when_can_retry(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        job = BackfillJob(
+            id="job_1",
+            backfill_request_id="req_1",
+            tenant_id="t1",
+            source_system="shopify",
+            chunk_start_date=date(2024, 1, 1),
+            chunk_end_date=date(2024, 1, 7),
+            chunk_index=0,
+            status=BackfillJobStatus.FAILED,
+            attempt=1,
+            max_retries=3,
+        )
+
+        executor._maybe_schedule_retry(job)
+        assert job.status == BackfillJobStatus.QUEUED
+        assert job.next_retry_at is not None
+
+    def test_no_retry_when_max_reached(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        job = BackfillJob(
+            id="job_1",
+            backfill_request_id="req_1",
+            tenant_id="t1",
+            source_system="shopify",
+            chunk_start_date=date(2024, 1, 1),
+            chunk_end_date=date(2024, 1, 7),
+            chunk_index=0,
+            status=BackfillJobStatus.FAILED,
+            attempt=3,
+            max_retries=3,
+        )
+
+        executor._maybe_schedule_retry(job)
+        # Should remain FAILED
+        assert job.status == BackfillJobStatus.FAILED
+
+
+class TestBackfillExecutorParentStatus:
+    """Tests for parent request status roll-up."""
+
+    def _setup_executor_with_jobs(self, job_statuses, can_retry_flags=None):
+        """Helper to set up executor with mock jobs."""
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        jobs = []
+        for i, status in enumerate(job_statuses):
+            job = MagicMock()
+            job.status = status
+            if can_retry_flags:
+                job.can_retry = can_retry_flags[i]
+            else:
+                job.can_retry = False
+            jobs.append(job)
+
+        request = MagicMock()
+        request.id = "req_1"
+
+        mock_db.query.return_value.filter.return_value.all.return_value = jobs
+        mock_db.query.return_value.filter.return_value.first.return_value = request
+
+        return executor, request
+
+    def test_all_success_completes_parent(self):
+        executor, request = self._setup_executor_with_jobs(
+            [BackfillJobStatus.SUCCESS, BackfillJobStatus.SUCCESS]
+        )
+        executor._update_parent_status("req_1")
+        assert request.status == HistoricalBackfillStatus.COMPLETED
+
+    def test_all_cancelled_cancels_parent(self):
+        executor, request = self._setup_executor_with_jobs(
+            [BackfillJobStatus.CANCELLED, BackfillJobStatus.CANCELLED]
+        )
+        executor._update_parent_status("req_1")
+        assert request.status == HistoricalBackfillStatus.CANCELLED
+
+    def test_terminal_failure_fails_parent(self):
+        executor, request = self._setup_executor_with_jobs(
+            [BackfillJobStatus.SUCCESS, BackfillJobStatus.FAILED],
+            can_retry_flags=[False, False],
+        )
+        executor._update_parent_status("req_1")
+        assert request.status == HistoricalBackfillStatus.FAILED
+
+    def test_retryable_failure_does_not_fail_parent(self):
+        executor, request = self._setup_executor_with_jobs(
+            [BackfillJobStatus.SUCCESS, BackfillJobStatus.FAILED],
+            can_retry_flags=[False, True],  # Second job can still retry
+        )
+        executor._update_parent_status("req_1")
+        # Should NOT be FAILED since the failed job can still retry
+        assert request.status != HistoricalBackfillStatus.FAILED
+
+
+class TestBackfillExecutorPauseResume:
+    """Tests for pause/resume/cancel operations."""
+
+    def test_pause_changes_queued_to_paused(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        job1 = MagicMock()
+        job2 = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = [
+            job1, job2
+        ]
+
+        count = executor.pause_request("req_1")
+        assert count == 2
+        job1.mark_paused.assert_called_once()
+        job2.mark_paused.assert_called_once()
+        mock_db.commit.assert_called()
+
+    def test_resume_changes_paused_to_queued(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        job = MagicMock()
+        job.status = BackfillJobStatus.PAUSED
+        mock_db.query.return_value.filter.return_value.all.return_value = [job]
+
+        request = MagicMock()
+        request.status = HistoricalBackfillStatus.RUNNING
+        mock_db.query.return_value.filter.return_value.first.return_value = request
+
+        count = executor.resume_request("req_1")
+        assert count == 1
+        assert job.status == BackfillJobStatus.QUEUED
+        assert job.completed_at is None
+        assert job.next_retry_at is None
+
+    def test_cancel_request(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        job = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = [job]
+        # For _update_parent_status
+        mock_db.query.return_value.filter.return_value.first.return_value = MagicMock()
+
+        count = executor.cancel_request("req_1")
+        assert count == 1
+        job.mark_cancelled.assert_called_once()
+
+    def test_pause_empty_returns_zero(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+
+        count = executor.pause_request("req_1")
+        assert count == 0
+
+
+class TestBackfillExecutorRecovery:
+    """Tests for stale job recovery."""
+
+    def test_recover_resets_stale_running_jobs(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+
+        stale_job = MagicMock()
+        stale_job.status = BackfillJobStatus.RUNNING
+        mock_db.query.return_value.filter.return_value.all.return_value = [stale_job]
+
+        recovered = executor.recover_stale_jobs()
+        assert recovered == 1
+        assert stale_job.status == BackfillJobStatus.QUEUED
+        assert stale_job.next_retry_at is None
+        assert stale_job.started_at is None
+        mock_db.commit.assert_called_once()
+
+    def test_no_stale_jobs_returns_zero(self):
+        mock_db = MagicMock()
+        executor = BackfillExecutor(mock_db)
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+
+        recovered = executor.recover_stale_jobs()
+        assert recovered == 0
+        mock_db.commit.assert_not_called()
+
+
+class TestBackfillWorkerStats:
+    """Tests for the worker stats dataclass."""
+
+    def test_worker_stats_to_dict(self):
+        from src.workers.backfill_worker import WorkerStats
+
+        stats = WorkerStats()
+        stats.cycles = 10
+        stats.jobs_executed = 5
+        stats.errors = 1
+
+        d = stats.to_dict()
+        assert d["cycles"] == 10
+        assert d["jobs_executed"] == 5
+        assert d["errors"] == 1
+        assert "uptime_seconds" in d
+        assert d["uptime_seconds"] >= 0
+
+    def test_worker_stats_defaults(self):
+        from src.workers.backfill_worker import WorkerStats
+
+        stats = WorkerStats()
+        assert stats.cycles == 0
+        assert stats.jobs_executed == 0
+        assert stats.requests_created == 0
+        assert stats.jobs_recovered == 0
+        assert stats.errors == 0
