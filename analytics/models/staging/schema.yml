@@ -53,6 +53,8 @@ models:
       - test_freshness:
           column_name: airbyte_emitted_at
           source_name: shopify_orders
+          config:
+            severity: warn
     columns:
       - name: record_sk
         description: Stable surrogate key md5(tenant_id || source_system || source_primary_key)
@@ -211,6 +213,8 @@ models:
       - test_freshness:
           column_name: airbyte_emitted_at
           source_name: facebook_ads
+          config:
+            severity: warn
     columns:
       - name: record_sk
         description: Stable surrogate key md5(tenant_id || source_system || source_primary_key)
@@ -333,6 +337,8 @@ models:
       - test_freshness:
           column_name: airbyte_emitted_at
           source_name: google_ads
+          config:
+            severity: warn
     columns:
       - name: record_sk
         description: Stable surrogate key md5(tenant_id || source_system || source_primary_key)
@@ -452,6 +458,8 @@ models:
       - test_freshness:
           column_name: airbyte_emitted_at
           source_name: tiktok_ads
+          config:
+            severity: warn
     columns:
       - name: record_sk
         description: Stable surrogate key md5(tenant_id || source_system || source_primary_key)
@@ -572,6 +580,8 @@ models:
       - test_freshness:
           column_name: airbyte_emitted_at
           source_name: email
+          config:
+            severity: warn
     columns:
       - name: record_sk
         description: Stable surrogate key md5(tenant_id || source_system || source_primary_key)
