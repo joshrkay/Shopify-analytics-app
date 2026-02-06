@@ -203,8 +203,8 @@ class BackfillStateGuard:
         # 2. Clear entitlement cache
         self._clear_caches()
 
-        # 3. Audit log
-        self._log_backfill_completion(request_id, source_system, sla_key)
+        # NOTE: Audit events are now emitted by the executor via
+        # services/audit_logger.py (backfill.completed / backfill.failed).
 
         logger.info(
             "backfill_state_guard.completion_processed",
@@ -253,45 +253,6 @@ class BackfillStateGuard:
             logger.warning(
                 "backfill_state_guard.cache_clear_failed",
                 extra={"tenant_id": self.tenant_id},
-                exc_info=True,
-            )
-
-    def _log_backfill_completion(
-        self,
-        request_id: str,
-        source_system: str,
-        sla_key: Optional[str],
-    ) -> None:
-        """Log backfill completion audit event."""
-        try:
-            from src.platform.audit import (
-                AuditAction,
-                AuditOutcome,
-                log_system_audit_event_sync,
-            )
-
-            log_system_audit_event_sync(
-                db=self.db,
-                tenant_id=self.tenant_id,
-                action=AuditAction.BACKFILL_COMPLETED,
-                resource_type="historical_backfill_request",
-                resource_id=request_id,
-                metadata={
-                    "source_system": source_system,
-                    "sla_key": sla_key,
-                    "freshness_recalculated": True,
-                    "caches_cleared": True,
-                },
-                source="system",
-                outcome=AuditOutcome.SUCCESS,
-            )
-        except Exception:
-            logger.warning(
-                "backfill_state_guard.audit_log_failed",
-                extra={
-                    "tenant_id": self.tenant_id,
-                    "request_id": request_id,
-                },
                 exc_info=True,
             )
 

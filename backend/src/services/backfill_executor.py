@@ -103,6 +103,10 @@ class BackfillExecutor:
         request.started_at = datetime.now(timezone.utc)
         self.db.commit()
 
+        from src.services.audit_logger import emit_backfill_started
+
+        emit_backfill_started(self.db, request, total_chunks=len(jobs))
+
         logger.info(
             "backfill_executor.jobs_created",
             extra={
@@ -330,6 +334,16 @@ class BackfillExecutor:
 
         self.db.commit()
 
+        # Emit audit events for terminal transitions
+        if all_success or all_cancelled:
+            from src.services.audit_logger import emit_backfill_completed
+
+            emit_backfill_completed(self.db, request)
+        elif any_terminal_failure:
+            from src.services.audit_logger import emit_backfill_failed
+
+            emit_backfill_failed(self.db, request)
+
         # Trigger completion hooks when backfill reaches terminal state
         if all_success or all_cancelled or any_terminal_failure:
             self._on_request_terminal(request)
@@ -377,6 +391,16 @@ class BackfillExecutor:
             job.mark_paused()
 
         self.db.commit()
+
+        request = (
+            self.db.query(HistoricalBackfillRequest)
+            .filter(HistoricalBackfillRequest.id == request_id)
+            .first()
+        )
+        if request:
+            from src.services.audit_logger import emit_backfill_paused
+
+            emit_backfill_paused(self.db, request, paused_chunks=len(jobs))
 
         logger.info(
             "backfill_executor.request_paused",

@@ -973,7 +973,8 @@ class TestBackfillExecutorCreateJobs:
         assert jobs[0].chunk_index == 0
         assert jobs[1].chunk_index == 1
 
-    def test_transitions_request_to_running(self):
+    @patch("src.services.audit_logger.emit_backfill_started")
+    def test_transitions_request_to_running(self, mock_emit):
         mock_db = MagicMock()
         executor = BackfillExecutor(mock_db)
 
@@ -1409,8 +1410,7 @@ class TestBackfillStateGuardCompletion:
         guard = BackfillStateGuard(mock_db, "tenant_1")
 
         with patch.object(guard, "_recalculate_freshness") as mock_recalc, \
-             patch.object(guard, "_clear_caches"), \
-             patch.object(guard, "_log_backfill_completion"):
+             patch.object(guard, "_clear_caches"):
             guard.on_backfill_completed("req_1", "shopify")
             mock_recalc.assert_called_once_with("shopify_orders")
 
@@ -1419,34 +1419,25 @@ class TestBackfillStateGuardCompletion:
         guard = BackfillStateGuard(mock_db, "tenant_1")
 
         with patch.object(guard, "_recalculate_freshness"), \
-             patch.object(guard, "_clear_caches") as mock_clear, \
-             patch.object(guard, "_log_backfill_completion"):
+             patch.object(guard, "_clear_caches") as mock_clear:
             guard.on_backfill_completed("req_1", "shopify")
             mock_clear.assert_called_once()
 
-    def test_on_backfill_completed_logs_audit(self):
+    def test_on_backfill_completed_no_direct_audit(self):
+        """Completion no longer emits audit directly (moved to executor)."""
         mock_db = MagicMock()
         guard = BackfillStateGuard(mock_db, "tenant_1")
 
         with patch.object(guard, "_recalculate_freshness"), \
-             patch.object(guard, "_clear_caches"), \
-             patch.object(guard, "_log_backfill_completion") as mock_log:
+             patch.object(guard, "_clear_caches"):
             guard.on_backfill_completed("req_1", "shopify")
-            mock_log.assert_called_once_with("req_1", "shopify", "shopify_orders")
+
+        assert not hasattr(guard, "_log_backfill_completion")
 
     def test_completion_survives_freshness_failure(self):
         """Completion doesn't crash if freshness recalc fails."""
         mock_db = MagicMock()
         guard = BackfillStateGuard(mock_db, "tenant_1")
-
-        with patch.object(
-            guard, "_recalculate_freshness", side_effect=Exception("DB down")
-        ), patch.object(guard, "_clear_caches"), \
-             patch.object(guard, "_log_backfill_completion"):
-            # Should not raise — _recalculate_freshness has its own try/except
-            # but since we patched it to raise, the outer on_backfill_completed
-            # will catch it via the method's own error handling
-            pass
 
         # Test the internal error handling of _recalculate_freshness directly
         with patch(

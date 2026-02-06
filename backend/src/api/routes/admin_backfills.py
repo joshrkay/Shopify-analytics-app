@@ -38,12 +38,6 @@ from src.models.historical_backfill import (
     HistoricalBackfillRequest,
     HistoricalBackfillStatus,
 )
-from src.platform.audit import (
-    AuditAction,
-    AuditEvent,
-    AuditOutcome,
-    write_audit_log_sync,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -136,18 +130,10 @@ async def create_backfill_request(
         )
 
         if not is_new and existing:
-            _log_audit(
-                db=db,
-                tenant_id=body.tenant_id,
-                user_id=auth.clerk_user_id,
-                resource_id=existing.id,
-                correlation_id=correlation_id,
-                metadata={
-                    "source_system": body.source_system.value,
-                    "start_date": body.start_date.isoformat(),
-                    "end_date": body.end_date.isoformat(),
-                    "idempotent_match": True,
-                },
+            from src.services.audit_logger import emit_backfill_requested
+
+            emit_backfill_requested(
+                db, existing, correlation_id=correlation_id,
             )
 
             response_data = BackfillRequestCreatedResponse(
@@ -182,19 +168,10 @@ async def create_backfill_request(
         db.add(new_request)
         db.flush()
 
-        _log_audit(
-            db=db,
-            tenant_id=body.tenant_id,
-            user_id=auth.clerk_user_id,
-            resource_id=new_request.id,
-            correlation_id=correlation_id,
-            metadata={
-                "source_system": body.source_system.value,
-                "start_date": body.start_date.isoformat(),
-                "end_date": body.end_date.isoformat(),
-                "reason": body.reason,
-                "idempotent_match": False,
-            },
+        from src.services.audit_logger import emit_backfill_requested
+
+        emit_backfill_requested(
+            db, new_request, correlation_id=correlation_id,
         )
 
         logger.info(
@@ -263,34 +240,3 @@ def _to_response(record: HistoricalBackfillRequest) -> BackfillRequestResponse:
     )
 
 
-def _log_audit(
-    db: Session,
-    tenant_id: str,
-    user_id: str,
-    resource_id: str,
-    correlation_id: str,
-    metadata: dict,
-) -> None:
-    """Write audit event for backfill operations."""
-    try:
-        event = AuditEvent(
-            tenant_id=tenant_id,
-            action=AuditAction.BACKFILL_REQUESTED,
-            user_id=user_id,
-            resource_type="historical_backfill",
-            resource_id=resource_id,
-            metadata=metadata,
-            correlation_id=correlation_id,
-            source="api",
-            outcome=AuditOutcome.SUCCESS,
-        )
-        write_audit_log_sync(db, event)
-    except Exception as exc:
-        logger.warning(
-            "Failed to write backfill audit event",
-            extra={
-                "resource_id": resource_id,
-                "tenant_id": tenant_id,
-                "error": str(exc),
-            },
-        )
