@@ -179,6 +179,38 @@ services:
         sync: false
 
   # ============================================
+  # SUPERSET (Embedded Analytics)
+  # ============================================
+  - type: web
+    name: markinsight-superset
+    runtime: docker
+    dockerfilePath: ./docker/superset.Dockerfile
+    dockerContext: .
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    region: oregon
+    plan: standard
+    envVars:
+      - key: SUPERSET_SECRET_KEY
+        sync: false
+      - key: SUPERSET_METADATA_DB_URI
+        fromDatabase:
+          name: markinsight-superset-db
+          property: connectionString
+      - key: SUPERSET_JWT_SECRET_CURRENT
+        sync: false
+      - key: SUPERSET_JWT_SECRET_PREVIOUS
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: markinsight-redis
+          property: connectionString
+      - key: TALISMAN_ENABLED
+        value: "true"
+
+  # ============================================
   # REDIS: IN-MEMORY CACHE & QUEUE
   # ============================================
   - type: redis
@@ -198,4 +230,12 @@ databases:
     plan: starter
     region: oregon
     # PostgreSQL version
+    postgresMajorVersion: 15
+
+  # Superset metadata database (separate from application data)
+  - name: markinsight-superset-db
+    databaseName: superset_metadata
+    user: superset_user
+    plan: starter
+    region: oregon
     postgresMajorVersion: 15

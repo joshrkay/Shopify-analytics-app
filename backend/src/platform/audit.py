@@ -213,6 +213,15 @@ class AuditAction(str, Enum):
     ROOT_CAUSE_SIGNAL_GENERATED = "data.quality.root_cause_generated"
     ROOT_CAUSE_SIGNAL_UPDATED = "data.quality.root_cause_updated"
 
+    # Superset Analytics events (Story 5.1.7)
+    ANALYTICS_DASHBOARD_VIEWED = "analytics.dashboard.viewed"
+    ANALYTICS_EXPLORE_ACCESSED = "analytics.explore.accessed"
+    ANALYTICS_ACCESS_DENIED = "analytics.access.denied"
+    ANALYTICS_CROSS_TENANT_BLOCKED = "analytics.cross_tenant.blocked"
+    ANALYTICS_TOKEN_GENERATED = "analytics.token.generated"
+    ANALYTICS_TOKEN_REFRESHED = "analytics.token.refreshed"
+    ANALYTICS_TOKEN_EXPIRED = "analytics.token.expired"
+
 
 class AuditOutcome(str, Enum):
     """Outcome of the audited action."""

@@ -1,0 +1,126 @@
+# Superset Dataset: Fact Orders (Canonical v1)
+# Source: analytics/models/canonical/fact_orders_v1.sql
+#
+# Column allow-list: ONLY columns listed below are exposed in Superset.
+# PII columns (customer_id) and internal columns are excluded.
+#
+# IMPORTANT:
+# - No calculated metrics in Superset — all calculations live in dbt
+# - RLS enforced via tenant_id
+# - Grain: one row per order
+
+dataset:
+  table_name: fact_orders
+  schema: analytics
+  description: |
+    Canonical orders fact table (v1). Source of truth for Shopify revenue.
+    Grain: one row per order.
+    Customer IDs are pseudonymized (MD5 hash) at the dbt layer but still
+    excluded from Superset to prevent any PII exposure.
+
+  dbt_model: fact_orders_v1
+  metric_version: v1
+  version_status: active
+
+  columns:
+    - column_name: id
+      type: VARCHAR
+      description: Surrogate key (MD5 of tenant_id + order_id)
+      filterable: false
+      groupby: false
+
+    - column_name: tenant_id
+      type: VARCHAR
+      description: Tenant identifier (RLS enforced — never expose to users)
+      filterable: false
+      groupby: false
+      is_rls_column: true
+
+    - column_name: order_id
+      type: VARCHAR
+      description: Shopify order ID
+      filterable: true
+      groupby: false
+
+    - column_name: order_date
+      type: TIMESTAMP
+      description: Order date in tenant's local timezone
+      filterable: true
+      groupby: true
+      is_dttm: true
+
+    - column_name: revenue_gross
+      type: NUMERIC
+      description: Total revenue including tax
+      filterable: false
+      groupby: false
+
+    - column_name: revenue_net
+      type: NUMERIC
+      description: Revenue before tax (default for ROAS calculations)
+      filterable: false
+      groupby: false
+
+    - column_name: currency
+      type: VARCHAR
+      description: Currency code (e.g., USD, CAD)
+      filterable: true
+      groupby: true
+
+    - column_name: is_refund
+      type: BOOLEAN
+      description: Whether the order is a refund
+      filterable: true
+      groupby: true
+
+  # Columns explicitly EXCLUDED (PII or internal):
+  # - customer_id: pseudonymized but still a personal identifier
+  # - source_system: internal lineage metadata
+  # - source_primary_key: internal lineage metadata
+  # - updated_at: internal timestamp
+  # - ingested_at: internal timestamp
+  # - dbt_updated_at: internal timestamp
+
+  metrics:
+    - metric_name: total_revenue_gross
+      expression: SUM(revenue_gross)
+      description: Total gross revenue
+
+    - metric_name: total_revenue_net
+      expression: SUM(revenue_net)
+      description: Total net revenue
+
+    - metric_name: order_count
+      expression: COUNT(order_id)
+      description: Number of orders
+
+    - metric_name: avg_order_value
+      expression: AVG(revenue_gross)
+      description: Average order value (gross)
+
+    - metric_name: unique_order_count
+      expression: COUNT(DISTINCT order_id)
+      description: Number of distinct orders
+
+  rls:
+    enabled: true
+    clause: "tenant_id = '{{ current_user.tenant_id }}'"
+
+  guardrails:
+    max_date_range_days: 90
+    query_timeout_seconds: 20
+    row_limit: 50000
+    cache_ttl_minutes: 30
+
+  visualizations_allowed:
+    - line
+    - bar
+    - pie
+    - table
+    - number
+    - area
+
+  visualizations_disallowed:
+    - scatter
+    - geo_map
+    - box_plot

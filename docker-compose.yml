@@ -48,6 +48,35 @@ services:
       retries: 5
 
   # =============================================================================
+  # Apache Superset (Embedded Analytics)
+  # =============================================================================
+  superset:
+    build:
+      context: .
+      dockerfile: docker/superset.Dockerfile
+    container_name: markinsight-superset
+    ports:
+      - "8088:8088"
+    environment:
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY:-superset-secret-key-for-local-dev-only}
+      - SUPERSET_METADATA_DB_URI=postgresql://markinsight_user:localdev123@postgres:5432/superset_metadata
+      - SUPERSET_JWT_SECRET_CURRENT=${SUPERSET_JWT_SECRET:-test-jwt-secret-for-dev}
+      - SUPERSET_JWT_SECRET_PREVIOUS=${SUPERSET_JWT_SECRET_PREVIOUS:-}
+      - REDIS_URL=redis://redis:6379/1
+      - TALISMAN_ENABLED=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+
+  # =============================================================================
   # Backend API (FastAPI)
   # =============================================================================
   backend:

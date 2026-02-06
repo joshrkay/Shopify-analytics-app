@@ -1,0 +1,159 @@
+# Superset Dataset: Fact Campaign Performance (Canonical v1)
+# Source: analytics/models/canonical/fact_campaign_performance_v1.sql
+#
+# Column allow-list: ONLY columns listed below are exposed in Superset.
+# Internal columns (source_system, source_primary_key) are excluded.
+#
+# IMPORTANT:
+# - attributed_revenue is from ad platforms (NOT Shopify revenue)
+# - Actual revenue (Shopify) lives in fact_orders
+# - RLS enforced via tenant_id
+# - Grain: one row per tenant + source_system + campaign + ad_set + date
+
+dataset:
+  table_name: fact_campaign_performance
+  schema: analytics
+  description: |
+    Canonical campaign performance fact table (v1). Multi-platform campaign data.
+    Sources: Meta (Facebook), Google Ads, TikTok, Snapchat.
+    Attributed revenue here is from ad platforms; actual Shopify revenue
+    lives in fact_orders. ROAS calculations use both tables.
+
+  dbt_model: fact_campaign_performance_v1
+  metric_version: v1
+  version_status: active
+
+  columns:
+    - column_name: id
+      type: VARCHAR
+      description: Surrogate key
+      filterable: false
+      groupby: false
+
+    - column_name: tenant_id
+      type: VARCHAR
+      description: Tenant identifier (RLS enforced)
+      filterable: false
+      groupby: false
+      is_rls_column: true
+
+    - column_name: campaign_date
+      type: TIMESTAMP
+      description: Campaign performance date
+      filterable: true
+      groupby: true
+      is_dttm: true
+
+    - column_name: channel
+      type: VARCHAR
+      description: Marketing channel (facebook, google, tiktok, snapchat)
+      filterable: true
+      groupby: true
+
+    - column_name: campaign_id
+      type: VARCHAR
+      description: Campaign identifier
+      filterable: true
+      groupby: true
+
+    - column_name: campaign_name
+      type: VARCHAR
+      description: Human-readable campaign name
+      filterable: true
+      groupby: true
+
+    - column_name: ad_set_id
+      type: VARCHAR
+      description: Ad set / ad group identifier (nullable)
+      filterable: true
+      groupby: true
+
+    - column_name: attributed_revenue
+      type: NUMERIC
+      description: Revenue attributed by the ad platform (not Shopify revenue)
+      filterable: false
+      groupby: false
+
+    - column_name: spend
+      type: NUMERIC
+      description: Campaign spend amount
+      filterable: false
+      groupby: false
+
+    - column_name: conversions
+      type: INTEGER
+      description: Number of conversions attributed by the ad platform
+      filterable: false
+      groupby: false
+
+    - column_name: impressions
+      type: INTEGER
+      description: Number of ad impressions
+      filterable: false
+      groupby: false
+
+    - column_name: clicks
+      type: INTEGER
+      description: Number of ad clicks
+      filterable: false
+      groupby: false
+
+    - column_name: currency
+      type: VARCHAR
+      description: Currency code
+      filterable: true
+      groupby: true
+
+  # Columns explicitly EXCLUDED (internal):
+  # - source_system: internal lineage
+  # - source_primary_key: internal lineage
+  # - updated_at: internal timestamp
+  # - dbt_updated_at: internal timestamp
+
+  metrics:
+    - metric_name: total_attributed_revenue
+      expression: SUM(attributed_revenue)
+      description: Total revenue attributed by ad platforms
+
+    - metric_name: total_spend
+      expression: SUM(spend)
+      description: Total campaign spend
+
+    - metric_name: total_conversions
+      expression: SUM(conversions)
+      description: Total conversions
+
+    - metric_name: total_impressions
+      expression: SUM(impressions)
+      description: Total impressions
+
+    - metric_name: total_clicks
+      expression: SUM(clicks)
+      description: Total clicks
+
+    - metric_name: attributed_roas
+      expression: SUM(attributed_revenue) / NULLIF(SUM(spend), 0)
+      description: Return on ad spend (attributed revenue / spend)
+
+  rls:
+    enabled: true
+    clause: "tenant_id = '{{ current_user.tenant_id }}'"
+
+  guardrails:
+    max_date_range_days: 90
+    query_timeout_seconds: 20
+    row_limit: 50000
+    cache_ttl_minutes: 30
+
+  visualizations_allowed:
+    - line
+    - bar
+    - pie
+    - table
+    - number
+    - area
+
+  visualizations_disallowed:
+    - scatter
+    - geo_map
+    - box_plot

@@ -6,11 +6,17 @@ Provides fixtures for:
 - Device emulation
 - Network throttling
 - Authentication
+- RLS isolation testing
 """
 
+import sys
 import os
 import pytest
+from unittest.mock import MagicMock
 from playwright.async_api import async_playwright
+
+# Add parent directory to path for Superset module imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 # Superset configuration
@@ -140,3 +146,86 @@ async def tablet_page(page, ipad_config):
         'height': ipad_config.viewport_height,
     })
     yield page
+
+
+# =============================================================================
+# RLS Isolation Test Fixtures
+# =============================================================================
+
+@pytest.fixture
+def merchant_user_context():
+    """Single-tenant merchant user context for RLS testing."""
+    return {
+        "user_id": "user_merchant_001",
+        "tenant_id": "tenant_abc",
+        "roles": ["merchant_admin"],
+        "allowed_tenants": ["tenant_abc"],
+        "billing_tier": "growth",
+        "is_agency_user": False,
+        "is_super_admin": False,
+    }
+
+
+@pytest.fixture
+def agency_user_context():
+    """Multi-tenant agency user context for RLS testing."""
+    return {
+        "user_id": "user_agency_001",
+        "tenant_id": "tenant_abc",
+        "roles": ["agency_admin"],
+        "allowed_tenants": ["tenant_abc", "tenant_def", "tenant_ghi"],
+        "billing_tier": "enterprise",
+        "is_agency_user": True,
+        "is_super_admin": False,
+    }
+
+
+@pytest.fixture
+def super_admin_context():
+    """Super admin context for RLS testing."""
+    return {
+        "user_id": "user_admin_001",
+        "tenant_id": "tenant_abc",
+        "roles": ["super_admin"],
+        "allowed_tenants": [],
+        "billing_tier": "enterprise",
+        "is_agency_user": False,
+        "is_super_admin": True,
+    }
+
+
+@pytest.fixture
+def mock_superset_api_client():
+    """Mock Superset API client with configurable responses."""
+    client = MagicMock()
+
+    datasets_response = MagicMock()
+    datasets_response.json.return_value = {
+        "result": [
+            {"table_name": "fact_orders"},
+            {"table_name": "fact_marketing_spend"},
+        ]
+    }
+
+    rls_response = MagicMock()
+    rls_response.json.return_value = {
+        "result": [
+            {
+                "tables": [
+                    {"table_name": "fact_orders"},
+                    {"table_name": "fact_marketing_spend"},
+                ],
+                "clause": "tenant_id = '{{ current_user.tenant_id }}'",
+            }
+        ]
+    }
+
+    def get_side_effect(url, **kwargs):
+        if "dataset" in url:
+            return datasets_response
+        if "rowlevelsecurity" in url:
+            return rls_response
+        return MagicMock()
+
+    client.get.side_effect = get_side_effect
+    return client

@@ -2,6 +2,7 @@ apache-superset==3.0.1
 psycopg2-binary==2.9.9
 redis==5.0.1
 PyJWT==2.8.1
+cryptography>=41.0.0
 python-dateutil==2.8.2
 gunicorn==21.2.0
 gevent==23.9.1
