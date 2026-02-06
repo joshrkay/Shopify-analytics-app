@@ -2090,21 +2090,20 @@ class TestBackfillStatusServiceListRequests:
         req_pending = _make_mock_request(
             id="req_1", status=HistoricalBackfillStatus.PENDING
         )
-        req_running = _make_mock_request(
-            id="req_2", status=HistoricalBackfillStatus.RUNNING
-        )
 
         mock_db = MagicMock()
-        mock_db.query.return_value.order_by.return_value.all.return_value = [
-            req_pending, req_running,
+        # With DB pre-filter, chain is: query().filter().order_by().all()
+        # MagicMock auto-chains, so set the terminal .all() to return
+        # only the pre-filtered results (DB would have filtered out RUNNING).
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            req_pending,
         ]
-        # Jobs query returns empty for batch
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+        # Jobs batch query returns empty
+        mock_db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.all.return_value = []
 
         service = BackfillStatusService(mock_db)
         result = service.list_requests(status_filter="pending")
 
-        # Only the pending one should pass the filter
         assert len(result) == 1
         assert result[0]["status"] == "pending"
 

@@ -89,6 +89,32 @@ class BackfillStatusService:
                 HistoricalBackfillRequest.tenant_id == tenant_id
             )
 
+        # Pre-filter at DB level where exposed status maps cleanly
+        # to internal statuses ("running"/"paused" both map to RUNNING,
+        # so those still need Python-level refinement).
+        _STATUS_DB_FILTER = {
+            "pending": [
+                HistoricalBackfillStatus.PENDING,
+                HistoricalBackfillStatus.APPROVED,
+            ],
+            "completed": [
+                HistoricalBackfillStatus.COMPLETED,
+                HistoricalBackfillStatus.CANCELLED,
+            ],
+            "failed": [
+                HistoricalBackfillStatus.FAILED,
+                HistoricalBackfillStatus.REJECTED,
+            ],
+            "running": [HistoricalBackfillStatus.RUNNING],
+            "paused": [HistoricalBackfillStatus.RUNNING],
+        }
+        if status_filter and status_filter in _STATUS_DB_FILTER:
+            query = query.filter(
+                HistoricalBackfillRequest.status.in_(
+                    _STATUS_DB_FILTER[status_filter]
+                )
+            )
+
         requests = query.order_by(
             HistoricalBackfillRequest.created_at.desc()
         ).all()
@@ -114,6 +140,8 @@ class BackfillStatusService:
         for req in requests:
             jobs = jobs_by_request.get(req.id, [])
             status_data = self._build_status(req, jobs)
+            # "running" vs "paused" both map to RUNNING at DB level,
+            # so Python-level check is still needed for those two.
             if status_filter and status_data["status"] != status_filter:
                 continue
             results.append(status_data)

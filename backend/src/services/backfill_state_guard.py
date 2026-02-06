@@ -27,7 +27,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from src.models.data_availability import AvailabilityState, AvailabilityReason
+from src.models.data_availability import AvailabilityState
 from src.services.data_availability_service import (
     CONNECTION_SOURCE_TO_SLA_KEY,
     resolve_sla_key,

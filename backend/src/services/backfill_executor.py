@@ -76,6 +76,16 @@ class BackfillExecutor:
         self.db = db_session
         self._planner = BackfillPlanner()
 
+    def _get_request(
+        self, request_id: str
+    ) -> Optional[HistoricalBackfillRequest]:
+        """Fetch a backfill request by ID."""
+        return (
+            self.db.query(HistoricalBackfillRequest)
+            .filter(HistoricalBackfillRequest.id == request_id)
+            .first()
+        )
+
     # ------------------------------------------------------------------
     # Job creation
     # ------------------------------------------------------------------
@@ -293,11 +303,7 @@ class BackfillExecutor:
         if not jobs:
             return
 
-        request = (
-            self.db.query(HistoricalBackfillRequest)
-            .filter(HistoricalBackfillRequest.id == request_id)
-            .first()
-        )
+        request = self._get_request(request_id)
         if not request:
             return
 
@@ -392,11 +398,7 @@ class BackfillExecutor:
 
         self.db.commit()
 
-        request = (
-            self.db.query(HistoricalBackfillRequest)
-            .filter(HistoricalBackfillRequest.id == request_id)
-            .first()
-        )
+        request = self._get_request(request_id)
         if request:
             from src.services.audit_logger import emit_backfill_paused
 
@@ -428,11 +430,7 @@ class BackfillExecutor:
             job.next_retry_at = None
 
         if jobs:
-            request = (
-                self.db.query(HistoricalBackfillRequest)
-                .filter(HistoricalBackfillRequest.id == request_id)
-                .first()
-            )
+            request = self._get_request(request_id)
             if request and request.status != HistoricalBackfillStatus.RUNNING:
                 request.status = HistoricalBackfillStatus.RUNNING
 
