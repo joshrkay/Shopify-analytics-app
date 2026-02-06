@@ -102,10 +102,78 @@ try:
     import sys
     import time
 
-    # Derive repo root for CI environments (repo root = parents[3])
+    # Derive repo root for CI environments; ensure directories exist
     from pathlib import Path
 
-    _log_path = str(Path(__file__).resolve().parents[3] / ".cursor" / "debug.log")
+    # Try multiple candidate roots; ensure directories exist.
+    _payload_base = {
+        "sessionId": "debug-session",
+        "runId": "baseline",
+        "timestamp": int(time.time() * 1000),
+    }
+    _parents = list(Path(__file__).resolve().parents)
+    _log_paths = []
+    # Relative to repo roots (common CI layouts)
+    if len(_parents) >= 3:
+        _log_paths.append(_parents[2] / ".cursor" / "debug.log")
+    if len(_parents) >= 4:
+        _log_paths.append(_parents[3] / ".cursor" / "debug.log")
+    if len(_parents) >= 5:
+        _log_paths.append(_parents[4] / ".cursor" / "debug.log")
+    # Project root candidates in CI
+    _log_paths.append(Path("/tmp/shopify_analytics_debug.log"))
+    _log_paths.append(Path("/opt/hostedtoolcache/tmp/shopify_analytics_debug.log"))
+    _log_paths.append(Path("/home/runner/work/Shopify-analytics-app/Shopify-analytics-app/.cursor/debug.log"))
+    _log_paths.append(Path("/home/runner/work/Shopify-analytics-app/.cursor/debug.log"))
+    _log_paths.append(Path("/home/runner/.cursor/debug.log"))
+    # Local fallback
+    _log_paths.append(Path(__file__).resolve().parent / ".cursor" / "debug.log")
+
+    def _write_log(payload: dict):
+        for _path in _log_paths:
+            try:
+                _path.parent.mkdir(parents=True, exist_ok=True)
+                with open(_path, "a", encoding="utf-8") as _f:
+                    _f.write(json.dumps(payload) + "\n")
+                return f"file:{_path}"
+            except Exception:
+                continue
+        # HTTP fallback (best-effort)
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                "http://127.0.0.1:7242/ingest/c1515561-3278-4fa4-b574-7082f5f827eb",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=2)
+            return "http:fallback"
+        except Exception:
+            return "none"
+
+    # Emit logs
+    _write_log({**_payload_base,
+                "hypothesisId": "A",
+                "location": "src/models/__init__.py:agent-log-1",
+                "message": "sys.path snapshot",
+                "data": {"sys_path": sys.path, "cwd": os.getcwd(), "__file__": __file__}})
+    _write_log({**_payload_base,
+                "hypothesisId": "B",
+                "location": "src/models/__init__.py:agent-log-2",
+                "message": "merchant_data_health existence",
+                "data": {
+                    "file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), "merchant_data_health.py")),
+                    "file_dir": os.path.dirname(__file__),
+                }})
+    _write_log({**_payload_base,
+                "hypothesisId": "C",
+                "location": "src/models/__init__.py:agent-log-3",
+                "message": "__file__ resolution",
+                "data": {
+                    "init_file": __file__,
+                    "dir_contents_sample": sorted(os.listdir(os.path.dirname(__file__)))[:10],
+                }})
     _now = int(time.time() * 1000)
     _entries = [
         {
@@ -150,7 +218,7 @@ except Exception:
     pass
 # endregion
 
-from src.models.merchant_data_health import (
+from .merchant_data_health import (
     MerchantHealthState,
     MerchantDataHealthResponse,
 )

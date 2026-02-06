@@ -86,64 +86,98 @@ class FreshnessSLAConfigResponse(BaseModel):
 
 
 # Merchant data health response (Story 4.3)
-# region agent log
-# Debug instrumentation for module resolution (Debug Mode)
-# Hypotheses:
-# D) backend/src missing from sys.path in regression env
-# E) merchant_data_health.py not visible in runtime package
-try:
-    import json, os, sys, time
-    from pathlib import Path
+# region agent log helper (Debug Mode)
+import json, os, sys, time
+from pathlib import Path
 
-    _log_path = str(Path(__file__).resolve().parents[3] / ".cursor" / "debug.log")
-    _now = int(time.time() * 1000)
-    with open(_log_path, "a", encoding="utf-8") as _f:
-        _f.write(json.dumps({
-            "sessionId": "debug-session",
-            "runId": "baseline",
-            "hypothesisId": "D",
-            "location": "src/api/routes/data_health.py:agent-log-1",
-            "message": "pre-import sys.path snapshot",
-            "data": {
-                "sys_path": sys.path,
-                "cwd": os.getcwd(),
-                "file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", "models", "merchant_data_health.py")),
-            },
-            "timestamp": _now,
-        }) + "\n")
-except Exception:
-    # Do not break imports during debugging
-    pass
+_payload_base = {
+    "sessionId": "debug-session",
+    "runId": "baseline",
+    "timestamp": int(time.time() * 1000),
+}
+_parents = list(Path(__file__).resolve().parents)
+_log_paths = []
+if len(_parents) >= 3:
+    _log_paths.append(_parents[2] / ".cursor" / "debug.log")
+if len(_parents) >= 4:
+    _log_paths.append(_parents[3] / ".cursor" / "debug.log")
+if len(_parents) >= 5:
+    _log_paths.append(_parents[4] / ".cursor" / "debug.log")
+_log_paths.append(Path("/tmp/shopify_analytics_debug.log"))
+_log_paths.append(Path("/opt/hostedtoolcache/tmp/shopify_analytics_debug.log"))
+_log_paths.append(Path("/home/runner/work/Shopify-analytics-app/Shopify-analytics-app/.cursor/debug.log"))
+_log_paths.append(Path("/home/runner/work/Shopify-analytics-app/.cursor/debug.log"))
+_log_paths.append(Path("/home/runner/.cursor/debug.log"))
+_log_paths.append(Path(__file__).resolve().parent / ".cursor" / "debug.log")
+
+def _write_log(payload: dict):
+    for _path in _log_paths:
+        try:
+            _path.parent.mkdir(parents=True, exist_ok=True)
+            with open(_path, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps(payload) + "\n")
+            return f"file:{_path}"
+        except Exception:
+            continue
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            "http://127.0.0.1:7242/ingest/c1515561-3278-4fa4-b574-7082f5f827eb",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=2)
+        return "http:fallback"
+    except Exception:
+        return "none"
 # endregion
 
+_write_log({
+    **_payload_base,
+    "hypothesisId": "D",
+    "location": "src/api/routes/data_health.py:agent-log-1",
+    "message": "pre-import sys.path snapshot",
+    "data": {
+        "sys_path": sys.path,
+        "cwd": os.getcwd(),
+        "file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", "models", "merchant_data_health.py")),
+        "__file__": __file__,
+    },
+})
+
 try:
-    from src.models.merchant_data_health import MerchantDataHealthResponse
+    from ...models.merchant_data_health import MerchantDataHealthResponse
 except ModuleNotFoundError as exc:
-    # region agent log
+    payload = {
+        **_payload_base,
+        "hypothesisId": "E",
+        "location": "src/api/routes/data_health.py:agent-log-2",
+        "message": "merchant_data_health import failed",
+        "data": {
+            "error": str(exc),
+            "sys_path": sys.path,
+            "cwd": os.getcwd(),
+            "file_exists": os.path.exists(Path(__file__).resolve().parent.parent / "models" / "merchant_data_health.py"),
+        },
+    }
+    _write_log(payload)
+    # Retry by adding repo roots to sys.path
+    repo_roots = []
+    if len(_parents) >= 3:
+        repo_roots.append(str(_parents[2]))
+    if len(_parents) >= 4:
+        repo_roots.append(str(_parents[3]))
+    for root in repo_roots:
+        if root not in sys.path:
+            sys.path.insert(0, root)
     try:
-        import json, os, sys, time
-        from pathlib import Path
-        _log_path = str(Path(__file__).resolve().parents[3] / ".cursor" / "debug.log")
-        _now = int(time.time() * 1000)
-        with open(_log_path, "a", encoding="utf-8") as _f:
-            _f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "baseline",
-                "hypothesisId": "E",
-                "location": "src/api/routes/data_health.py:agent-log-2",
-                "message": "merchant_data_health import failed",
-                "data": {
-                    "error": str(exc),
-                    "sys_path": sys.path,
-                    "cwd": os.getcwd(),
-                    "file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", "models", "merchant_data_health.py")),
-                },
-                "timestamp": _now,
-            }) + "\n")
-    except Exception:
-        pass
-    # endregion
-    raise
+        from ...models.merchant_data_health import MerchantDataHealthResponse
+    except ModuleNotFoundError:
+        _write_log({**payload, "message": "retry_import_failed"})
+        raise
+    else:
+        _write_log({**payload, "message": "retry_import_succeeded"})
 
 
 # =============================================================================
