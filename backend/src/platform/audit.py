@@ -197,6 +197,11 @@ class AuditAction(str, Enum):
     # Identity collision events
     IDENTITY_COLLISION_DETECTED = "identity.identity_collision_detected"
 
+    # Data Freshness events
+    DATA_FRESHNESS_STALE = "data.freshness.stale"
+    DATA_FRESHNESS_UNAVAILABLE = "data.freshness.unavailable"
+    DATA_FRESHNESS_RECOVERED = "data.freshness.recovered"
+
 
 class AuditOutcome(str, Enum):
     """Outcome of the audited action."""
@@ -1173,6 +1178,25 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
         required_fields=("retention_period", "records_affected"),
         risk_level="high",
         compliance_tags=("SOC2", "GDPR"),
+    ),
+    # Data Freshness events
+    AuditAction.DATA_FRESHNESS_STALE: AuditableEventMetadata(
+        description="Data source transitioned to STALE state",
+        required_fields=("source", "previous_state", "new_state", "detected_at"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.DATA_FRESHNESS_UNAVAILABLE: AuditableEventMetadata(
+        description="Data source transitioned to UNAVAILABLE state",
+        required_fields=("source", "previous_state", "new_state", "detected_at"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.DATA_FRESHNESS_RECOVERED: AuditableEventMetadata(
+        description="Data source recovered to FRESH state",
+        required_fields=("source", "previous_state", "new_state", "detected_at"),
+        risk_level="low",
+        compliance_tags=(),
     ),
 }
 
