@@ -90,6 +90,70 @@ from src.models.data_availability import (
     AvailabilityState,
     AvailabilityReason,
 )
+# region agent log
+# Debug instrumentation for module resolution (Debug Mode)
+# Hypotheses:
+# A) backend/src is missing from sys.path during regression runs
+# B) merchant_data_health.py not visible at runtime
+# C) working directory impacts resolution
+try:
+    import json
+    import os
+    import sys
+    import time
+
+    # Derive repo root for CI environments (repo root = parents[3])
+    from pathlib import Path
+
+    _log_path = str(Path(__file__).resolve().parents[3] / ".cursor" / "debug.log")
+    _now = int(time.time() * 1000)
+    _entries = [
+        {
+            "sessionId": "debug-session",
+            "runId": "baseline",
+            "hypothesisId": "A",
+            "location": "src/models/__init__.py:agent-log-1",
+            "message": "sys.path snapshot",
+            "data": {"sys_path": sys.path, "cwd": os.getcwd()},
+            "timestamp": _now,
+        },
+        {
+            "sessionId": "debug-session",
+            "runId": "baseline",
+            "hypothesisId": "B",
+            "location": "src/models/__init__.py:agent-log-2",
+            "message": "merchant_data_health existence",
+            "data": {
+                "file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), "merchant_data_health.py")),
+                "file_dir": os.path.dirname(__file__),
+            },
+            "timestamp": _now + 1,
+        },
+        {
+            "sessionId": "debug-session",
+            "runId": "baseline",
+            "hypothesisId": "C",
+            "location": "src/models/__init__.py:agent-log-3",
+            "message": "__file__ resolution",
+            "data": {
+                "init_file": __file__,
+                "dir_contents_sample": sorted(os.listdir(os.path.dirname(__file__)))[:10],
+            },
+            "timestamp": _now + 2,
+        },
+    ]
+    with open(_log_path, "a", encoding="utf-8") as _f:
+        for _e in _entries:
+            _f.write(json.dumps(_e) + "\n")
+except Exception:
+    # Do not break imports during debugging
+    pass
+# endregion
+
+from src.models.merchant_data_health import (
+    MerchantHealthState,
+    MerchantDataHealthResponse,
+)
 
 __all__ = [
     "TimestampMixin",
@@ -196,4 +260,7 @@ __all__ = [
     "DataAvailability",
     "AvailabilityState",
     "AvailabilityReason",
+    # Merchant Data Health (Story 4.3)
+    "MerchantHealthState",
+    "MerchantDataHealthResponse",
 ]

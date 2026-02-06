@@ -86,7 +86,64 @@ class FreshnessSLAConfigResponse(BaseModel):
 
 
 # Merchant data health response (Story 4.3)
-from src.models.merchant_data_health import MerchantDataHealthResponse
+# region agent log
+# Debug instrumentation for module resolution (Debug Mode)
+# Hypotheses:
+# D) backend/src missing from sys.path in regression env
+# E) merchant_data_health.py not visible in runtime package
+try:
+    import json, os, sys, time
+    from pathlib import Path
+
+    _log_path = str(Path(__file__).resolve().parents[3] / ".cursor" / "debug.log")
+    _now = int(time.time() * 1000)
+    with open(_log_path, "a", encoding="utf-8") as _f:
+        _f.write(json.dumps({
+            "sessionId": "debug-session",
+            "runId": "baseline",
+            "hypothesisId": "D",
+            "location": "src/api/routes/data_health.py:agent-log-1",
+            "message": "pre-import sys.path snapshot",
+            "data": {
+                "sys_path": sys.path,
+                "cwd": os.getcwd(),
+                "file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", "models", "merchant_data_health.py")),
+            },
+            "timestamp": _now,
+        }) + "\n")
+except Exception:
+    # Do not break imports during debugging
+    pass
+# endregion
+
+try:
+    from src.models.merchant_data_health import MerchantDataHealthResponse
+except ModuleNotFoundError as exc:
+    # region agent log
+    try:
+        import json, os, sys, time
+        from pathlib import Path
+        _log_path = str(Path(__file__).resolve().parents[3] / ".cursor" / "debug.log")
+        _now = int(time.time() * 1000)
+        with open(_log_path, "a", encoding="utf-8") as _f:
+            _f.write(json.dumps({
+                "sessionId": "debug-session",
+                "runId": "baseline",
+                "hypothesisId": "E",
+                "location": "src/api/routes/data_health.py:agent-log-2",
+                "message": "merchant_data_health import failed",
+                "data": {
+                    "error": str(exc),
+                    "sys_path": sys.path,
+                    "cwd": os.getcwd(),
+                    "file_exists": os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", "models", "merchant_data_health.py")),
+                },
+                "timestamp": _now,
+            }) + "\n")
+    except Exception:
+        pass
+    # endregion
+    raise
 
 
 # =============================================================================
