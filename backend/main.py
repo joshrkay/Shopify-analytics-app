@@ -21,6 +21,7 @@ from src.api.routes import billing
 from src.api.routes import webhooks_shopify
 from src.api.routes import admin_plans
 from src.api.routes import admin_backfills
+from src.api.routes import admin_explore_guardrails
 from src.api.routes import backfills_status
 from src.api.routes import sync
 from src.api.routes import data_health
@@ -139,6 +140,9 @@ app.include_router(admin_plans.router)
 # Include admin backfill routes (requires super admin)
 # Story 3.4 - Backfill Request API
 app.include_router(admin_backfills.router)
+
+# Include admin explore guardrail routes (Story 5.4)
+app.include_router(admin_explore_guardrails.router)
 
 # Include backfill status routes (requires super admin)
 # Story 3.4 - Backfill Status API

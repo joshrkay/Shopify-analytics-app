@@ -462,6 +462,29 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "runtime_before_cancel_ms",
     ],
 
+    "explore.guardrail_bypass_requested": [
+        "user_id",
+        "dataset",
+        "reason",
+    ],
+
+    "explore.guardrail_bypass_approved": [
+        "user_id",
+        "approved_by",
+        "duration_minutes",
+    ],
+
+    "explore.guardrail_bypass_used": [
+        "user_id",
+        "dataset",
+        "query_hash",
+    ],
+
+    "explore.guardrail_bypass_expired": [
+        "user_id",
+        "expired_at",
+    ],
+
     "explore.bulk_query_detected": [
         "user_id",
         "tenant_id",
@@ -1313,6 +1336,10 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "explore.query_timeout",
         "explore.query_cancelled",
         "explore.bulk_query_detected",
+        "explore.guardrail_bypass_requested",
+        "explore.guardrail_bypass_approved",
+        "explore.guardrail_bypass_used",
+        "explore.guardrail_bypass_expired",
     ],
     "governance": [
         "metric.created",
@@ -1442,6 +1469,10 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
     "anomaly.slow_query": "medium",
     "anomaly.unusual_access_pattern": "medium",
     "explore.bulk_query_detected": "medium",
+    "explore.guardrail_bypass_requested": "high",
+    "explore.guardrail_bypass_approved": "high",
+    "explore.guardrail_bypass_used": "high",
+    "explore.guardrail_bypass_expired": "medium",
 
     # Low - Informational, review daily
     "dashboard.viewed": "low",

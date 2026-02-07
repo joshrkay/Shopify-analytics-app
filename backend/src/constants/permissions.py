@@ -48,6 +48,10 @@ class Role(str, Enum):
     # Super admin (platform-level)
     SUPER_ADMIN = "super_admin"
 
+    # Governance approver roles (platform-level)
+    ANALYTICS_TECH_LEAD = "analytics_tech_lead"
+    SECURITY_ENGINEER = "security_engineer"
+
 
 class RoleCategory(str, Enum):
     """
@@ -69,6 +73,8 @@ ROLE_CATEGORIES = {
     Role.EDITOR: RoleCategory.PLATFORM,
     Role.VIEWER: RoleCategory.PLATFORM,
     Role.SUPER_ADMIN: RoleCategory.PLATFORM,
+    Role.ANALYTICS_TECH_LEAD: RoleCategory.PLATFORM,
+    Role.SECURITY_ENGINEER: RoleCategory.PLATFORM,
 }
 
 
@@ -378,6 +384,10 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
         Permission.ACTIONS_ROLLBACK,
         Permission.ACTIONS_AUDIT,
     ]),
+
+    # --- Governance Approver Roles (platform-level, minimal permissions) ---
+    Role.ANALYTICS_TECH_LEAD: frozenset([]),
+    Role.SECURITY_ENGINEER: frozenset([]),
 }
 
 
@@ -511,6 +521,8 @@ BILLING_TIER_ALLOWED_ROLES = {
     'free': frozenset([
         Role.MERCHANT_ADMIN,
         Role.MERCHANT_VIEWER,
+        Role.ANALYTICS_TECH_LEAD,
+        Role.SECURITY_ENGINEER,
         # Legacy roles
         Role.VIEWER,
         Role.EDITOR,
@@ -519,6 +531,8 @@ BILLING_TIER_ALLOWED_ROLES = {
         Role.MERCHANT_ADMIN,
         Role.MERCHANT_VIEWER,
         Role.AGENCY_VIEWER,  # Limited agency access
+        Role.ANALYTICS_TECH_LEAD,
+        Role.SECURITY_ENGINEER,
         # Legacy roles
         Role.VIEWER,
         Role.EDITOR,
@@ -529,6 +543,8 @@ BILLING_TIER_ALLOWED_ROLES = {
         Role.MERCHANT_VIEWER,
         Role.AGENCY_ADMIN,
         Role.AGENCY_VIEWER,
+        Role.ANALYTICS_TECH_LEAD,
+        Role.SECURITY_ENGINEER,
         # Legacy roles
         Role.VIEWER,
         Role.EDITOR,

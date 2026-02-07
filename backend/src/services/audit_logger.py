@@ -545,6 +545,7 @@ def emit_quality_recovered(
 # ---------------------------------------------------------------------------
 
 _ANALYTICS_RESOURCE_TYPE = "superset_analytics"
+_GUARDRAIL_RESOURCE_TYPE = "explore_guardrail_exception"
 
 
 def emit_dashboard_viewed(
@@ -862,6 +863,139 @@ def emit_token_refreshed(
         logger.warning(
             "audit_logger.emit_token_refreshed_failed",
             extra={"tenant_id": tenant_id, "dashboard_id": dashboard_id},
+            exc_info=True,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Explore guardrail bypass audit event emitters (Story 5.4)
+# ---------------------------------------------------------------------------
+
+def emit_explore_guardrail_bypass_requested(
+    db: Session,
+    exception_record,
+    *,
+    requested_by: str,
+    correlation_id: str | None = None,
+    duration_minutes: int | None = None,
+) -> None:
+    """Emit explore.guardrail_bypass_requested when a request is created."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        metadata = {
+            "user_id": exception_record.user_id,
+            "dataset": exception_record.dataset_names,
+            "reason": exception_record.reason,
+            "requested_by": requested_by,
+        }
+        if duration_minutes is not None:
+            metadata["duration_minutes"] = duration_minutes
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id="system",
+            action=AuditAction.EXPLORE_GUARDRAIL_BYPASS_REQUESTED,
+            resource_type=_GUARDRAIL_RESOURCE_TYPE,
+            resource_id=exception_record.id,
+            metadata=metadata,
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_explore_guardrail_bypass_requested_failed",
+            extra={"exception_id": getattr(exception_record, "id", None)},
+            exc_info=True,
+        )
+
+
+def emit_explore_guardrail_bypass_approved(
+    db: Session,
+    exception_record,
+    *,
+    duration_minutes: int,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit explore.guardrail_bypass_approved when a request is approved."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        metadata = {
+            "user_id": exception_record.user_id,
+            "approved_by": exception_record.approved_by,
+            "duration_minutes": duration_minutes,
+        }
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id="system",
+            action=AuditAction.EXPLORE_GUARDRAIL_BYPASS_APPROVED,
+            resource_type=_GUARDRAIL_RESOURCE_TYPE,
+            resource_id=exception_record.id,
+            metadata=metadata,
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_explore_guardrail_bypass_approved_failed",
+            extra={"exception_id": getattr(exception_record, "id", None)},
+            exc_info=True,
+        )
+
+
+def emit_explore_guardrail_bypass_expired(
+    db: Session,
+    exception_record,
+    *,
+    correlation_id: str | None = None,
+    revoked_by: str | None = None,
+) -> None:
+    """Emit explore.guardrail_bypass_expired when a bypass expires or is revoked."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        metadata = {
+            "user_id": exception_record.user_id,
+            "expired_at": (
+                exception_record.expires_at.isoformat()
+                if exception_record.expires_at
+                else ""
+            ),
+        }
+        if revoked_by:
+            metadata["revoked_by"] = revoked_by
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id="system",
+            action=AuditAction.EXPLORE_GUARDRAIL_BYPASS_EXPIRED,
+            resource_type=_GUARDRAIL_RESOURCE_TYPE,
+            resource_id=exception_record.id,
+            metadata=metadata,
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_explore_guardrail_bypass_expired_failed",
+            extra={"exception_id": getattr(exception_record, "id", None)},
             exc_info=True,
         )
 

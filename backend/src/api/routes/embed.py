@@ -18,6 +18,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Response
+from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from src.platform.tenant_context import get_tenant_context, TenantContext
@@ -31,6 +32,9 @@ from src.services.embed_token_service import (
     TokenValidationError,
     get_embed_token_service,
 )
+from src.database.session import get_db_session
+from src.models.user import User
+from src.services.explore_guardrail_exception_service import ExploreGuardrailExceptionService
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +109,36 @@ def get_service() -> EmbedTokenService:
         )
 
 
+def _build_guardrail_bypass_claim(
+    db: Session,
+    clerk_user_id: str,
+) -> dict:
+    """Build bypass claim payload for embed JWTs."""
+    try:
+        user = (
+            db.query(User)
+            .filter(User.clerk_user_id == clerk_user_id, User.is_active == True)
+            .first()
+        )
+        if not user:
+            return {}
+
+        service = ExploreGuardrailExceptionService(db)
+        bypass = service.build_bypass_claim(user.id)
+        if not bypass:
+            return {}
+        return {
+            "internal_user_id": user.id,
+            "explore_guardrail_bypass": bypass,
+        }
+    except Exception as exc:
+        logger.warning(
+            "Failed to build guardrail bypass claim",
+            extra={"error": str(exc), "clerk_user_id": clerk_user_id},
+        )
+        return {}
+
+
 @router.post("/token", response_model=EmbedTokenResponse)
 @require_permission(Permission.ANALYTICS_VIEW)
 async def generate_embed_token(
@@ -112,6 +146,7 @@ async def generate_embed_token(
     token_request: EmbedTokenRequest,
     response: Response,
     service: EmbedTokenService = Depends(get_service),
+    db: Session = Depends(get_db_session),
 ):
     """
     Generate a JWT token for embedding Superset dashboard.
@@ -146,9 +181,11 @@ async def generate_embed_token(
     )
 
     try:
+        extra_claims = _build_guardrail_bypass_claim(db, tenant_ctx.user_id)
         result = service.generate_embed_token(
             tenant_context=tenant_ctx,
             dashboard_id=token_request.dashboard_id,
+            extra_claims=extra_claims,
         )
 
         # Add CSP headers
@@ -188,6 +225,7 @@ async def refresh_embed_token(
     refresh_request: RefreshTokenRequest,
     response: Response,
     service: EmbedTokenService = Depends(get_service),
+    db: Session = Depends(get_db_session),
 ):
     """
     Refresh an embed token before expiry.
@@ -210,9 +248,11 @@ async def refresh_embed_token(
     )
 
     try:
+        extra_claims = _build_guardrail_bypass_claim(db, tenant_ctx.user_id)
         result = service.refresh_token(
             old_token=refresh_request.current_token,
             tenant_context=tenant_ctx,
+            extra_claims=extra_claims,
         )
 
         # Add CSP headers
