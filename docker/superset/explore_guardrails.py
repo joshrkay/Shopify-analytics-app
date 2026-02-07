@@ -15,6 +15,7 @@ import json
 import os
 import re
 import logging
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -367,13 +368,70 @@ class GuardrailBypassStore:
     ) -> None:
         raise NotImplementedError
 
+    def log_expired(self, exception: GuardrailBypassException) -> None:
+        raise NotImplementedError
+
+
+class GuardrailAuditLogger:
+    """Emit structured audit events for guardrail bypass lifecycle."""
+
+    def __init__(self, logger_name: str = "explore_guardrails.audit"):
+        self.logger = logging.getLogger(logger_name)
+
+    def emit(self, event: str, payload: Dict) -> None:
+        self.logger.info(event, extra={"event": event, **payload})
+
+    def bypass_requested(self, user_id: str, dataset: str, reason: str) -> None:
+        self.emit(
+            "explore.guardrail_bypass_requested",
+            {"user_id": user_id, "dataset": dataset, "reason": reason},
+        )
+
+    def bypass_approved(
+        self,
+        user_id: str,
+        approved_by: str,
+        duration_minutes: int,
+    ) -> None:
+        self.emit(
+            "explore.guardrail_bypass_approved",
+            {
+                "user_id": user_id,
+                "approved_by": approved_by,
+                "duration_minutes": duration_minutes,
+            },
+        )
+
+    def bypass_used(self, user_id: str, dataset: str, query_hash: str) -> None:
+        self.emit(
+            "explore.guardrail_bypass_used",
+            {"user_id": user_id, "dataset": dataset, "query_hash": query_hash},
+        )
+
+    def bypass_expired(self, user_id: str, expired_at: str) -> None:
+        self.emit(
+            "explore.guardrail_bypass_expired",
+            {"user_id": user_id, "expired_at": expired_at},
+        )
+
+
+def _hash_query_params(query_params: Dict) -> str:
+    serialized = json.dumps(query_params, sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
 
 class EnvGuardrailBypassStore(GuardrailBypassStore):
     """Loads bypass exceptions from an environment variable payload."""
 
-    def __init__(self, env_var: str = "EXPLORE_GUARDRAIL_EXCEPTIONS"):
+    def __init__(
+        self,
+        env_var: str = "EXPLORE_GUARDRAIL_EXCEPTIONS",
+        audit_logger: Optional[GuardrailAuditLogger] = None,
+    ):
         self.env_var = env_var
         self.logger = logging.getLogger("explore_guardrails.bypass")
+        self.audit_logger = audit_logger or GuardrailAuditLogger()
+        self._expired_ids: Set[str] = set()
 
     def _parse_payload(self, payload: Iterable[dict]) -> List[GuardrailBypassException]:
         exceptions: List[GuardrailBypassException] = []
@@ -426,6 +484,9 @@ class EnvGuardrailBypassStore(GuardrailBypassStore):
             if dataset_name not in exception.dataset_names:
                 continue
             if exception.expires_at <= now:
+                if exception.id not in self._expired_ids:
+                    self.log_expired(exception)
+                    self._expired_ids.add(exception.id)
                 continue
             return exception
         return None
@@ -436,6 +497,7 @@ class EnvGuardrailBypassStore(GuardrailBypassStore):
         dataset_name: str,
         query_params: Dict,
     ) -> None:
+        query_hash = _hash_query_params(query_params)
         self.logger.info(
             "Explore guardrail bypass used",
             extra={
@@ -448,18 +510,36 @@ class EnvGuardrailBypassStore(GuardrailBypassStore):
                 "expires_at": exception.expires_at.isoformat(),
                 "reason": exception.reason,
                 "query_params": query_params,
+                "query_hash": query_hash,
             },
+        )
+        self.audit_logger.bypass_used(
+            user_id=exception.user_id,
+            dataset=dataset_name,
+            query_hash=query_hash,
+        )
+
+    def log_expired(self, exception: GuardrailBypassException) -> None:
+        self.audit_logger.bypass_expired(
+            user_id=exception.user_id,
+            expired_at=exception.expires_at.isoformat(),
         )
 
 
 class InMemoryGuardrailBypassStore(GuardrailBypassStore):
     """Simple bypass store for tests and local usage."""
 
-    def __init__(self, exceptions: Iterable[GuardrailBypassException]):
+    def __init__(
+        self,
+        exceptions: Iterable[GuardrailBypassException],
+        audit_logger: Optional[GuardrailAuditLogger] = None,
+    ):
         self.exceptions = [
             exception for exception in exceptions if self._is_valid_exception(exception)
         ]
         self.logger = logging.getLogger("explore_guardrails.bypass")
+        self.audit_logger = audit_logger or GuardrailAuditLogger()
+        self._expired_ids: Set[str] = set()
 
     def get_active_exception(
         self,
@@ -474,6 +554,9 @@ class InMemoryGuardrailBypassStore(GuardrailBypassStore):
             if dataset_name not in exception.dataset_names:
                 continue
             if exception.expires_at <= now:
+                if exception.id not in self._expired_ids:
+                    self.log_expired(exception)
+                    self._expired_ids.add(exception.id)
                 continue
             return exception
         return None
@@ -484,6 +567,7 @@ class InMemoryGuardrailBypassStore(GuardrailBypassStore):
         dataset_name: str,
         query_params: Dict,
     ) -> None:
+        query_hash = _hash_query_params(query_params)
         self.logger.info(
             "Explore guardrail bypass used",
             extra={
@@ -496,7 +580,19 @@ class InMemoryGuardrailBypassStore(GuardrailBypassStore):
                 "expires_at": exception.expires_at.isoformat(),
                 "reason": exception.reason,
                 "query_params": query_params,
+                "query_hash": query_hash,
             },
+        )
+        self.audit_logger.bypass_used(
+            user_id=exception.user_id,
+            dataset=dataset_name,
+            query_hash=query_hash,
+        )
+
+    def log_expired(self, exception: GuardrailBypassException) -> None:
+        self.audit_logger.bypass_expired(
+            user_id=exception.user_id,
+            expired_at=exception.expires_at.isoformat(),
         )
 
 
@@ -979,6 +1075,74 @@ EXPLORE_TOOLTIPS: Dict[str, str] = {
     'export': "Raw data export is not available - use aggregated views",
     'custom_sql': "Custom SQL queries are not available in Explore mode",
 }
+
+
+def get_guardrail_bypass_banner(
+    exception: GuardrailBypassException,
+    now: Optional[datetime] = None,
+) -> str:
+    """Return UX banner text for an active guardrail bypass."""
+    now = now or datetime.utcnow()
+    remaining = max(timedelta(0), exception.expires_at - now)
+    minutes = int(remaining.total_seconds() // 60)
+    return f"⚠️ Guardrail bypass active (expires in {minutes} minutes)"
+
+
+def record_guardrail_bypass_request(
+    user_id: str,
+    dataset: str,
+    reason: str,
+    audit_logger: Optional[GuardrailAuditLogger] = None,
+) -> None:
+    """Audit a guardrail bypass request."""
+    logger = audit_logger or GuardrailAuditLogger()
+    logger.bypass_requested(user_id=user_id, dataset=dataset, reason=reason)
+
+
+def record_guardrail_bypass_approval(
+    user_id: str,
+    approved_by: str,
+    duration_minutes: int,
+    audit_logger: Optional[GuardrailAuditLogger] = None,
+) -> None:
+    """Audit a guardrail bypass approval."""
+    logger = audit_logger or GuardrailAuditLogger()
+    logger.bypass_approved(
+        user_id=user_id,
+        approved_by=approved_by,
+        duration_minutes=duration_minutes,
+    )
+
+
+def get_heavy_query_warnings(
+    query_params: Dict,
+    guardrails: PerformanceGuardrails,
+) -> List[str]:
+    """Return inline warnings for heavy queries approaching guardrails."""
+    warnings: List[str] = []
+
+    start_date = query_params.get("start_date")
+    end_date = query_params.get("end_date")
+    if start_date and end_date:
+        date_range_days = (end_date - start_date).days
+        if date_range_days >= guardrails.max_date_range_days * 0.8:
+            warnings.append(
+                "Query spans a large date range and may be slow."
+            )
+
+    group_by = query_params.get("group_by", [])
+    if len(group_by) >= guardrails.max_group_by_dimensions:
+        warnings.append("Query uses the maximum allowed group-by dimensions.")
+
+    filters = query_params.get("filters", [])
+    if len(filters) >= guardrails.max_filters:
+        warnings.append("Query uses the maximum allowed filters.")
+
+    metrics = query_params.get("metrics", [])
+    if len(metrics) >= guardrails.max_metrics_per_query:
+        warnings.append("Query uses the maximum allowed metrics.")
+
+    return warnings
 
 
 def get_allowed_dimensions_for_dataset(dataset_name: str) -> List[str]:

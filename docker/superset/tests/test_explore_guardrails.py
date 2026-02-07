@@ -36,6 +36,8 @@ from explore_guardrails import (
     get_allowed_metrics_for_dataset,
     get_allowed_visualizations_for_dataset,
     get_explorable_datasets,
+    get_guardrail_bypass_banner,
+    get_heavy_query_warnings,
     validate_explore_request,
 )
 
@@ -479,6 +481,41 @@ class TestGuardrailBypass:
         )
         assert is_valid is False
         assert error == "Date range of 180 days exceeds maximum of 90 days"
+
+    def test_bypass_banner_displays_remaining_minutes(self):
+        """Bypass banner shows remaining minutes until expiry."""
+        now = datetime.utcnow()
+        exception = GuardrailBypassException(
+            id="bypass-4",
+            user_id="user-123",
+            requested_by_role="super_admin",
+            approved_by="security-1",
+            approved_by_role="security_engineer",
+            dataset_names=("fact_orders",),
+            expires_at=now + timedelta(minutes=37),
+            reason="Investigation",
+            created_at=now,
+        )
+        banner = get_guardrail_bypass_banner(exception, now=now)
+        assert "expires in 37 minutes" in banner
+
+
+class TestHeavyQueryWarnings:
+    """Test inline warning generation for heavy queries."""
+
+    def test_warns_on_high_limits(self):
+        query_params = {
+            "dimensions": ["order_date"],
+            "metrics": ["SUM(revenue)"] * PERFORMANCE_GUARDRAILS.max_metrics_per_query,
+            "group_by": ["order_date"] * PERFORMANCE_GUARDRAILS.max_group_by_dimensions,
+            "start_date": datetime.utcnow() - timedelta(
+                days=int(PERFORMANCE_GUARDRAILS.max_date_range_days * 0.8)
+            ),
+            "end_date": datetime.utcnow(),
+            "filters": [{}] * PERFORMANCE_GUARDRAILS.max_filters,
+        }
+        warnings = get_heavy_query_warnings(query_params, PERFORMANCE_GUARDRAILS)
+        assert warnings
 
 
 # ============================================================================
