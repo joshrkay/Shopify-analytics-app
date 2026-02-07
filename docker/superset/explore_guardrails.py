@@ -13,15 +13,18 @@ SECURITY: RLS rules from rls_rules.py are applied independently and always enfor
 
 import json
 import os
+import logging
 import re
 import logging
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Iterable
 
 from performance_config import PERFORMANCE_LIMITS
+
+logger = logging.getLogger(__name__)
 
 
 class ExplorePersona(str, Enum):
@@ -619,6 +622,57 @@ class ExplorePermissionValidator:
         self.bypass_store = bypass_store or EnvGuardrailBypassStore()
         self.logger = logging.getLogger("explore_guardrails.validation")
 
+    @staticmethod
+    def _get_bypass_expiration(
+        bypass_context: Dict,
+        dataset_name: str,
+    ) -> Optional[datetime]:
+        datasets = bypass_context.get("datasets") or {}
+        expires_at = datasets.get(dataset_name)
+        if isinstance(expires_at, datetime):
+            return expires_at
+        if isinstance(expires_at, str):
+            return _parse_iso_timestamp(expires_at)
+        return None
+
+    def _is_bypass_active(
+        self,
+        bypass_context: Dict,
+        dataset_name: str,
+    ) -> bool:
+        expires_at = self._get_bypass_expiration(bypass_context, dataset_name)
+        if not expires_at:
+            return False
+        return expires_at > datetime.now(timezone.utc)
+
+    def _build_heavy_query_warnings(
+        self,
+        effective: PerformanceGuardrails,
+        query_params: Dict,
+    ) -> List[str]:
+        warnings: List[str] = []
+        metrics = query_params.get("metrics", [])
+        group_by = query_params.get("group_by", [])
+        filters = query_params.get("filters", [])
+        start_date = query_params.get("start_date")
+        end_date = query_params.get("end_date")
+
+        if effective.max_metrics_per_query and len(metrics) >= effective.max_metrics_per_query:
+            warnings.append("Heavy query: metrics count at limit")
+        if effective.max_group_by_dimensions and len(group_by) >= effective.max_group_by_dimensions:
+            warnings.append("Heavy query: group-by dimensions at limit")
+        if effective.max_filters and len(filters) >= effective.max_filters:
+            warnings.append("Heavy query: filter count at limit")
+
+        if start_date and end_date:
+            date_range_days = (end_date - start_date).days
+            if effective.max_date_range_days and date_range_days >= int(effective.max_date_range_days * 0.8):
+                warnings.append(
+                    f"Heavy query: date range near limit ({date_range_days} days)"
+                )
+
+        return warnings
+
     def _get_effective_guardrails(
         self,
         dataset_name: str,
@@ -905,11 +959,16 @@ class ExplorePermissionValidator:
 
         # 3. Validate metrics (uses effective guardrails for max count)
         metrics = query_params.get('metrics', [])
-        max_metrics = None if bypass_exception else effective.max_metrics_per_query
+        if not bypass_active and len(metrics) > effective.max_metrics_per_query:
+            return ValidationResult(
+                is_valid=False,
+                error_message=f"Maximum {effective.max_metrics_per_query} metrics per query",
+                error_code="TOO_MANY_METRICS",
+            )
         result = self.validate_metrics(
             dataset_name,
             metrics,
-            max_metrics_per_query=max_metrics,
+            enforce_count=not bypass_active,
         )
         if not result.is_valid:
             return result
@@ -925,7 +984,7 @@ class ExplorePermissionValidator:
                     error_code="INVALID_DATE_RANGE",
                 )
             date_range_days = (end_date - start_date).days
-            if date_range_days > effective.max_date_range_days:
+            if not bypass_active and date_range_days > effective.max_date_range_days:
                 return ValidationResult(
                     is_valid=False,
                     error_message=(
@@ -937,7 +996,7 @@ class ExplorePermissionValidator:
 
         # 5. Validate group-by count (uses effective guardrails)
         group_by = query_params.get('group_by', [])
-        if not bypass_exception and len(group_by) > effective.max_group_by_dimensions:
+        if not bypass_active and len(group_by) > effective.max_group_by_dimensions:
             return ValidationResult(
                 is_valid=False,
                 error_message=(
@@ -973,7 +1032,20 @@ class ExplorePermissionValidator:
                     error_code="ROW_LIMIT_EXCEEDED",
                 )
 
-        return ValidationResult(is_valid=True)
+        warnings = self._build_heavy_query_warnings(effective, query_params)
+        if bypass_active:
+            audit_user_id = _resolve_user_id_for_audit(query_params)
+            if audit_user_id:
+                _emit_guardrail_bypass_used(
+                    audit_user_id,
+                    dataset_name,
+                    query_params.get("query_hash"),
+                )
+        return ValidationResult(
+            is_valid=True,
+            warnings=warnings if warnings else None,
+            bypass_banner=bypass_banner,
+        )
 
 
 # =============================================================================
