@@ -226,6 +226,12 @@ class AuditAction(str, Enum):
     ANALYTICS_TOKEN_REFRESHED = "analytics.token.refreshed"
     ANALYTICS_TOKEN_EXPIRED = "analytics.token.expired"
 
+    # Explore guardrail bypass events (Story 5.4)
+    EXPLORE_GUARDRAIL_BYPASS_REQUESTED = "explore.guardrail_bypass_requested"
+    EXPLORE_GUARDRAIL_BYPASS_APPROVED = "explore.guardrail_bypass_approved"
+    EXPLORE_GUARDRAIL_BYPASS_USED = "explore.guardrail_bypass_used"
+    EXPLORE_GUARDRAIL_BYPASS_EXPIRED = "explore.guardrail_bypass_expired"
+
     # Dataset Sync Lifecycle events (Story 5.2.10)
     DATASET_SYNC_STARTED = "dataset.sync.started"
     DATASET_SYNC_COMPLETED = "dataset.sync.completed"
@@ -1335,6 +1341,31 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
     AuditAction.DATASET_VERSION_ROLLED_BACK: AuditableEventMetadata(
         description="Dataset version rolled back to previous known-good version",
         required_fields=("dataset_name", "rolled_back_version", "restored_version"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    # Explore guardrail bypass events (Story 5.4)
+    AuditAction.EXPLORE_GUARDRAIL_BYPASS_REQUESTED: AuditableEventMetadata(
+        description="Guardrail bypass requested for Explore query",
+        required_fields=("user_id", "dataset", "reason"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.EXPLORE_GUARDRAIL_BYPASS_APPROVED: AuditableEventMetadata(
+        description="Guardrail bypass approved",
+        required_fields=("user_id", "approved_by", "duration_minutes"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.EXPLORE_GUARDRAIL_BYPASS_USED: AuditableEventMetadata(
+        description="Guardrail bypass used for Explore query",
+        required_fields=("user_id", "dataset", "query_hash"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.EXPLORE_GUARDRAIL_BYPASS_EXPIRED: AuditableEventMetadata(
+        description="Guardrail bypass expired",
+        required_fields=("user_id", "expired_at"),
         risk_level="high",
         compliance_tags=("SOC2",),
     ),

@@ -12,7 +12,7 @@ Acceptance Tests Coverage:
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import sys
 import os
 
@@ -121,6 +121,24 @@ class TestDateRangeGuardrails:
         result = merchant_validator.validate_date_range(start_date, end_date)
         assert result.is_valid is True
 
+    def test_bypass_allows_long_date_range(self, merchant_validator):
+        """Bypass should allow date ranges beyond max guardrail."""
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=180)
+        query_params = {
+            "dimensions": ["order_date"],
+            "metrics": ["SUM(revenue)"],
+            "group_by": ["order_date"],
+            "start_date": start_date,
+            "end_date": end_date,
+            "guardrail_bypass": {
+                "datasets": {"fact_orders": (end_date + timedelta(minutes=30)).isoformat()},
+            },
+        }
+        result = merchant_validator.validate_query("fact_orders", query_params)
+        assert result.is_valid is True
+        assert result.bypass_banner is not None
+
 
 # ============================================================================
 # TEST SUITE: METRIC RESTRICTIONS (QA Acceptance Test)
@@ -214,6 +232,19 @@ class TestDatasetAccessControl:
         result = merchant_validator.validate_dataset('internal_admin_table')
         assert result.is_valid is False
         assert result.error_code == "DATASET_NOT_FOUND"
+
+    def test_bypass_does_not_enable_pii_dataset(self, merchant_validator):
+        """Bypass should not enable disabled PII datasets."""
+        query_params = {
+            "dimensions": [],
+            "metrics": [],
+            "guardrail_bypass": {
+                "datasets": {"dim_customers": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()},
+            },
+        }
+        result = merchant_validator.validate_query("dim_customers", query_params)
+        assert result.is_valid is False
+        assert result.error_code == "DATASET_DISABLED"
 
 
 # ============================================================================
