@@ -1445,3 +1445,328 @@ def emit_agency_access_expired(
             extra={"user_id": user_id, "tenant_id": tenant_id},
             exc_info=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# GA Audit Event Emitters — auth + dashboard access
+# ---------------------------------------------------------------------------
+# These emit to the new ga_audit_logs table via GAAuditLog model.
+# All metadata is sanitized for PII before persistence.
+# All failures are wrapped in try/except to never crash the caller.
+# ---------------------------------------------------------------------------
+
+_GA_LOGGER = logging.getLogger("audit.ga")
+
+
+def _write_ga_audit_event(db: Session, event) -> None:
+    """
+    Write a GA audit event to the ga_audit_logs table.
+
+    Never raises — falls back to structured logging on DB failure.
+    """
+    from src.models.audit_log import GAAuditLog, PIISanitizer
+
+    try:
+        import uuid as _uuid
+
+        row = GAAuditLog(
+            id=str(_uuid.uuid4()),
+            **event.to_dict(),
+        )
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        _GA_LOGGER.error(
+            "ga_audit_write_failed",
+            extra={
+                "event_type": getattr(event, "event_type", "unknown"),
+                "tenant_id": getattr(event, "tenant_id", "unknown"),
+                "error": str(exc),
+            },
+            exc_info=True,
+        )
+
+
+def emit_auth_login_success(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    access_surface: str = "external_app",
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.login_success when a user authenticates successfully."""
+    try:
+        from src.models.audit_log import GAAuditEvent, AuditEventType, AccessSurface, generate_correlation_id
+
+        event = GAAuditEvent(
+            event_type=AuditEventType.AUTH_LOGIN_SUCCESS,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            access_surface=AccessSurface(access_surface),
+            success=True,
+            metadata={
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            },
+            correlation_id=correlation_id or generate_correlation_id(),
+        )
+        _write_ga_audit_event(db, event)
+    except Exception:
+        _GA_LOGGER.warning(
+            "emit_auth_login_success_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_auth_login_failed(
+    db: Session,
+    tenant_id: str | None,
+    user_id: str | None,
+    reason: str,
+    access_surface: str = "external_app",
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.login_failed when authentication fails."""
+    try:
+        from src.models.audit_log import GAAuditEvent, AuditEventType, AccessSurface, generate_correlation_id
+
+        event = GAAuditEvent(
+            event_type=AuditEventType.AUTH_LOGIN_FAILED,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            access_surface=AccessSurface(access_surface),
+            success=False,
+            metadata={
+                "reason": reason,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            },
+            correlation_id=correlation_id or generate_correlation_id(),
+        )
+        _write_ga_audit_event(db, event)
+    except Exception:
+        _GA_LOGGER.warning(
+            "emit_auth_login_failed_failed",
+            extra={"tenant_id": tenant_id, "reason": reason},
+            exc_info=True,
+        )
+
+
+def emit_ga_jwt_issued(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str | None = None,
+    access_surface: str = "external_app",
+    lifetime_minutes: int = 60,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_issued when a JWT embed token is issued."""
+    try:
+        from src.models.audit_log import GAAuditEvent, AuditEventType, AccessSurface, generate_correlation_id
+
+        event = GAAuditEvent(
+            event_type=AuditEventType.AUTH_JWT_ISSUED,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            dashboard_id=dashboard_id,
+            access_surface=AccessSurface(access_surface),
+            success=True,
+            metadata={
+                "lifetime_minutes": lifetime_minutes,
+            },
+            correlation_id=correlation_id or generate_correlation_id(),
+        )
+        _write_ga_audit_event(db, event)
+    except Exception:
+        _GA_LOGGER.warning(
+            "emit_ga_jwt_issued_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_ga_jwt_refresh(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str | None = None,
+    access_surface: str = "external_app",
+    success: bool = True,
+    reason: str | None = None,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_refresh when a JWT is refreshed (success or failure)."""
+    try:
+        from src.models.audit_log import GAAuditEvent, AuditEventType, AccessSurface, generate_correlation_id
+
+        metadata: dict[str, Any] = {}
+        if reason:
+            metadata["reason"] = reason
+
+        event = GAAuditEvent(
+            event_type=AuditEventType.AUTH_JWT_REFRESH,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            dashboard_id=dashboard_id,
+            access_surface=AccessSurface(access_surface),
+            success=success,
+            metadata=metadata,
+            correlation_id=correlation_id or generate_correlation_id(),
+        )
+        _write_ga_audit_event(db, event)
+    except Exception:
+        _GA_LOGGER.warning(
+            "emit_ga_jwt_refresh_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_ga_jwt_revoked(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    reason: str,
+    revoked_by: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_revoked when JWT tokens are revoked."""
+    try:
+        from src.models.audit_log import GAAuditEvent, AuditEventType, AccessSurface, generate_correlation_id
+
+        event = GAAuditEvent(
+            event_type=AuditEventType.AUTH_JWT_REVOKED,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            access_surface=AccessSurface.EXTERNAL_APP,
+            success=True,
+            metadata={
+                "reason": reason,
+                "revoked_by": revoked_by,
+            },
+            correlation_id=correlation_id or generate_correlation_id(),
+        )
+        _write_ga_audit_event(db, event)
+    except Exception:
+        _GA_LOGGER.warning(
+            "emit_ga_jwt_revoked_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_dashboard_viewed_ga(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    access_surface: str = "shopify_embed",
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit dashboard.viewed when a user views a dashboard."""
+    try:
+        from src.models.audit_log import GAAuditEvent, AuditEventType, AccessSurface, generate_correlation_id
+
+        event = GAAuditEvent(
+            event_type=AuditEventType.DASHBOARD_VIEWED,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            dashboard_id=dashboard_id,
+            access_surface=AccessSurface(access_surface),
+            success=True,
+            metadata={},
+            correlation_id=correlation_id or generate_correlation_id(),
+        )
+        _write_ga_audit_event(db, event)
+    except Exception:
+        _GA_LOGGER.warning(
+            "emit_dashboard_viewed_ga_failed",
+            extra={"tenant_id": tenant_id, "dashboard_id": dashboard_id},
+            exc_info=True,
+        )
+
+
+def emit_dashboard_load_failed_ga(
+    db: Session,
+    tenant_id: str,
+    user_id: str | None,
+    dashboard_id: str | None,
+    reason: str,
+    access_surface: str = "shopify_embed",
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit dashboard.load_failed when a dashboard fails to load."""
+    try:
+        from src.models.audit_log import GAAuditEvent, AuditEventType, AccessSurface, generate_correlation_id
+
+        event = GAAuditEvent(
+            event_type=AuditEventType.DASHBOARD_LOAD_FAILED,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            dashboard_id=dashboard_id,
+            access_surface=AccessSurface(access_surface),
+            success=False,
+            metadata={
+                "reason": reason,
+            },
+            correlation_id=correlation_id or generate_correlation_id(),
+        )
+        _write_ga_audit_event(db, event)
+    except Exception:
+        _GA_LOGGER.warning(
+            "emit_dashboard_load_failed_ga_failed",
+            extra={"tenant_id": tenant_id, "dashboard_id": dashboard_id},
+            exc_info=True,
+        )
+
+
+def emit_dashboard_access_denied_ga(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    reason: str,
+    access_surface: str = "shopify_embed",
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit dashboard.access_denied when dashboard access is denied."""
+    try:
+        from src.models.audit_log import GAAuditEvent, AuditEventType, AccessSurface, generate_correlation_id
+
+        event = GAAuditEvent(
+            event_type=AuditEventType.DASHBOARD_ACCESS_DENIED,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            dashboard_id=dashboard_id,
+            access_surface=AccessSurface(access_surface),
+            success=False,
+            metadata={
+                "reason": reason,
+            },
+            correlation_id=correlation_id or generate_correlation_id(),
+        )
+        _write_ga_audit_event(db, event)
+    except Exception:
+        _GA_LOGGER.warning(
+            "emit_dashboard_access_denied_ga_failed",
+            extra={"tenant_id": tenant_id, "dashboard_id": dashboard_id},
+            exc_info=True,
+        )
