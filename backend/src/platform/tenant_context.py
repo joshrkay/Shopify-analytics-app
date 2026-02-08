@@ -783,9 +783,12 @@ class TenantContextMiddleware:
                         User.clerk_user_id == str(user_id)
                     ).first()
                     if user:
-                        tenant_context.resolved_permissions = (
-                            resolve_permissions_for_user(db, user.id, active_tenant_id)
-                        )
+                        perms = resolve_permissions_for_user(db, user.id, active_tenant_id)
+                        if perms:
+                            # Only override when DB has actual permission records.
+                            # Empty set means no data-driven roles exist yet;
+                            # leave as None to fall back to hardcoded matrix.
+                            tenant_context.resolved_permissions = perms
                 except Exception:
                     # Graceful degradation: if resolution fails, decorators
                     # fall back to the hardcoded ROLE_PERMISSIONS matrix.
