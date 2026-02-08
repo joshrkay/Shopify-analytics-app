@@ -88,6 +88,13 @@ class AuditAction(str, Enum):
     AI_ACTION_EXECUTED = "ai.action_executed"
     AI_ACTION_REJECTED = "ai.action_rejected"
 
+    # Explore guardrail bypass events (Story 5.4)
+    EXPLORE_GUARDRAIL_BYPASS_REQUESTED = "explore.guardrail_bypass_requested"
+    EXPLORE_GUARDRAIL_BYPASS_APPROVED = "explore.guardrail_bypass_approved"
+    EXPLORE_GUARDRAIL_BYPASS_USED = "explore.guardrail_bypass_used"
+    EXPLORE_GUARDRAIL_BYPASS_EXPIRED = "explore.guardrail_bypass_expired"
+    EXPLORE_GUARDRAIL_BYPASS_REVOKED = "explore.guardrail_bypass_revoked"
+
     # Data export events
     EXPORT_REQUESTED = "export.requested"
     EXPORT_COMPLETED = "export.completed"
@@ -219,6 +226,8 @@ class AuditAction(str, Enum):
 
     # Superset Analytics events (Story 5.1.7)
     ANALYTICS_DASHBOARD_VIEWED = "analytics.dashboard.viewed"
+    ANALYTICS_DASHBOARD_FILTERED = "analytics.dashboard.filtered"
+    ANALYTICS_DRILLDOWN_USED = "analytics.dashboard.drilldown_used"
     ANALYTICS_EXPLORE_ACCESSED = "analytics.explore.accessed"
     ANALYTICS_ACCESS_DENIED = "analytics.access.denied"
     ANALYTICS_CROSS_TENANT_BLOCKED = "analytics.cross_tenant.blocked"
