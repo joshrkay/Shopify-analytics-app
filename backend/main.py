@@ -26,6 +26,8 @@ from src.api.routes import sync
 from src.api.routes import data_health
 from src.api.routes import backfills
 from src.api.routes import embed
+from src.api.routes import auth_revoke_tokens
+from src.api.routes import dashboards_allowed
 from src.api.routes import insights
 from src.api.routes import recommendations
 from src.api.routes import action_proposals
@@ -157,6 +159,12 @@ app.include_router(backfills.router)
 
 # Include embed routes for Shopify Admin embedding (requires authentication)
 app.include_router(embed.router)
+
+# Include token revocation routes (Phase 1 - JWT Issuance)
+app.include_router(auth_revoke_tokens.router)
+
+# Include dashboard access routes (Phase 5 - Dashboard Visibility Gate)
+app.include_router(dashboards_allowed.router)
 
 # Include sync health routes for data quality monitoring (requires authentication)
 app.include_router(sync_health.router)

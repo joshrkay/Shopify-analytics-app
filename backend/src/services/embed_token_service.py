@@ -13,8 +13,9 @@ Security Requirements:
 
 import os
 import logging
+import uuid
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 import jwt
 from pydantic import BaseModel
@@ -40,6 +41,8 @@ class EmbedTokenPayload(BaseModel):
     roles: list[str]
     allowed_tenants: list[str]
     dashboard_id: Optional[str] = None
+    jti: Optional[str] = None
+    access_surface: Optional[str] = None
     iss: str
     iat: int
     exp: int
@@ -106,6 +109,7 @@ class EmbedTokenService:
         tenant_context: TenantContext,
         dashboard_id: str,
         lifetime_minutes: Optional[int] = None,
+        access_surface: Literal["shopify_embed", "external_app"] = "shopify_embed",
     ) -> EmbedTokenResult:
         """
         Generate JWT token for Superset embedding.
@@ -114,6 +118,7 @@ class EmbedTokenService:
             tenant_context: Current tenant context from authenticated request
             dashboard_id: Superset dashboard ID to embed
             lifetime_minutes: Optional custom token lifetime
+            access_surface: Where the token will be used
 
         Returns:
             EmbedTokenResult with JWT and metadata
@@ -123,6 +128,8 @@ class EmbedTokenService:
         exp = now + timedelta(minutes=lifetime)
         refresh_before = exp - timedelta(minutes=self.config.refresh_threshold_minutes)
 
+        jti = str(uuid.uuid4())
+
         payload = {
             "sub": tenant_context.user_id,
             "tenant_id": tenant_context.tenant_id,
@@ -130,6 +137,8 @@ class EmbedTokenService:
             "allowed_tenants": tenant_context.allowed_tenants,
             "billing_tier": tenant_context.billing_tier,
             "dashboard_id": dashboard_id,
+            "jti": jti,
+            "access_surface": access_surface,
             "iss": self.config.issuer,
             "iat": int(now.timestamp()),
             "exp": int(exp.timestamp()),
@@ -147,6 +156,24 @@ class EmbedTokenService:
             algorithm=self.config.algorithm
         )
 
+        # Store JTI in token store for revocation support
+        try:
+            from src.services.token_store import get_token_store
+            store = get_token_store()
+            store.store_token(
+                jti=jti,
+                user_id=tenant_context.user_id,
+                tenant_id=tenant_context.tenant_id,
+                access_surface=access_surface,
+                exp=int(exp.timestamp()),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to store JTI in token store; revocation may not work",
+                extra={"jti": jti, "user_id": tenant_context.user_id},
+                exc_info=True,
+            )
+
         # Build dashboard URL with embedded mode parameters
         dashboard_url = self._build_dashboard_url(dashboard_id, token)
 
@@ -156,6 +183,8 @@ class EmbedTokenService:
                 "tenant_id": tenant_context.tenant_id,
                 "user_id": tenant_context.user_id,
                 "dashboard_id": dashboard_id,
+                "jti": jti,
+                "access_surface": access_surface,
                 "expires_at": exp.isoformat(),
             }
         )
@@ -194,7 +223,7 @@ class EmbedTokenService:
 
         Raises:
             TokenExpiredError: If token has expired
-            TokenValidationError: If token is invalid
+            TokenValidationError: If token is invalid or revoked
         """
         try:
             payload = jwt.decode(
@@ -203,9 +232,29 @@ class EmbedTokenService:
                 algorithms=[self.config.algorithm],
                 issuer=self.config.issuer,
             )
-            return EmbedTokenPayload(**payload)
+            token_payload = EmbedTokenPayload(**payload)
+
+            # Check JTI revocation if jti is present
+            if token_payload.jti:
+                try:
+                    from src.services.token_store import get_token_store
+                    store = get_token_store()
+                    if store.is_revoked(token_payload.jti):
+                        raise TokenValidationError("Token has been revoked")
+                except TokenValidationError:
+                    raise
+                except Exception:
+                    logger.warning(
+                        "Failed to check JTI revocation; allowing token",
+                        extra={"jti": token_payload.jti},
+                        exc_info=True,
+                    )
+
+            return token_payload
         except jwt.ExpiredSignatureError:
             raise TokenExpiredError("Token has expired")
+        except (TokenExpiredError, TokenValidationError):
+            raise
         except jwt.InvalidTokenError as e:
             raise TokenValidationError(f"Invalid token: {str(e)}")
 
@@ -245,7 +294,7 @@ class EmbedTokenService:
             New EmbedTokenResult
 
         Raises:
-            TokenValidationError: If old token cannot be validated
+            TokenValidationError: If old token cannot be validated or is revoked
         """
         try:
             # Try normal validation first
@@ -268,6 +317,22 @@ class EmbedTokenService:
                 if now - payload.exp > grace_period_seconds:
                     raise TokenExpiredError("Token expired beyond grace period")
 
+                # Check revocation even for expired tokens in grace period
+                if payload.jti:
+                    try:
+                        from src.services.token_store import get_token_store
+                        store = get_token_store()
+                        if store.is_revoked(payload.jti):
+                            raise TokenValidationError("Cannot refresh revoked token")
+                    except TokenValidationError:
+                        raise
+                    except Exception:
+                        logger.warning(
+                            "Failed to check JTI revocation during refresh; allowing",
+                            extra={"jti": payload.jti},
+                            exc_info=True,
+                        )
+
             except jwt.InvalidTokenError as e:
                 raise TokenValidationError(f"Cannot refresh invalid token: {str(e)}")
 
@@ -283,6 +348,9 @@ class EmbedTokenService:
             )
             raise TokenValidationError("Token tenant does not match current context")
 
+        # Carry forward the access_surface from the old token
+        access_surface = payload.access_surface or "shopify_embed"
+
         # Generate new token
         dashboard_id = payload.dashboard_id or "default"
 
@@ -292,6 +360,7 @@ class EmbedTokenService:
                 "tenant_id": tenant_context.tenant_id,
                 "user_id": tenant_context.user_id,
                 "dashboard_id": dashboard_id,
+                "old_jti": payload.jti,
             }
         )
 
@@ -299,6 +368,7 @@ class EmbedTokenService:
             tenant_context=tenant_context,
             dashboard_id=dashboard_id,
             lifetime_minutes=lifetime_minutes,
+            access_surface=access_surface,
         )
 
 

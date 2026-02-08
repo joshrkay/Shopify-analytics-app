@@ -1247,14 +1247,15 @@ def emit_jwt_refresh(
         log_system_audit_event_sync(
             db=db,
             tenant_id=tenant_id,
-            action=AuditAction.AUTH_JWT_REFRESH,
-            resource_type="auth",
+            action=AuditAction.AUTH_JWT_ISSUED,
+            resource_type=_JWT_RESOURCE_TYPE,
+            resource_id=dashboard_id,
             metadata={
                 "user_id": user_id,
                 "tenant_id": tenant_id,
-                "previous_tenant_id": previous_tenant_id,
+                "dashboard_id": dashboard_id,
                 "access_surface": access_surface,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "lifetime_minutes": lifetime_minutes,
             },
             correlation_id=correlation_id,
             source="api",
@@ -1262,21 +1263,22 @@ def emit_jwt_refresh(
         )
     except Exception:
         logger.warning(
-            "audit_logger.emit_jwt_refresh_failed",
-            extra={"user_id": user_id, "tenant_id": tenant_id},
+            "audit_logger.emit_jwt_issued_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
             exc_info=True,
         )
 
 
-def emit_tenant_context_switched(
+def emit_jwt_revoked(
     db: Session,
     tenant_id: str,
     user_id: str,
-    previous_tenant_id: str | None = None,
+    reason: str,
+    revoked_by: str,
     *,
     correlation_id: str | None = None,
 ) -> None:
-    """Emit tenant.context_switched when a user switches active tenant."""
+    """Emit auth.jwt_revoked when embed tokens are revoked for a user."""
     try:
         from src.platform.audit import (
             AuditAction,
@@ -1287,13 +1289,13 @@ def emit_tenant_context_switched(
         log_system_audit_event_sync(
             db=db,
             tenant_id=tenant_id,
-            action=AuditAction.TENANT_CONTEXT_SWITCHED,
-            resource_type="tenant",
+            action=AuditAction.AUTH_JWT_REVOKED,
+            resource_type=_JWT_RESOURCE_TYPE,
             metadata={
                 "user_id": user_id,
                 "tenant_id": tenant_id,
-                "previous_tenant_id": previous_tenant_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "reason": reason,
+                "revoked_by": revoked_by,
             },
             correlation_id=correlation_id,
             source="api",
@@ -1301,30 +1303,21 @@ def emit_tenant_context_switched(
         )
     except Exception:
         logger.warning(
-            "audit_logger.emit_tenant_context_switched_failed",
-            extra={"user_id": user_id, "tenant_id": tenant_id},
+            "audit_logger.emit_jwt_revoked_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
             exc_info=True,
         )
 
 
-# ---------------------------------------------------------------------------
-# Grace-period revocation audit event emitters (Story 5.5.4)
-# ---------------------------------------------------------------------------
-
-_REVOCATION_RESOURCE_TYPE = "access_revocation"
-
-
-def emit_agency_access_revoked(
+def emit_embed_token_refresh(
     db: Session,
     tenant_id: str,
     user_id: str,
-    revoked_by: str | None = None,
-    expires_at: object | None = None,
-    grace_period_hours: int = 24,
+    dashboard_id: str,
     *,
     correlation_id: str | None = None,
 ) -> None:
-    """Emit agency_access.revoked when access revocation enters grace period."""
+    """Emit auth.token_refresh when an embed token is refreshed."""
     try:
         from src.platform.audit import (
             AuditAction,
