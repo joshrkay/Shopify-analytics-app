@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from src.platform.tenant_context import TenantContext, get_tenant_context
 from src.platform.rbac import require_any_permission
 from src.constants.permissions import Permission
-from src.database.session import get_db_session_sync
+from src.api.dependencies.request_db import get_request_db_session
 from src.services.tenant_members_service import (
     TenantMembersService,
     TenantNotFoundError,
@@ -112,16 +112,6 @@ class RevokeAccessResponse(BaseModel):
 
 
 # --- Helper Functions ---
-
-
-def _get_db_session(request: Request):
-    """Get database session from request state or create new one."""
-    db = getattr(request.state, 'db', None)
-    if not db:
-        db = next(get_db_session_sync())
-    return db
-
-
 def _validate_team_manage_permission(tenant_context: TenantContext, tenant_id: str) -> None:
     """
     Validate user has TEAM_MANAGE permission on the tenant.
@@ -197,7 +187,7 @@ async def list_tenant_members(
             detail="You do not have access to this tenant"
         )
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request)
     try:
         service = TenantMembersService(db)
         members = service.list_members(tenant_id, include_inactive=include_inactive)
@@ -254,7 +244,7 @@ async def grant_tenant_access(
             detail="Either clerk_user_id or email must be provided"
         )
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request)
     try:
         service = TenantMembersService(db)
         result = service.grant_access(
@@ -326,7 +316,7 @@ async def revoke_tenant_access(
     # Prevent self-revoke
     _prevent_self_action(tenant_context, user_id, "revoke")
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request)
     try:
         service = TenantMembersService(db)
         success = service.revoke_access(
@@ -397,7 +387,7 @@ async def update_member_role(
     # Validate permission
     _validate_team_manage_permission(tenant_context, tenant_id)
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request)
     try:
         service = TenantMembersService(db)
         result = service.update_role(
