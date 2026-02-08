@@ -180,6 +180,14 @@ class AuditAction(str, Enum):
     AUDIT_RETENTION_COMPLETED = "audit.retention.completed"
     AUDIT_RETENTION_FAILED = "audit.retention.failed"
 
+    # JWT Embed events (Phase 1 - JWT Issuance)
+    AUTH_JWT_ISSUED = "auth.jwt_issued"
+    AUTH_JWT_REVOKED = "auth.jwt_revoked"
+    EMBED_NAVIGATION_BLOCKED = "embed.navigation_blocked"
+    EMBED_LOAD_FAILED = "embed.load_failed"
+    DASHBOARD_ACCESS_DENIED = "dashboard.access_denied"
+    RATE_LIMIT_TRIGGERED = "rate_limit.triggered"
+
     # Identity events
     IDENTITY_USER_FIRST_SEEN = "identity.user_first_seen"
     IDENTITY_USER_LINKED_TO_TENANT = "identity.user_linked_to_tenant"
@@ -1345,6 +1353,43 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
         description="Dataset version rolled back to previous known-good version",
         required_fields=("dataset_name", "rolled_back_version", "restored_version"),
         risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    # JWT Embed events (Phase 1 - JWT Issuance)
+    AuditAction.AUTH_JWT_ISSUED: AuditableEventMetadata(
+        description="JWT embed token issued for Superset embedding",
+        required_fields=("user_id", "tenant_id", "dashboard_id", "access_surface", "lifetime_minutes"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTH_JWT_REVOKED: AuditableEventMetadata(
+        description="JWT embed tokens revoked for a user",
+        required_fields=("user_id", "tenant_id", "reason", "revoked_by"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.EMBED_NAVIGATION_BLOCKED: AuditableEventMetadata(
+        description="Embedded navigation attempt blocked by CSP or policy",
+        required_fields=("user_id", "tenant_id", "blocked_path", "reason"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.EMBED_LOAD_FAILED: AuditableEventMetadata(
+        description="Embedded dashboard failed to load",
+        required_fields=("tenant_id", "error_type", "access_surface"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.DASHBOARD_ACCESS_DENIED: AuditableEventMetadata(
+        description="Dashboard access denied due to permissions or billing",
+        required_fields=("user_id", "tenant_id", "dashboard_id", "reason"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.RATE_LIMIT_TRIGGERED: AuditableEventMetadata(
+        description="API rate limit triggered for endpoint",
+        required_fields=("user_id", "tenant_id", "endpoint", "limit", "window"),
+        risk_level="medium",
         compliance_tags=("SOC2",),
     ),
 }

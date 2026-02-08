@@ -26,6 +26,9 @@ from explore_guardrails import (
 # Import JWT authentication handler
 from security.jwt_auth import authenticate_embed_request
 
+# Import embed router guard (Phase 3 — Chrome-less Embed)
+from embed_router_guard import guard_embed_navigation
+
 # Flask App Configuration
 SECRET_KEY = os.getenv('SUPERSET_SECRET_KEY')
 SQLALCHEMY_DATABASE_URI = os.getenv(
@@ -64,8 +67,12 @@ GUEST_TOKEN_JWT_SECRET = os.getenv('SUPERSET_JWT_SECRET_CURRENT')
 GUEST_TOKEN_JWT_ALGO = 'HS256'
 GUEST_TOKEN_HEADER_NAME = 'X-GuestToken'
 
-# Register JWT before_request handler for deny-by-default auth
-FLASK_APP_MUTATOR = lambda app: app.before_request(authenticate_embed_request)
+# Register before_request handlers:
+# 1. Embed router guard — blocks non-embed routes (runs first)
+# 2. JWT auth — deny-by-default authentication for all remaining routes
+def FLASK_APP_MUTATOR(app):
+    app.before_request(guard_embed_navigation)
+    app.before_request(authenticate_embed_request)
 
 # Feature Flags
 # Base flags merged with Explore guardrail flags and safety flags
@@ -76,6 +83,10 @@ _BASE_FEATURE_FLAGS = {
 
 # Merge: safety flags (from performance_config) override everything
 FEATURE_FLAGS = {**_BASE_FEATURE_FLAGS, **EXPLORE_FEATURE_FLAGS, **SAFETY_FEATURE_FLAGS}
+
+# Phase 3 — Chrome-less Embed: disable CSRF protection for explore JSON API
+# (embedded dashboards fetch chart data via API; CSRF tokens are not available)
+FEATURE_FLAGS['ENABLE_EXPLORE_JSON_CSRF_PROTECTION'] = False
 
 # Disable SQL Lab
 SQLLAB_QUERY_COST_ESTIMATE_ENABLED = False

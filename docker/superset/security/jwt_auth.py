@@ -30,11 +30,45 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import jwt as pyjwt
+import redis
 
 logger = logging.getLogger(__name__)
 
 # Maximum allowed token lifetime (seconds) — enforced even if exp is further out
 MAX_TOKEN_LIFETIME_SECONDS = 3600  # 60 minutes
+
+# Redis connection for JTI revocation checks (lazy-initialized)
+_redis_client = None
+
+
+def _get_redis() -> redis.Redis:
+    """Get or create Redis connection for JTI revocation checks."""
+    global _redis_client
+    if _redis_client is None:
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        _redis_client = redis.from_url(
+            redis_url,
+            decode_responses=False,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
+    return _redis_client
+
+
+def is_jti_revoked(jti: str) -> bool:
+    """Check if a JTI has been revoked in Redis.
+
+    Returns False on Redis errors (fail-open) so that Redis outages
+    do not lock out all embedded dashboard users.
+    """
+    try:
+        return bool(_get_redis().exists(f"embed:revoked:{jti}"))
+    except Exception:
+        logger.warning(
+            "Redis unavailable for JTI revocation check - allowing token (fail-open)",
+            extra={"jti": jti},
+        )
+        return False
 
 
 # =============================================================================
@@ -242,6 +276,23 @@ def authenticate_embed_request():
             reason="invalid_token", path=request.path,
         )
         abort(401, description="Invalid or expired token")
+
+    # Phase 1 — JTI revocation check
+    jti = payload.get("jti")
+    if jti and is_jti_revoked(jti):
+        logger.warning(
+            "Revoked JWT used",
+            extra={
+                "jti": jti,
+                "user_id": payload.get("sub"),
+                "path": request.path,
+            },
+        )
+        _emit_superset_audit_log(
+            "analytics.access.denied", "denied",
+            reason="token_revoked", jti=jti, path=request.path,
+        )
+        abort(401, description="Token has been revoked")
 
     # Build user from JWT claims
     user = EmbedUser(

@@ -1080,3 +1080,132 @@ def emit_dataset_version_rolled_back(
             },
             exc_info=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# JWT embed token audit event emitters (Phase 1 - JWT Issuance)
+# ---------------------------------------------------------------------------
+
+_JWT_RESOURCE_TYPE = "embed_token"
+
+
+def emit_jwt_issued(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    access_surface: str,
+    lifetime_minutes: int,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_issued when an embed JWT token is generated."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.AUTH_JWT_ISSUED,
+            resource_type=_JWT_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "dashboard_id": dashboard_id,
+                "access_surface": access_surface,
+                "lifetime_minutes": lifetime_minutes,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_jwt_issued_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_jwt_revoked(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    reason: str,
+    revoked_by: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_revoked when embed tokens are revoked for a user."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.AUTH_JWT_REVOKED,
+            resource_type=_JWT_RESOURCE_TYPE,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "reason": reason,
+                "revoked_by": revoked_by,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_jwt_revoked_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_jwt_refresh(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_refresh (via AUTH_TOKEN_REFRESH) when an embed token is refreshed."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.AUTH_TOKEN_REFRESH,
+            resource_type=_JWT_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "dashboard_id": dashboard_id,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_jwt_refresh_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
