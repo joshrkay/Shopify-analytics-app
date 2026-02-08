@@ -1,12 +1,12 @@
 # FastAPI and web framework
-fastapi==0.104.1
-starlette==0.27.0  # Pin explicitly for httpx 0.25.1 compatibility
+fastapi>=0.115.0  # Fixed PYSEC-2024-38
+# starlette managed by fastapi (>=0.47.2 for CVE-2024-47874, CVE-2025-54121)
 uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+python-multipart>=0.0.22  # Fixed PYSEC-2024-38, CVE-2024-53981, CVE-2026-24486
 
 # Authentication and JWT
 PyJWT==2.8.0
-cryptography==41.0.7
+cryptography>=43.0.1  # Fixed PYSEC-2024-225, CVE-2023-50782, CVE-2024-0727, GHSA-h4gh-qq45-vh27
 httpx==0.25.1
 svix==1.17.0  # Clerk webhook signature verification
 
