@@ -1357,6 +1357,63 @@ def emit_agency_access_revoked(
         )
 
 
+# ---------------------------------------------------------------------------
+# RBAC enforcement audit event emitters (Story 5.5.5)
+# ---------------------------------------------------------------------------
+
+_RBAC_RESOURCE_TYPE = "rbac"
+
+
+def emit_rbac_denied(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    permission: str,
+    endpoint: str,
+    method: str = "",
+    roles: list[str] | None = None,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit rbac.denied when a permission check blocks access to an endpoint."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id or "unknown",
+            action=AuditAction.RBAC_DENIED,
+            resource_type=_RBAC_RESOURCE_TYPE,
+            metadata={
+                "user_id": user_id or "unknown",
+                "tenant_id": tenant_id or "unknown",
+                "permission": permission,
+                "endpoint": endpoint,
+                "method": method,
+                "roles": roles or [],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.DENIED,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_rbac_denied_failed",
+            extra={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "permission": permission,
+                "endpoint": endpoint,
+            },
+            exc_info=True,
+        )
+
+
 def emit_agency_access_expired(
     db: Session,
     tenant_id: str,

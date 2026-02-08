@@ -217,6 +217,9 @@ class AuditAction(str, Enum):
     AGENCY_ACCESS_REVOKED = "agency_access.revoked"
     AGENCY_ACCESS_EXPIRED = "agency_access.expired"
 
+    # RBAC enforcement events (Story 5.5.5)
+    RBAC_DENIED = "rbac.denied"
+
     # Identity collision events
     IDENTITY_COLLISION_DETECTED = "identity.identity_collision_detected"
 
@@ -1358,6 +1361,13 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
     AuditAction.DATASET_VERSION_ROLLED_BACK: AuditableEventMetadata(
         description="Dataset version rolled back to previous known-good version",
         required_fields=("dataset_name", "rolled_back_version", "restored_version"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    # RBAC enforcement events (Story 5.5.5)
+    AuditAction.RBAC_DENIED: AuditableEventMetadata(
+        description="RBAC permission check denied access",
+        required_fields=("user_id", "tenant_id", "permission", "endpoint"),
         risk_level="high",
         compliance_tags=("SOC2",),
     ),

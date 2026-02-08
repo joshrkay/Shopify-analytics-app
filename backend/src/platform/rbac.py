@@ -148,11 +148,49 @@ def has_role(tenant_context: TenantContext, role: Role) -> bool:
     return role.value in [r.lower() for r in tenant_context.roles]
 
 
+def _try_emit_rbac_denied(
+    tenant_id: str,
+    user_id: str,
+    permission_str: str,
+    endpoint: str,
+    method: str,
+    roles: list[str],
+) -> None:
+    """Emit rbac.denied audit event, never crashing the caller."""
+    try:
+        from src.database.session import get_db_session_sync
+        from src.services.audit_logger import emit_rbac_denied
+
+        session = next(get_db_session_sync())
+        try:
+            emit_rbac_denied(
+                db=session,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                permission=permission_str,
+                endpoint=endpoint,
+                method=method,
+                roles=roles,
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
+    except Exception:
+        logger.debug(
+            "rbac.emit_audit_failed",
+            extra={"user_id": user_id, "permission": permission_str},
+            exc_info=True,
+        )
+
+
 def require_permission(permission: Permission) -> Callable:
     """
     Decorator to require a specific permission for an endpoint.
 
     Raises 403 if the user doesn't have the required permission.
+    Emits rbac.denied audit event on denial (Story 5.5.5).
 
     Usage:
         @app.get("/api/billing")
@@ -177,6 +215,14 @@ def require_permission(permission: Permission) -> Callable:
                         "path": request.url.path,
                         "method": request.method,
                     }
+                )
+                _try_emit_rbac_denied(
+                    tenant_id=tenant_context.tenant_id,
+                    user_id=tenant_context.user_id,
+                    permission_str=permission.value,
+                    endpoint=request.url.path,
+                    method=request.method,
+                    roles=tenant_context.roles,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -215,6 +261,7 @@ def require_any_permission(*permissions: Permission) -> Callable:
             tenant_context = get_tenant_context(request)
 
             if not has_any_permission(tenant_context, list(permissions)):
+                perm_str = ",".join(p.value for p in permissions)
                 logger.warning(
                     "Permission denied (any)",
                     extra={
@@ -225,6 +272,14 @@ def require_any_permission(*permissions: Permission) -> Callable:
                         "path": request.url.path,
                         "method": request.method,
                     }
+                )
+                _try_emit_rbac_denied(
+                    tenant_id=tenant_context.tenant_id,
+                    user_id=tenant_context.user_id,
+                    permission_str=perm_str,
+                    endpoint=request.url.path,
+                    method=request.method,
+                    roles=tenant_context.roles,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -255,6 +310,7 @@ def require_all_permissions(*permissions: Permission) -> Callable:
             tenant_context = get_tenant_context(request)
 
             if not has_all_permissions(tenant_context, list(permissions)):
+                perm_str = ",".join(p.value for p in permissions)
                 logger.warning(
                     "Permission denied (all)",
                     extra={
@@ -265,6 +321,14 @@ def require_all_permissions(*permissions: Permission) -> Callable:
                         "path": request.url.path,
                         "method": request.method,
                     }
+                )
+                _try_emit_rbac_denied(
+                    tenant_id=tenant_context.tenant_id,
+                    user_id=tenant_context.user_id,
+                    permission_str=perm_str,
+                    endpoint=request.url.path,
+                    method=request.method,
+                    roles=tenant_context.roles,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -308,6 +372,14 @@ def require_role(role: Role) -> Callable:
                         "path": request.url.path,
                         "method": request.method,
                     }
+                )
+                _try_emit_rbac_denied(
+                    tenant_id=tenant_context.tenant_id,
+                    user_id=tenant_context.user_id,
+                    permission_str=f"role:{role.value}",
+                    endpoint=request.url.path,
+                    method=request.method,
+                    roles=tenant_context.roles,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -358,6 +430,14 @@ def check_permission_or_raise(
                 "path": request.url.path,
                 "method": request.method,
             }
+        )
+        _try_emit_rbac_denied(
+            tenant_id=tenant_context.tenant_id,
+            user_id=tenant_context.user_id,
+            permission_str=permission.value,
+            endpoint=request.url.path,
+            method=request.method,
+            roles=tenant_context.roles,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
