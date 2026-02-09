@@ -71,33 +71,6 @@ async def revoke_tokens(request: Request):
             detail="Failed to revoke tokens",
         )
 
-    # Emit auth.jwt_revoked audit event
-    try:
-        from src.services.audit_logger import emit_jwt_revoked
-        from src.database.session import get_db_session_sync
-
-        db_gen = get_db_session_sync()
-        db = next(db_gen)
-        try:
-            emit_jwt_revoked(
-                db=db,
-                tenant_id=tenant_ctx.tenant_id,
-                user_id=tenant_ctx.user_id,
-                reason="user_request",
-                revoked_by=tenant_ctx.user_id,
-            )
-        finally:
-            db.close()
-    except Exception:
-        logger.warning(
-            "Failed to emit auth.jwt_revoked audit event",
-            extra={
-                "tenant_id": tenant_ctx.tenant_id,
-                "user_id": tenant_ctx.user_id,
-            },
-            exc_info=True,
-        )
-
     logger.info(
         "Successfully revoked embed tokens",
         extra={
