@@ -14,7 +14,8 @@ import type {
   ShopifyValidationRequest,
   ShopifyValidationResponse,
 } from '../types/plans';
-import { API_BASE_URL, createHeaders, ApiError } from './apiUtils';
+import { API_BASE_URL, createHeaders } from './apiUtils';
+import type { ApiError } from './apiUtils';
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   const response = await fetch(`${API_BASE_URL}${url}`, {
@@ -131,5 +132,7 @@ export const plansApi = {
   },
 };
 
+export { isApiError } from './apiUtils';
 export type { ApiError } from './apiUtils';
+export type { Plan } from '../types/plans';
 export default plansApi;

@@ -23,6 +23,14 @@ export interface ApiError extends Error {
 }
 
 /**
+ * Type guard to check if an error is an ApiError.
+ * Use this instead of `instanceof ApiError` since ApiError is an interface.
+ */
+export function isApiError(err: unknown): err is ApiError {
+  return err instanceof Error && 'status' in err && 'detail' in err;
+}
+
+/**
  * Token provider function type.
  * Can be async (for Clerk's getToken) or sync (for localStorage).
  */
@@ -45,7 +53,7 @@ let tokenProvider: TokenProvider | null = null;
  *   setTokenProvider(() => getToken());
  * }, [getToken]);
  */
-export function setTokenProvider(provider: TokenProvider): void {
+export function setTokenProvider(provider: TokenProvider | null): void {
   tokenProvider = provider;
 }
 
@@ -135,7 +143,7 @@ export async function handleResponse<T>(response: Response): Promise<T> {
  * Build query string from a filters object.
  * Handles undefined values and converts booleans/numbers to strings.
  */
-export function buildQueryString(filters: Record<string, unknown>): string {
+export function buildQueryString<T extends object>(filters: T): string {
   const params = new URLSearchParams();
 
   for (const [key, value] of Object.entries(filters)) {
