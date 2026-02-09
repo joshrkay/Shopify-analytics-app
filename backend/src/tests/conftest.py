@@ -106,6 +106,7 @@ def db_engine():
     from src.models import role, user_role_assignment  # noqa: F401 - Story 5.5.1
     from src.models import agency_access_request  # noqa: F401 - Story 5.5.2
     from src.models import access_revocation  # noqa: F401 - Story 5.5.4
+    from src.platform import audit  # noqa: F401 - Audit log model
 
     Base.metadata.create_all(bind=engine)
 

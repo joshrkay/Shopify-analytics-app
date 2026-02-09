@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.platform.tenant_context import TenantContextMiddleware
 from src.platform.csp_middleware import EmbedOnlyCSPMiddleware
+from src.middleware.audit_middleware import AuditLoggingMiddleware
 from src.api.routes import health
 from src.api.routes import debug
 from src.api.routes import billing
@@ -46,6 +47,8 @@ from src.api.dq import routes as sync_health
 from src.api.routes import admin_diagnostics
 from src.api.routes import agency_access
 from src.api.routes import auth_refresh_jwt
+from src.api import audit_logs
+from src.api import audit_export
 
 # Configure structured logging
 logging.basicConfig(
@@ -123,6 +126,7 @@ app.add_middleware(EmbedOnlyCSPMiddleware)
 # Middleware uses lazy initialization - env vars validated in lifespan startup
 tenant_middleware = TenantContextMiddleware()
 app.middleware("http")(tenant_middleware)
+app.add_middleware(AuditLoggingMiddleware)
 
 
 # Include health route (bypasses authentication)
@@ -234,6 +238,8 @@ app.include_router(agency_access.router)
 # Include auth JWT refresh routes (requires authentication)
 # Story 5.5.3 - Tenant Selector + JWT Refresh for Active Tenant Context
 app.include_router(auth_refresh_jwt.router)
+app.include_router(audit_logs.router)
+app.include_router(audit_export.router)
 
 
 # Global exception handler for tenant isolation errors

@@ -158,17 +158,9 @@ async def refresh_jwt(request: Request, body: RefreshJWTRequest):
         previous_tenant_id = tenant_context.tenant_id
         try:
             from src.services.audit_logger import (
-                emit_jwt_refresh,
                 emit_tenant_context_switched,
             )
 
-            emit_jwt_refresh(
-                db=db,
-                tenant_id=target_tenant_id,
-                user_id=tenant_context.user_id,
-                previous_tenant_id=previous_tenant_id,
-                access_surface=body.access_surface,
-            )
             if target_tenant_id != previous_tenant_id:
                 emit_tenant_context_switched(
                     db=db,

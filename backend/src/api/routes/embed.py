@@ -181,10 +181,14 @@ async def generate_embed_token(
             access_surface=token_request.access_surface,
         )
 
-        # Emit auth.jwt_issued audit event
+        # Emit auth.jwt_issued and dashboard.viewed audit events
         try:
-            from src.services.audit_logger import emit_jwt_issued
+            from src.services.audit_logger import (
+                emit_jwt_issued,
+                emit_dashboard_viewed,
+            )
             from src.database.session import get_db_session_sync
+            from src.platform.audit import get_correlation_id
 
             db_gen = get_db_session_sync()
             db = next(db_gen)
@@ -196,12 +200,21 @@ async def generate_embed_token(
                     dashboard_id=token_request.dashboard_id,
                     access_surface=token_request.access_surface,
                     lifetime_minutes=service.config.default_lifetime_minutes,
+                    correlation_id=get_correlation_id(request),
+                )
+                emit_dashboard_viewed(
+                    db=db,
+                    tenant_id=tenant_ctx.tenant_id,
+                    user_id=tenant_ctx.user_id,
+                    dashboard_id=token_request.dashboard_id,
+                    access_surface=token_request.access_surface,
+                    correlation_id=get_correlation_id(request),
                 )
             finally:
                 db.close()
         except Exception:
             logger.warning(
-                "Failed to emit auth.jwt_issued audit event",
+                "Failed to emit embed audit events",
                 extra={
                     "tenant_id": tenant_ctx.tenant_id,
                     "user_id": tenant_ctx.user_id,
@@ -275,31 +288,6 @@ async def refresh_embed_token(
         )
 
         # Emit auth.jwt_refresh audit event
-        try:
-            from src.services.audit_logger import emit_embed_token_refresh
-            from src.database.session import get_db_session_sync
-
-            db_gen = get_db_session_sync()
-            db = next(db_gen)
-            try:
-                emit_embed_token_refresh(
-                    db=db,
-                    tenant_id=tenant_ctx.tenant_id,
-                    user_id=tenant_ctx.user_id,
-                    dashboard_id=refresh_request.dashboard_id or "unknown",
-                )
-            finally:
-                db.close()
-        except Exception:
-            logger.warning(
-                "Failed to emit auth.jwt_refresh audit event",
-                extra={
-                    "tenant_id": tenant_ctx.tenant_id,
-                    "user_id": tenant_ctx.user_id,
-                },
-                exc_info=True,
-            )
-
         # Add CSP headers
         add_embed_csp_headers(response)
 
