@@ -260,12 +260,6 @@ class AuditAction(str, Enum):
     ANALYTICS_TOKEN_REFRESHED = "analytics.token.refreshed"
     ANALYTICS_TOKEN_EXPIRED = "analytics.token.expired"
 
-    # Explore guardrail bypass events (Story 5.4)
-    EXPLORE_GUARDRAIL_BYPASS_REQUESTED = "explore.guardrail_bypass_requested"
-    EXPLORE_GUARDRAIL_BYPASS_APPROVED = "explore.guardrail_bypass_approved"
-    EXPLORE_GUARDRAIL_BYPASS_USED = "explore.guardrail_bypass_used"
-    EXPLORE_GUARDRAIL_BYPASS_EXPIRED = "explore.guardrail_bypass_expired"
-
     # Dataset Sync Lifecycle events (Story 5.2.10)
     DATASET_SYNC_STARTED = "dataset.sync.started"
     DATASET_SYNC_COMPLETED = "dataset.sync.completed"
