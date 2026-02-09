@@ -512,8 +512,17 @@ class TenantContextMiddleware:
 
         SECURITY: tenant_id is ONLY extracted from JWT, never from request body/query.
         """
-        # Skip tenant check for health endpoint, webhooks, and API documentation (public)
-        if request.url.path in ("/health", "/docs", "/redoc", "/openapi.json") or request.url.path.startswith("/api/webhooks/"):
+        # Skip tenant check for health endpoint, webhooks, API documentation,
+        # Shopify embedded app entry point, and frontend static assets.
+        # The root path "/" serves the React SPA (or bootstrap page). Shopify
+        # loads this URL in an iframe. Frontend assets under /assets/ are
+        # hashed bundles from the Vite build and contain no tenant data.
+        PUBLIC_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+        if (
+            request.url.path in PUBLIC_PATHS
+            or request.url.path.startswith("/api/webhooks/")
+            or request.url.path.startswith("/assets/")
+        ):
             return await call_next(request)
 
         # Check if authentication is configured (set in app lifespan)

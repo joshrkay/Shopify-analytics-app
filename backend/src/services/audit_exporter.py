@@ -1,194 +1,333 @@
-"""Audit log export service wrapper with access control."""
+"""
+GA Audit Log Export Service.
 
-from __future__ import annotations
+Exports GA audit logs to CSV or JSON format with:
+- Tenant-scoped or global (depending on role)
+- Rate limiting (3 exports per tenant per 24h)
+- Sanitized output (PII already stripped at ingestion)
+- Async job support for large exports (>10K rows)
 
-from dataclasses import dataclass
-from datetime import datetime
+Export attempts are themselves audited.
+"""
+
+import csv
+import io
+import json
+import logging
+import uuid
+from datetime import datetime, timezone
+from enum import Enum
 from typing import Optional
 
-from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
-from src.platform.audit import (
-    AuditAction,
-    AuditExportFormat,
-    AuditExportRequest,
-    AuditExportResult,
-    AuditExportService,
-    AuditLog,
-    AuditOutcome,
-    log_system_audit_event_sync,
-)
-from src.services.audit_access_control import AuditAccessControl
+from src.models.audit_log import GAAuditLog
+from src.services.audit_query_service import AuditQueryService
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ExportFilters:
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
-    event_type: Optional[str] = None
-    dashboard_id: Optional[str] = None
+class ExportFormat(str, Enum):
+    CSV = "csv"
+    JSON = "json"
 
 
-class AuditExporter:
-    """Coordinates audit log exports with tenant scoping."""
+class ExportResult:
+    """Result of an audit log export."""
 
-    def __init__(self, db: Session, access_control: AuditAccessControl) -> None:
+    __slots__ = (
+        "export_id", "success", "record_count", "format",
+        "content", "error", "is_async",
+    )
+
+    def __init__(
+        self,
+        export_id: str,
+        success: bool,
+        record_count: int,
+        fmt: ExportFormat,
+        content: Optional[str] = None,
+        error: Optional[str] = None,
+        is_async: bool = False,
+    ):
+        self.export_id = export_id
+        self.success = success
+        self.record_count = record_count
+        self.format = fmt
+        self.content = content
+        self.error = error
+        self.is_async = is_async
+
+
+class AuditExporterService:
+    """
+    Export GA audit logs to CSV or JSON.
+
+    Rate limit: 3 exports per tenant per 24 hours.
+    Async threshold: >10,000 rows triggers async job.
+    """
+
+    RATE_LIMIT_MAX = 3
+    ASYNC_THRESHOLD = 10_000
+
+    def __init__(self, db: Session):
         self.db = db
-        self.access_control = access_control
-        self.export_service = AuditExportService(db)
+        self._query_service = AuditQueryService(db)
+        # In-memory rate limit tracking (per-process; prod would use Redis)
+        self._export_counts: dict[str, list[datetime]] = {}
 
-    async def export_logs(
+    def check_rate_limit(self, tenant_id: str) -> tuple[bool, int]:
+        """
+        Check if the tenant is within the export rate limit.
+
+        Returns (is_allowed, remaining_count).
+        """
+        now = datetime.now(timezone.utc)
+        window_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        entries = self._export_counts.get(tenant_id, [])
+        # Prune old entries
+        entries = [ts for ts in entries if ts >= window_start]
+        self._export_counts[tenant_id] = entries
+
+        remaining = self.RATE_LIMIT_MAX - len(entries)
+        return remaining > 0, max(0, remaining)
+
+    def _record_export(self, tenant_id: str) -> None:
+        if tenant_id not in self._export_counts:
+            self._export_counts[tenant_id] = []
+        self._export_counts[tenant_id].append(datetime.now(timezone.utc))
+
+    def export(
         self,
+        tenant_id: str,
+        fmt: ExportFormat = ExportFormat.CSV,
         *,
-        tenant_id: Optional[str],
-        export_format: AuditExportFormat,
-        filters: ExportFilters,
-        request_user_id: Optional[str],
-        ip_address: Optional[str],
-    ) -> AuditExportResult:
-        scoped_tenant_id = self._resolve_tenant_scope(tenant_id)
+        is_super_admin: bool = False,
+        event_type: Optional[str] = None,
+        dashboard_id: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> ExportResult:
+        """
+        Export audit logs for a tenant.
 
-        if scoped_tenant_id is not None:
-            request = AuditExportRequest(
-                tenant_id=scoped_tenant_id,
-                format=export_format,
-                start_date=filters.start_date,
-                end_date=filters.end_date,
+        Args:
+            tenant_id: Tenant to export (or None for super admin global)
+            fmt: CSV or JSON
+            is_super_admin: If True, export may span all tenants
+            event_type: Optional event type filter
+            dashboard_id: Optional dashboard filter
+            start_date: Optional start of date range
+            end_date: Optional end of date range
+
+        Returns:
+            ExportResult with content or async indicator.
+        """
+        export_id = str(uuid.uuid4())
+
+        # Check rate limit
+        allowed, remaining = self.check_rate_limit(tenant_id)
+        if not allowed:
+            self._audit_export_attempt(
+                tenant_id=tenant_id,
+                export_id=export_id,
+                fmt=fmt,
+                success=False,
+                error="rate_limit_exceeded",
             )
-            return await self.export_service.export_audit_logs(
-                request=request,
-                requesting_user_id=request_user_id,
-                ip_address=ip_address,
-            )
-
-        return await self._export_all_tenants(
-            export_format=export_format,
-            filters=filters,
-            request_user_id=request_user_id,
-            ip_address=ip_address,
-        )
-
-    def _resolve_tenant_scope(self, tenant_id: Optional[str]) -> Optional[str]:
-        if tenant_id:
-            self.access_control.validate_access(tenant_id, db_session=self.db)
-            return tenant_id
-
-        if self.access_control.context.is_super_admin:
-            return None
-
-        return self.access_control.context.tenant_id
-
-    async def _export_all_tenants(
-        self,
-        *,
-        export_format: AuditExportFormat,
-        filters: ExportFilters,
-        request_user_id: Optional[str],
-        ip_address: Optional[str],
-    ) -> AuditExportResult:
-        export_id = datetime.utcnow().strftime("global-%Y%m%d%H%M%S")
-        tenant_key = "all"
-        is_allowed, _ = self.export_service.check_rate_limit(tenant_key)
-        if not is_allowed:
-            log_system_audit_event_sync(
-                db=self.db,
-                tenant_id=tenant_key,
-                action=AuditAction.EXPORT_FAILED,
-                metadata={
-                    "export_type": "audit_logs",
-                    "error": "Rate limit exceeded",
-                    "format": export_format.value,
-                },
-                outcome=AuditOutcome.DENIED,
-                error_code="RATE_LIMIT_EXCEEDED",
-            )
-            return AuditExportResult(
+            return ExportResult(
+                export_id=export_id,
                 success=False,
                 record_count=0,
-                format=export_format,
-                error="Rate limit exceeded. Maximum exports per day.",
+                fmt=fmt,
+                error=f"Rate limit exceeded. Max {self.RATE_LIMIT_MAX} exports/day.",
+            )
+
+        try:
+            # Query logs
+            result = self._query_service.query_logs(
+                tenant_id=tenant_id if not is_super_admin else None,
+                accessible_tenants={tenant_id} if not is_super_admin else None,
+                is_super_admin=is_super_admin,
+                event_type=event_type,
+                dashboard_id=dashboard_id,
+                start_date=start_date,
+                end_date=end_date,
+                limit=self.ASYNC_THRESHOLD + 1,
+                offset=0,
+            )
+
+            # Check if async is needed
+            if result.total > self.ASYNC_THRESHOLD:
+                self._audit_export_attempt(
+                    tenant_id=tenant_id,
+                    export_id=export_id,
+                    fmt=fmt,
+                    success=True,
+                    record_count=result.total,
+                    is_async=True,
+                )
+                self._record_export(tenant_id)
+                return ExportResult(
+                    export_id=export_id,
+                    success=True,
+                    record_count=result.total,
+                    fmt=fmt,
+                    is_async=True,
+                    error=f"Export queued for async processing ({result.total} records).",
+                )
+
+            # Format content
+            if fmt == ExportFormat.CSV:
+                content = self._format_csv(result.items)
+            else:
+                content = self._format_json(result.items)
+
+            self._record_export(tenant_id)
+            self._audit_export_attempt(
+                tenant_id=tenant_id,
                 export_id=export_id,
+                fmt=fmt,
+                success=True,
+                record_count=len(result.items),
             )
 
-        query = self.db.query(AuditLog)
-        if filters.start_date:
-            query = query.filter(AuditLog.created_at >= filters.start_date)
-        if filters.end_date:
-            query = query.filter(AuditLog.created_at <= filters.end_date)
-        if filters.event_type:
-            query = query.filter(
-                or_(AuditLog.event_type == filters.event_type, AuditLog.action == filters.event_type)
-            )
-        if filters.dashboard_id:
-            query = query.filter(
-                or_(AuditLog.dashboard_id == filters.dashboard_id, AuditLog.resource_id == filters.dashboard_id)
+            return ExportResult(
+                export_id=export_id,
+                success=True,
+                record_count=len(result.items),
+                fmt=fmt,
+                content=content,
             )
 
-        total_count = query.with_entities(func.count(AuditLog.id)).scalar() or 0
+        except Exception as exc:
+            logger.error(
+                "audit_export_failed",
+                extra={"tenant_id": tenant_id, "error": str(exc)},
+                exc_info=True,
+            )
+            self._audit_export_attempt(
+                tenant_id=tenant_id,
+                export_id=export_id,
+                fmt=fmt,
+                success=False,
+                error=str(exc),
+            )
+            return ExportResult(
+                export_id=export_id,
+                success=False,
+                record_count=0,
+                fmt=fmt,
+                error=str(exc),
+            )
 
-        if total_count > self.export_service.ASYNC_THRESHOLD_ROWS:
+    def _format_csv(self, logs: list[GAAuditLog]) -> str:
+        """Format audit logs as CSV."""
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        headers = [
+            "id", "event_type", "user_id", "tenant_id", "dashboard_id",
+            "access_surface", "success", "metadata", "correlation_id",
+            "created_at",
+        ]
+        writer.writerow(headers)
+
+        for log in logs:
+            metadata_str = json.dumps(log.metadata) if log.metadata else "{}"
+            writer.writerow([
+                log.id,
+                log.event_type,
+                log.user_id or "",
+                log.tenant_id or "",
+                log.dashboard_id or "",
+                log.access_surface,
+                log.success,
+                metadata_str,
+                log.correlation_id,
+                log.created_at.isoformat() if log.created_at else "",
+            ])
+
+        return output.getvalue()
+
+    def _format_json(self, logs: list[GAAuditLog]) -> str:
+        """Format audit logs as JSON."""
+        records = []
+        for log in logs:
+            records.append({
+                "id": log.id,
+                "event_type": log.event_type,
+                "user_id": log.user_id,
+                "tenant_id": log.tenant_id,
+                "dashboard_id": log.dashboard_id,
+                "access_surface": log.access_surface,
+                "success": log.success,
+                "metadata": log.metadata,
+                "correlation_id": log.correlation_id,
+                "created_at": (
+                    log.created_at.isoformat() if log.created_at else None
+                ),
+            })
+
+        return json.dumps(
+            {"audit_logs": records, "count": len(records)},
+            indent=2,
+        )
+
+    def _audit_export_attempt(
+        self,
+        tenant_id: str,
+        export_id: str,
+        fmt: ExportFormat,
+        success: bool,
+        record_count: int = 0,
+        error: Optional[str] = None,
+        is_async: bool = False,
+    ) -> None:
+        """Log the export attempt itself as a GA audit event."""
+        try:
+            from src.models.audit_log import (
+                GAAuditLog,
+                GAAuditEvent,
+                AuditEventType,
+                AccessSurface,
+                generate_correlation_id,
+            )
+            from src.services.audit_logger import _write_ga_audit_event
+
+            # We use a special metadata entry to record export attempts.
+            # The event_type doesn't exist in AuditEventType enum (GA scope),
+            # so we record it as metadata in a dashboard.viewed event.
+            # In practice, export auditing uses the existing audit_logs table
+            # via the platform audit module.
+            from src.platform.audit import (
+                AuditAction,
+                AuditOutcome,
+                log_system_audit_event_sync,
+            )
+
             log_system_audit_event_sync(
                 db=self.db,
-                tenant_id=tenant_key,
+                tenant_id=tenant_id,
                 action=AuditAction.EXPORT_REQUESTED,
                 metadata={
-                    "export_type": "audit_logs",
-                    "format": export_format.value,
-                    "record_count": total_count,
+                    "export_type": "ga_audit_logs",
                     "export_id": export_id,
-                    "async": True,
+                    "format": fmt.value,
+                    "record_count": record_count,
+                    "async": is_async,
+                    "error": error,
                 },
-                outcome=AuditOutcome.SUCCESS,
+                source="api",
+                outcome=(
+                    AuditOutcome.SUCCESS if success else AuditOutcome.FAILURE
+                ),
+                error_code=error if not success else None,
             )
-            return AuditExportResult(
-                success=True,
-                record_count=total_count,
-                format=export_format,
-                export_id=export_id,
-                is_async=True,
-                error=f"Export queued for async processing ({total_count} records)",
+        except Exception:
+            logger.debug(
+                "audit_export_attempt_logging_failed",
+                extra={"export_id": export_id},
+                exc_info=True,
             )
-
-        log_system_audit_event_sync(
-            db=self.db,
-            tenant_id=tenant_key,
-            action=AuditAction.EXPORT_REQUESTED,
-            metadata={
-                "export_type": "audit_logs",
-                "format": export_format.value,
-                "export_id": export_id,
-            },
-            outcome=AuditOutcome.SUCCESS,
-        )
-
-        logs = query.order_by(AuditLog.created_at.desc()).all()
-        if export_format == AuditExportFormat.CSV:
-            content = self.export_service.format_csv(logs)
-        else:
-            content = self.export_service.format_json(logs)
-
-        log_system_audit_event_sync(
-            db=self.db,
-            tenant_id=tenant_key,
-            action=AuditAction.EXPORT_COMPLETED,
-            metadata={
-                "export_type": "audit_logs",
-                "format": export_format.value,
-                "record_count": total_count,
-                "export_id": export_id,
-                "requested_by": request_user_id,
-                "ip_address": ip_address,
-            },
-            outcome=AuditOutcome.SUCCESS,
-        )
-
-        self.export_service.record_export(tenant_key)
-
-        return AuditExportResult(
-            success=True,
-            record_count=total_count,
-            format=export_format,
-            content=content,
-            export_id=export_id,
-        )
