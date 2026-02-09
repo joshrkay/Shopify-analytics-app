@@ -386,8 +386,15 @@ ROLE_PERMISSIONS: dict[Role, FrozenSet[Permission]] = {
     ]),
 
     # --- Governance Approver Roles (platform-level, minimal permissions) ---
-    Role.ANALYTICS_TECH_LEAD: frozenset([]),
-    Role.SECURITY_ENGINEER: frozenset([]),
+    Role.ANALYTICS_TECH_LEAD: frozenset([
+        Permission.ANALYTICS_VIEW,
+        Permission.ANALYTICS_EXPLORE,
+        Permission.ADMIN_AUDIT_VIEW,
+    ]),
+    Role.SECURITY_ENGINEER: frozenset([
+        Permission.ANALYTICS_VIEW,
+        Permission.ADMIN_AUDIT_VIEW,
+    ]),
 }
 
 
