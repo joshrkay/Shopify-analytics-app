@@ -1,23 +1,17 @@
-# Shopify App Configuration for Signals AI
+# Shopify App Configuration for Markinsight
 # Documentation: https://shopify.dev/docs/apps/tools/cli/configuration
 
 # Shopify CLI identifies this app by client_id (API Key from Partner Dashboard)
-client_id = "659b64a20473522b3602d790278711cc"
+client_id = "e10bb8b9705aafdfb3ff2dc5842d39fb"
 
-name = "Signals AI"
-handle = "signals-ai"
+name = "Markinsight"
+handle = "markinsight"
 application_url = "https://shopify-analytics-app-pmsl.onrender.com"
 
 # Embedded app configuration
 embedded = true
 
-# OAuth scopes - adjust based on your app's requirements
-# Common scopes for analytics apps:
-# - read_orders: Access order data for analytics
-# - read_products: Access product catalog
-# - read_customers: Access customer data
-# - read_analytics: Access Shopify's built-in analytics
-scopes = "read_orders,read_products,read_customers,read_analytics"
+# OAuth scopes are defined in [access_scopes] section below
 
 # Allowed redirect URLs for OAuth flow
 [auth]
@@ -29,7 +23,7 @@ redirect_urls = [
 # Webhooks configuration
 # These match your existing webhook routes in backend/src/api/routes/webhooks_shopify.py
 [webhooks]
-api_version = "2024-01"
+api_version = "2026-01"
 
   # App lifecycle webhooks
   [[webhooks.subscriptions]]
@@ -56,6 +50,8 @@ api_version = "2024-01"
 
 # App distribution settings
 [access_scopes]
+# OAuth scopes for analytics apps
+scopes = "read_orders,read_products,read_customers,read_analytics"
 # Use legacy mode for self-hosted apps
 use_legacy_install_flow = true
 

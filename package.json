@@ -1,0 +1,14 @@
+{
+  "name": "markinsight",
+  "version": "1.0.0",
+  "description": "Shopify Marketing Analytics App",
+  "private": true,
+  "scripts": {
+    "shopify": "shopify"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@shopify/cli": "^3.90.0",
+    "@shopify/app": "^3.90.0"
+  }
+}
