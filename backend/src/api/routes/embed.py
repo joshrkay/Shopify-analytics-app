@@ -15,7 +15,7 @@ Security:
 
 import os
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Response
 from sqlalchemy.orm import Session
@@ -32,9 +32,8 @@ from src.services.embed_token_service import (
     TokenValidationError,
     get_embed_token_service,
 )
-from src.database.session import get_db_session
-from src.models.user import User
-from src.services.explore_guardrail_exception_service import ExploreGuardrailExceptionService
+from src.services.dashboard_access_service import DashboardAccessService
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +45,9 @@ class EmbedTokenRequest(BaseModel):
     """Request to generate an embed token."""
     dashboard_id: str = Field(..., description="Superset dashboard ID to embed")
     tenant_id: Optional[str] = Field(None, description="Tenant ID (ignored, uses JWT context)")
+    access_surface: Literal["shopify_embed", "external_app"] = Field(
+        "shopify_embed", description="Where the token will be used"
+    )
 
 
 class RefreshTokenRequest(BaseModel):
@@ -171,6 +173,29 @@ async def generate_embed_token(
             }
         )
 
+    # Phase 5 — Dashboard Visibility Gate: validate dashboard access
+    access_service = DashboardAccessService(
+        tenant_id=tenant_ctx.tenant_id,
+        roles=tenant_ctx.roles,
+        billing_tier=tenant_ctx.billing_tier,
+    )
+    if not access_service.is_dashboard_allowed(token_request.dashboard_id):
+        logger.warning(
+            "dashboard.access_denied",
+            extra={
+                "tenant_id": tenant_ctx.tenant_id,
+                "user_id": tenant_ctx.user_id,
+                "dashboard_id": token_request.dashboard_id,
+                "billing_tier": tenant_ctx.billing_tier,
+                "roles": tenant_ctx.roles,
+                "allowed_dashboards": access_service.get_allowed_dashboards(),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dashboard not available for your plan",
+        )
+
     logger.info(
         "Generating embed token",
         extra={
@@ -185,8 +210,36 @@ async def generate_embed_token(
         result = service.generate_embed_token(
             tenant_context=tenant_ctx,
             dashboard_id=token_request.dashboard_id,
-            extra_claims=extra_claims,
+            access_surface=token_request.access_surface,
         )
+
+        # Emit auth.jwt_issued audit event
+        try:
+            from src.services.audit_logger import emit_jwt_issued
+            from src.database.session import get_db_session_sync
+
+            db_gen = get_db_session_sync()
+            db = next(db_gen)
+            try:
+                emit_jwt_issued(
+                    db=db,
+                    tenant_id=tenant_ctx.tenant_id,
+                    user_id=tenant_ctx.user_id,
+                    dashboard_id=token_request.dashboard_id,
+                    access_surface=token_request.access_surface,
+                    lifetime_minutes=service.config.default_lifetime_minutes,
+                )
+            finally:
+                db.close()
+        except Exception:
+            logger.warning(
+                "Failed to emit auth.jwt_issued audit event",
+                extra={
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "user_id": tenant_ctx.user_id,
+                },
+                exc_info=True,
+            )
 
         # Add CSP headers
         add_embed_csp_headers(response)
@@ -225,7 +278,7 @@ async def refresh_embed_token(
     refresh_request: RefreshTokenRequest,
     response: Response,
     service: EmbedTokenService = Depends(get_service),
-    db: Session = Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("embed_token_refresh", limit=60)),
 ):
     """
     Refresh an embed token before expiry.
@@ -254,6 +307,32 @@ async def refresh_embed_token(
             tenant_context=tenant_ctx,
             extra_claims=extra_claims,
         )
+
+        # Emit auth.jwt_refresh audit event
+        try:
+            from src.services.audit_logger import emit_embed_token_refresh
+            from src.database.session import get_db_session_sync
+
+            db_gen = get_db_session_sync()
+            db = next(db_gen)
+            try:
+                emit_embed_token_refresh(
+                    db=db,
+                    tenant_id=tenant_ctx.tenant_id,
+                    user_id=tenant_ctx.user_id,
+                    dashboard_id=refresh_request.dashboard_id or "unknown",
+                )
+            finally:
+                db.close()
+        except Exception:
+            logger.warning(
+                "Failed to emit auth.jwt_refresh audit event",
+                extra={
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "user_id": tenant_ctx.user_id,
+                },
+                exc_info=True,
+            )
 
         # Add CSP headers
         add_embed_csp_headers(response)

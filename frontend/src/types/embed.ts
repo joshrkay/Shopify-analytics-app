@@ -5,6 +5,13 @@
  */
 
 /**
+ * Access surface type for analytics embedding.
+ * - 'shopify_embed': Embedded within Shopify Admin iframe
+ * - 'external_app': Standalone external analytics surface
+ */
+export type AccessSurface = 'shopify_embed' | 'external_app';
+
+/**
  * Embed token response from API.
  */
 export interface EmbedTokenResponse {
@@ -13,6 +20,7 @@ export interface EmbedTokenResponse {
   refresh_before: string;
   dashboard_url: string;
   embed_config: EmbedDisplayConfig;
+  access_surface?: AccessSurface;
 }
 
 /**

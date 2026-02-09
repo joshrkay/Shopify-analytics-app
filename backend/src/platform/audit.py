@@ -180,6 +180,14 @@ class AuditAction(str, Enum):
     AUDIT_RETENTION_COMPLETED = "audit.retention.completed"
     AUDIT_RETENTION_FAILED = "audit.retention.failed"
 
+    # JWT Embed events (Phase 1 - JWT Issuance)
+    # NOTE: AUTH_JWT_ISSUED already defined above (Story 5.5.3)
+    AUTH_JWT_REVOKED = "auth.jwt_revoked"
+    EMBED_NAVIGATION_BLOCKED = "embed.navigation_blocked"
+    EMBED_LOAD_FAILED = "embed.load_failed"
+    DASHBOARD_ACCESS_DENIED = "dashboard.access_denied"
+    RATE_LIMIT_TRIGGERED = "rate_limit.triggered"
+
     # Identity events
     IDENTITY_USER_FIRST_SEEN = "identity.user_first_seen"
     IDENTITY_USER_LINKED_TO_TENANT = "identity.user_linked_to_tenant"
@@ -202,6 +210,23 @@ class AuditAction(str, Enum):
     # Super Admin events (DB-backed only - NEVER from JWT claims)
     IDENTITY_SUPER_ADMIN_GRANTED = "identity.super_admin_granted"
     IDENTITY_SUPER_ADMIN_REVOKED = "identity.super_admin_revoked"
+
+    # Agency Access events (Story 5.5.2)
+    AGENCY_ACCESS_REQUESTED = "agency_access.requested"
+    AGENCY_ACCESS_APPROVED = "agency_access.approved"
+    AGENCY_ACCESS_DENIED = "agency_access.denied"
+
+    # Auth JWT events (Story 5.5.3)
+    AUTH_JWT_ISSUED = "auth.jwt_issued"
+    AUTH_JWT_REFRESH = "auth.jwt_refresh"
+    TENANT_CONTEXT_SWITCHED = "tenant.context_switched"
+
+    # Grace-period revocation events (Story 5.5.4)
+    AGENCY_ACCESS_REVOKED = "agency_access.revoked"
+    AGENCY_ACCESS_EXPIRED = "agency_access.expired"
+
+    # RBAC enforcement events (Story 5.5.5)
+    RBAC_DENIED = "rbac.denied"
 
     # Identity collision events
     IDENTITY_COLLISION_DETECTED = "identity.identity_collision_detected"
@@ -1353,29 +1378,41 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
         risk_level="high",
         compliance_tags=("SOC2",),
     ),
-    # Explore guardrail bypass events (Story 5.4)
-    AuditAction.EXPLORE_GUARDRAIL_BYPASS_REQUESTED: AuditableEventMetadata(
-        description="Guardrail bypass requested for Explore query",
-        required_fields=("user_id", "dataset", "reason"),
+    # JWT Embed events (Phase 1 - JWT Issuance)
+    AuditAction.AUTH_JWT_ISSUED: AuditableEventMetadata(
+        description="JWT embed token issued for Superset embedding",
+        required_fields=("user_id", "tenant_id", "dashboard_id", "access_surface", "lifetime_minutes"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTH_JWT_REVOKED: AuditableEventMetadata(
+        description="JWT embed tokens revoked for a user",
+        required_fields=("user_id", "tenant_id", "reason", "revoked_by"),
         risk_level="high",
         compliance_tags=("SOC2",),
     ),
-    AuditAction.EXPLORE_GUARDRAIL_BYPASS_APPROVED: AuditableEventMetadata(
-        description="Guardrail bypass approved",
-        required_fields=("user_id", "approved_by", "duration_minutes"),
+    AuditAction.EMBED_NAVIGATION_BLOCKED: AuditableEventMetadata(
+        description="Embedded navigation attempt blocked by CSP or policy",
+        required_fields=("user_id", "tenant_id", "blocked_path", "reason"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.EMBED_LOAD_FAILED: AuditableEventMetadata(
+        description="Embedded dashboard failed to load",
+        required_fields=("tenant_id", "error_type", "access_surface"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.DASHBOARD_ACCESS_DENIED: AuditableEventMetadata(
+        description="Dashboard access denied due to permissions or billing",
+        required_fields=("user_id", "tenant_id", "dashboard_id", "reason"),
         risk_level="high",
         compliance_tags=("SOC2",),
     ),
-    AuditAction.EXPLORE_GUARDRAIL_BYPASS_USED: AuditableEventMetadata(
-        description="Guardrail bypass used for Explore query",
-        required_fields=("user_id", "dataset", "query_hash"),
-        risk_level="high",
-        compliance_tags=("SOC2",),
-    ),
-    AuditAction.EXPLORE_GUARDRAIL_BYPASS_EXPIRED: AuditableEventMetadata(
-        description="Guardrail bypass expired",
-        required_fields=("user_id", "expired_at"),
-        risk_level="high",
+    AuditAction.RATE_LIMIT_TRIGGERED: AuditableEventMetadata(
+        description="API rate limit triggered for endpoint",
+        required_fields=("user_id", "tenant_id", "endpoint", "limit", "window"),
+        risk_level="medium",
         compliance_tags=("SOC2",),
     ),
 }

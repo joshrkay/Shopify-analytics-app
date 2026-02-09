@@ -8,6 +8,9 @@
  */
 
 import { API_BASE_URL, createHeaders, handleResponse } from './apiUtils';
+import type { AccessSurface } from '../types/embed';
+
+export type { AccessSurface } from '../types/embed';
 
 export interface EmbedTokenResponse {
   jwt_token: string;
@@ -20,6 +23,7 @@ export interface EmbedTokenResponse {
     show_title: boolean;
     hide_chrome: boolean;
   };
+  access_surface?: AccessSurface;
 }
 
 export interface EmbedConfig {
@@ -40,17 +44,23 @@ export interface EmbedHealthResponse {
  * Generate an embed token for a specific dashboard.
  *
  * @param dashboardId - The Superset dashboard ID to embed
+ * @param accessSurface - Optional access surface type ('shopify_embed' | 'external_app')
  * @returns Token response with JWT and dashboard URL
  */
 export async function generateEmbedToken(
-  dashboardId: string
+  dashboardId: string,
+  accessSurface?: AccessSurface
 ): Promise<EmbedTokenResponse> {
+  const body: Record<string, string> = {
+    dashboard_id: dashboardId,
+  };
+  if (accessSurface) {
+    body.access_surface = accessSurface;
+  }
   const response = await fetch(`${API_BASE_URL}/embed/token`, {
     method: 'POST',
     headers: createHeaders(),
-    body: JSON.stringify({
-      dashboard_id: dashboardId,
-    }),
+    body: JSON.stringify(body),
   });
   return handleResponse<EmbedTokenResponse>(response);
 }
@@ -62,19 +72,25 @@ export async function generateEmbedToken(
  *
  * @param currentToken - The current JWT token to refresh
  * @param dashboardId - Optional dashboard ID (uses token's dashboard if not provided)
+ * @param accessSurface - Optional access surface type ('shopify_embed' | 'external_app')
  * @returns New token response
  */
 export async function refreshEmbedToken(
   currentToken: string,
-  dashboardId?: string
+  dashboardId?: string,
+  accessSurface?: AccessSurface
 ): Promise<EmbedTokenResponse> {
+  const body: Record<string, string | undefined> = {
+    current_token: currentToken,
+    dashboard_id: dashboardId,
+  };
+  if (accessSurface) {
+    body.access_surface = accessSurface;
+  }
   const response = await fetch(`${API_BASE_URL}/embed/token/refresh`, {
     method: 'POST',
     headers: createHeaders(),
-    body: JSON.stringify({
-      current_token: currentToken,
-      dashboard_id: dashboardId,
-    }),
+    body: JSON.stringify(body),
   });
   return handleResponse<EmbedTokenResponse>(response);
 }

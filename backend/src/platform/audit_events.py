@@ -1275,6 +1275,39 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "tenant_id",
         "reason",
     ],
+
+    # =========================================================================
+    # EMBED SECURITY & ACCESS EVENTS (Phase 1 - JWT Issuance)
+    # =========================================================================
+    # Track embedding security events, access denials, and rate limiting.
+
+    "embed.navigation_blocked": [
+        "user_id",              # User who attempted navigation
+        "tenant_id",            # Tenant context
+        "blocked_path",         # Path that was blocked
+        "reason",               # Enum: csp_violation, policy_block, invalid_route
+    ],
+
+    "embed.load_failed": [
+        "tenant_id",            # Tenant context
+        "error_type",           # Enum: token_invalid, network, timeout, csp_block
+        "access_surface",       # shopify_embed or external_app
+    ],
+
+    "dashboard.access_denied": [
+        "user_id",              # User who was denied
+        "tenant_id",            # Tenant context
+        "dashboard_id",         # Dashboard that was denied
+        "reason",               # Enum: billing_tier, permission, not_found
+    ],
+
+    "rate_limit.triggered": [
+        "user_id",              # User who hit the limit
+        "tenant_id",            # Tenant context
+        "endpoint",             # API endpoint that was rate-limited
+        "limit",                # Configured limit value
+        "window",               # Time window (e.g., "60s", "1h")
+    ],
 }
 
 
@@ -1439,6 +1472,12 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "data.quality.fail",
         "data.quality.recovered",
     ],
+    "embed_security": [
+        "embed.navigation_blocked",
+        "embed.load_failed",
+        "dashboard.access_denied",
+        "rate_limit.triggered",
+    ],
 }
 
 
@@ -1557,6 +1596,12 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
     "data.quality.warn": "medium",
     "data.quality.fail": "high",
     "data.quality.recovered": "low",
+
+    # Embed security events (Phase 1 - JWT Issuance)
+    "embed.navigation_blocked": "medium",
+    "embed.load_failed": "medium",
+    "dashboard.access_denied": "high",
+    "rate_limit.triggered": "medium",
 }
 
 
