@@ -58,6 +58,7 @@ security = HTTPBearer(auto_error=False)
 
 # Paths that don't require authentication
 EXEMPT_PATHS = {
+    "/",
     "/health",
     "/api/health",
     "/api/webhooks/clerk",
