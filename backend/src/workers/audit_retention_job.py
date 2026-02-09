@@ -1,58 +1,206 @@
-"""Audit log retention enforcement job."""
+"""
+GA Audit Log Retention Job.
 
-from __future__ import annotations
+Enforces 90-day hard-delete retention for ga_audit_logs.
+
+REQUIREMENTS:
+- Hard-delete logs older than 90 days
+- Daily scheduled job
+- No legal hold support (GA scope)
+- Batch deletion to avoid long transactions
+- Temporarily disables immutability trigger during deletion
+
+SAFETY:
+- Dry-run mode is ON by default (set AUDIT_RETENTION_DRY_RUN=false to enable)
+- Batch size is configurable (default 1000)
+- Transaction per batch to avoid holding locks
+"""
 
 import logging
-from datetime import datetime, timedelta, timezone
+import os
+import time
+from datetime import datetime, timezone, timedelta
 
-from src.database.session import get_db_session_sync
-from src.platform.audit import AuditAction, AuditLog, AuditOutcome, log_system_audit_event_sync
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from src.models.audit_log import GAAuditLog
 
 logger = logging.getLogger(__name__)
 
+# Configuration
+RETENTION_DAYS = 90
+BATCH_SIZE = int(os.getenv("GA_AUDIT_RETENTION_BATCH_SIZE", "1000"))
+DRY_RUN = os.getenv("GA_AUDIT_RETENTION_DRY_RUN", "true").lower() == "true"
 
-def run_retention_cycle(retention_days: int = 90, db_session=None) -> int:
-    """Delete audit logs older than retention window."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-    db = db_session
-    db_gen = None
-    if db is None:
-        db_gen = get_db_session_sync()
-        db = next(db_gen)
-    try:
-        log_system_audit_event_sync(
-            db=db,
-            tenant_id="system",
-            action=AuditAction.AUDIT_RETENTION_STARTED,
-            metadata={"retention_days": retention_days, "cutoff": cutoff.isoformat()},
-            outcome=AuditOutcome.SUCCESS,
+
+class GAAuditRetentionJob:
+    """
+    Deletes GA audit log records older than 90 days.
+
+    Runs as a daily scheduled job. Deletes in batches to avoid long
+    transactions and lock contention.
+
+    The immutability trigger on ga_audit_logs prevents DELETE operations.
+    This job temporarily disables the trigger, performs the batch delete,
+    then re-enables it.
+    """
+
+    def __init__(self, db: Session):
+        self.db = db
+        self.retention_days = RETENTION_DAYS
+        self.batch_size = BATCH_SIZE
+        self.dry_run = DRY_RUN
+
+    def execute(self) -> dict:
+        """
+        Run the retention job.
+
+        Returns:
+            Dict with execution summary including total_deleted, batches, duration.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
+        start_time = time.monotonic()
+        total_deleted = 0
+        batch_count = 0
+
+        logger.info(
+            "ga_audit_retention_started",
+            extra={
+                "cutoff": cutoff.isoformat(),
+                "retention_days": self.retention_days,
+                "batch_size": self.batch_size,
+                "dry_run": self.dry_run,
+            },
         )
+
+        if self.dry_run:
+            # Count what would be deleted
+            count = (
+                self.db.query(GAAuditLog)
+                .filter(GAAuditLog.created_at < cutoff)
+                .count()
+            )
+            elapsed = time.monotonic() - start_time
+            logger.info(
+                "ga_audit_retention_dry_run",
+                extra={
+                    "would_delete": count,
+                    "cutoff": cutoff.isoformat(),
+                    "elapsed_seconds": round(elapsed, 2),
+                },
+            )
+            return {
+                "dry_run": True,
+                "would_delete": count,
+                "cutoff": cutoff.isoformat(),
+                "elapsed_seconds": round(elapsed, 2),
+            }
+
+        try:
+            # Disable immutability trigger for deletion
+            self._disable_immutability_trigger()
+
+            while True:
+                deleted = self._delete_batch(cutoff)
+                if deleted == 0:
+                    break
+                total_deleted += deleted
+                batch_count += 1
+
+                logger.info(
+                    "ga_audit_retention_batch",
+                    extra={
+                        "batch": batch_count,
+                        "deleted": deleted,
+                        "total_deleted": total_deleted,
+                    },
+                )
+
+        finally:
+            # Always re-enable the trigger
+            self._enable_immutability_trigger()
+
+        elapsed = time.monotonic() - start_time
+
+        logger.info(
+            "ga_audit_retention_completed",
+            extra={
+                "total_deleted": total_deleted,
+                "batches": batch_count,
+                "cutoff": cutoff.isoformat(),
+                "elapsed_seconds": round(elapsed, 2),
+            },
+        )
+
+        return {
+            "dry_run": False,
+            "total_deleted": total_deleted,
+            "batches": batch_count,
+            "cutoff": cutoff.isoformat(),
+            "elapsed_seconds": round(elapsed, 2),
+        }
+
+    def _delete_batch(self, cutoff: datetime) -> int:
+        """
+        Delete a single batch of expired records.
+
+        Uses a subquery to identify IDs first (avoids locking entire table),
+        then deletes by ID.
+        """
+        # Find IDs to delete
+        ids_to_delete = (
+            self.db.query(GAAuditLog.id)
+            .filter(GAAuditLog.created_at < cutoff)
+            .limit(self.batch_size)
+            .all()
+        )
+
+        if not ids_to_delete:
+            return 0
+
+        id_list = [row[0] for row in ids_to_delete]
+
         deleted = (
-            db.query(AuditLog)
-            .filter(AuditLog.created_at < cutoff)
+            self.db.query(GAAuditLog)
+            .filter(GAAuditLog.id.in_(id_list))
             .delete(synchronize_session=False)
         )
-        log_system_audit_event_sync(
-            db=db,
-            tenant_id="system",
-            action=AuditAction.AUDIT_RETENTION_COMPLETED,
-            metadata={"retention_days": retention_days, "deleted": deleted},
-            outcome=AuditOutcome.SUCCESS,
-        )
-        db.commit()
+
+        self.db.commit()
         return deleted
-    except Exception:
-        db.rollback()
-        logger.error("Audit retention job failed", exc_info=True)
-        log_system_audit_event_sync(
-            db=db,
-            tenant_id="system",
-            action=AuditAction.AUDIT_RETENTION_FAILED,
-            metadata={"retention_days": retention_days},
-            outcome=AuditOutcome.FAILURE,
-        )
-        db.commit()
-        return 0
-    finally:
-        if db_gen is not None:
-            db.close()
+
+    def _disable_immutability_trigger(self) -> None:
+        """Temporarily disable the immutability trigger on ga_audit_logs."""
+        try:
+            self.db.execute(
+                text(
+                    "ALTER TABLE ga_audit_logs "
+                    "DISABLE TRIGGER ga_audit_log_immutable"
+                )
+            )
+            self.db.commit()
+            logger.info("ga_audit_retention_trigger_disabled")
+        except Exception:
+            # SQLite (test) doesn't support triggers
+            logger.debug(
+                "ga_audit_retention_trigger_disable_skipped",
+                exc_info=True,
+            )
+
+    def _enable_immutability_trigger(self) -> None:
+        """Re-enable the immutability trigger on ga_audit_logs."""
+        try:
+            self.db.execute(
+                text(
+                    "ALTER TABLE ga_audit_logs "
+                    "ENABLE TRIGGER ga_audit_log_immutable"
+                )
+            )
+            self.db.commit()
+            logger.info("ga_audit_retention_trigger_enabled")
+        except Exception:
+            logger.debug(
+                "ga_audit_retention_trigger_enable_skipped",
+                exc_info=True,
+            )
