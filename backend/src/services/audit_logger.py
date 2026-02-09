@@ -28,6 +28,8 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 _RESOURCE_TYPE = "historical_backfill_request"
+_JWT_RESOURCE_TYPE = "jwt"
+_DASHBOARD_RESOURCE_TYPE = "dashboard"
 
 
 def _build_base_metadata(request) -> dict:
@@ -1223,20 +1225,100 @@ def emit_agency_access_denied(
 
 
 # ---------------------------------------------------------------------------
-# JWT refresh and tenant context audit event emitters (Story 5.5.3)
+# Auth + dashboard audit event emitters (Story 5.7)
 # ---------------------------------------------------------------------------
 
 
-def emit_jwt_refresh(
+def emit_login_success(
     db: Session,
     tenant_id: str,
     user_id: str,
-    previous_tenant_id: str | None = None,
-    access_surface: str = "external_app",
+    access_surface: str,
     *,
     correlation_id: str | None = None,
 ) -> None:
-    """Emit auth.jwt_refresh when a JWT is refreshed for tenant switching."""
+    """Emit auth.login_success when authentication succeeds."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.AUTH_LOGIN_SUCCESS,
+            resource_type=_JWT_RESOURCE_TYPE,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "access_surface": access_surface,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_login_success_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_login_failed(
+    db: Session,
+    tenant_id: str | None,
+    user_id: str | None,
+    reason: str,
+    access_surface: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.login_failed for failed authentication attempts."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id or "unknown",
+            action=AuditAction.AUTH_LOGIN_FAILED,
+            resource_type=_JWT_RESOURCE_TYPE,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "reason": reason,
+                "access_surface": access_surface,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.FAILURE,
+            error_code=reason,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_login_failed_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_jwt_issued(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    access_surface: str,
+    lifetime_minutes: int,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_issued when an embed token is created."""
     try:
         from src.platform.audit import (
             AuditAction,
@@ -1250,6 +1332,8 @@ def emit_jwt_refresh(
             action=AuditAction.AUTH_JWT_ISSUED,
             resource_type=_JWT_RESOURCE_TYPE,
             resource_id=dashboard_id,
+            dashboard_id=dashboard_id,
+            access_surface=access_surface,
             metadata={
                 "user_id": user_id,
                 "tenant_id": tenant_id,
@@ -1264,6 +1348,95 @@ def emit_jwt_refresh(
     except Exception:
         logger.warning(
             "audit_logger.emit_jwt_issued_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_jwt_refresh(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str | None = None,
+    access_surface: str | None = None,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_refresh when a JWT is refreshed."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.AUTH_JWT_REFRESH,
+            resource_type=_JWT_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            dashboard_id=dashboard_id,
+            access_surface=access_surface,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "dashboard_id": dashboard_id,
+                "access_surface": access_surface,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_jwt_refresh_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_jwt_refresh_failed(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    reason: str,
+    dashboard_id: str | None = None,
+    access_surface: str | None = None,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit auth.jwt_refresh_failed when refresh fails."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.AUTH_JWT_REFRESH_FAILED,
+            resource_type=_JWT_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            dashboard_id=dashboard_id,
+            access_surface=access_surface,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "dashboard_id": dashboard_id,
+                "access_surface": access_surface,
+                "reason": reason,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.FAILURE,
+            error_code=reason,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_jwt_refresh_failed_failed",
             extra={"tenant_id": tenant_id, "user_id": user_id},
             exc_info=True,
         )
@@ -1309,15 +1482,16 @@ def emit_jwt_revoked(
         )
 
 
-def emit_embed_token_refresh(
+def emit_dashboard_viewed(
     db: Session,
     tenant_id: str,
     user_id: str,
     dashboard_id: str,
+    access_surface: str,
     *,
     correlation_id: str | None = None,
 ) -> None:
-    """Emit auth.token_refresh when an embed token is refreshed."""
+    """Emit dashboard.viewed when a dashboard is accessed."""
     try:
         from src.platform.audit import (
             AuditAction,
@@ -1328,15 +1502,16 @@ def emit_embed_token_refresh(
         log_system_audit_event_sync(
             db=db,
             tenant_id=tenant_id,
-            action=AuditAction.AGENCY_ACCESS_REVOKED,
-            resource_type=_REVOCATION_RESOURCE_TYPE,
+            action=AuditAction.DASHBOARD_VIEWED,
+            resource_type=_DASHBOARD_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            dashboard_id=dashboard_id,
+            access_surface=access_surface,
             metadata={
                 "user_id": user_id,
                 "tenant_id": tenant_id,
-                "revoked_by": revoked_by,
-                "expires_at": expires_at.isoformat() if hasattr(expires_at, "isoformat") else str(expires_at),
-                "grace_period_hours": grace_period_hours,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "dashboard_id": dashboard_id,
+                "access_surface": access_surface,
             },
             correlation_id=correlation_id,
             source="api",
@@ -1344,8 +1519,100 @@ def emit_embed_token_refresh(
         )
     except Exception:
         logger.warning(
-            "audit_logger.emit_agency_access_revoked_failed",
-            extra={"user_id": user_id, "tenant_id": tenant_id},
+            "audit_logger.emit_dashboard_viewed_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_dashboard_load_failed(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    access_surface: str,
+    reason: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit dashboard.load_failed when a dashboard fails to load."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.DASHBOARD_LOAD_FAILED,
+            resource_type=_DASHBOARD_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            dashboard_id=dashboard_id,
+            access_surface=access_surface,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "dashboard_id": dashboard_id,
+                "access_surface": access_surface,
+                "reason": reason,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.FAILURE,
+            error_code=reason,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_dashboard_load_failed_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
+def emit_dashboard_access_denied(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    dashboard_id: str,
+    access_surface: str,
+    reason: str,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit dashboard.access_denied when access is blocked."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.DASHBOARD_ACCESS_DENIED,
+            resource_type=_DASHBOARD_RESOURCE_TYPE,
+            resource_id=dashboard_id,
+            dashboard_id=dashboard_id,
+            access_surface=access_surface,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "dashboard_id": dashboard_id,
+                "access_surface": access_surface,
+                "reason": reason,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.DENIED,
+            error_code=reason,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_dashboard_access_denied_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
             exc_info=True,
         )
 

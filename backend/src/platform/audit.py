@@ -32,7 +32,7 @@ from typing import Any, Optional, FrozenSet
 from dataclasses import dataclass, field, asdict
 
 from fastapi import Request
-from sqlalchemy import Column, String, DateTime, Text, Index, Enum as SAEnum, JSON
+from sqlalchemy import Column, String, DateTime, Text, Index, Enum as SAEnum, JSON, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 
 # Use JSON with PostgreSQL variant for JSONB - allows SQLite in tests
@@ -55,6 +55,7 @@ class AuditAction(str, Enum):
     """
     # Auth events
     AUTH_LOGIN = "auth.login"
+    AUTH_LOGIN_SUCCESS = "auth.login_success"
     AUTH_LOGOUT = "auth.logout"
     AUTH_LOGIN_FAILED = "auth.login_failed"
     AUTH_TOKEN_REFRESH = "auth.token_refresh"
@@ -186,6 +187,8 @@ class AuditAction(str, Enum):
     EMBED_NAVIGATION_BLOCKED = "embed.navigation_blocked"
     EMBED_LOAD_FAILED = "embed.load_failed"
     DASHBOARD_ACCESS_DENIED = "dashboard.access_denied"
+    DASHBOARD_VIEWED = "dashboard.viewed"
+    DASHBOARD_LOAD_FAILED = "dashboard.load_failed"
     RATE_LIMIT_TRIGGERED = "rate_limit.triggered"
 
     # Identity events
@@ -219,6 +222,7 @@ class AuditAction(str, Enum):
     # Auth JWT events (Story 5.5.3)
     AUTH_JWT_ISSUED = "auth.jwt_issued"
     AUTH_JWT_REFRESH = "auth.jwt_refresh"
+    AUTH_JWT_REFRESH_FAILED = "auth.jwt_refresh_failed"
     TENANT_CONTEXT_SWITCHED = "tenant.context_switched"
 
     # Grace-period revocation events (Story 5.5.4)
@@ -397,22 +401,29 @@ class AuditLog(Base):
     user_id = Column(String(255), nullable=True, index=True)  # NULL for system events
     action = Column(String(100), nullable=False, index=True)
     timestamp = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    event_type = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     ip_address = Column(String(45), nullable=True)  # IPv6 max length
     user_agent = Column(Text, nullable=True)
     resource_type = Column(String(100), nullable=True, index=True)
     resource_id = Column(String(255), nullable=True, index=True)
+    dashboard_id = Column(String(255), nullable=True, index=True)
+    access_surface = Column(String(50), nullable=True)
     event_metadata = Column(JSONType, nullable=False, default=dict)
     correlation_id = Column(String(36), nullable=False, index=True)
     # New fields for Story 10.1
     source = Column(String(50), nullable=False, default="api")  # api, worker, system, webhook
     outcome = Column(String(20), nullable=False, default="success")  # success, failure, denied
+    success = Column(Boolean, nullable=True)
     error_code = Column(String(50), nullable=True)
 
     __table_args__ = (
         Index("ix_audit_logs_tenant_timestamp", "tenant_id", "timestamp"),
         Index("ix_audit_logs_tenant_action", "tenant_id", "action"),
+        Index("ix_audit_logs_event_type", "event_type"),
         Index("ix_audit_logs_tenant_user", "tenant_id", "user_id"),
         Index("ix_audit_logs_correlation", "correlation_id"),
+        Index("ix_audit_logs_dashboard", "tenant_id", "dashboard_id"),
     )
 
 
@@ -436,25 +447,41 @@ class AuditEvent:
     metadata: dict[str, Any] = field(default_factory=dict)
     correlation_id: Optional[str] = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    event_type: Optional[str] = None
+    created_at: Optional[datetime] = None
+    dashboard_id: Optional[str] = None
+    access_surface: Optional[str] = None
+    success: Optional[bool] = None
     source: str = "api"  # api, worker, system, webhook
     outcome: AuditOutcome = AuditOutcome.SUCCESS
     error_code: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for database insertion with PII redaction."""
+        action_value = (
+            self.action.value if isinstance(self.action, AuditAction) else self.action
+        )
+        outcome_value = (
+            self.outcome.value if isinstance(self.outcome, AuditOutcome) else self.outcome
+        )
         return {
             "tenant_id": self.tenant_id,
             "user_id": self.user_id,
-            "action": self.action.value if isinstance(self.action, AuditAction) else self.action,
+            "action": action_value,
             "timestamp": self.timestamp,
+            "event_type": self.event_type or action_value,
+            "created_at": self.created_at or self.timestamp,
             "ip_address": self.ip_address,
             "user_agent": self.user_agent,
             "resource_type": self.resource_type,
             "resource_id": self.resource_id,
+            "dashboard_id": self.dashboard_id,
+            "access_surface": self.access_surface,
             "event_metadata": PIIRedactor.redact(self.metadata),
             "correlation_id": self.correlation_id,
             "source": self.source,
-            "outcome": self.outcome.value if isinstance(self.outcome, AuditOutcome) else self.outcome,
+            "outcome": outcome_value,
+            "success": self.success if self.success is not None else outcome_value == AuditOutcome.SUCCESS.value,
             "error_code": self.error_code,
         }
 
@@ -615,6 +642,8 @@ def log_audit_event_sync(
     action: AuditAction,
     resource_type: Optional[str] = None,
     resource_id: Optional[str] = None,
+    dashboard_id: Optional[str] = None,
+    access_surface: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
     outcome: AuditOutcome = AuditOutcome.SUCCESS,
     error_code: Optional[str] = None,
@@ -654,6 +683,8 @@ def log_audit_event_sync(
         user_agent=user_agent,
         resource_type=resource_type,
         resource_id=resource_id,
+        dashboard_id=dashboard_id,
+        access_surface=access_surface,
         metadata=metadata or {},
         correlation_id=correlation_id,
         source="api",
@@ -671,6 +702,8 @@ async def log_audit_event(
     action: AuditAction,
     resource_type: Optional[str] = None,
     resource_id: Optional[str] = None,
+    dashboard_id: Optional[str] = None,
+    access_surface: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
     outcome: AuditOutcome = AuditOutcome.SUCCESS,
     error_code: Optional[str] = None,
@@ -712,6 +745,8 @@ async def log_audit_event(
         action=action,
         resource_type=resource_type,
         resource_id=resource_id,
+        dashboard_id=dashboard_id,
+        access_surface=access_surface,
         metadata=metadata,
         outcome=outcome,
         error_code=error_code,
@@ -724,6 +759,8 @@ def log_system_audit_event_sync(
     action: AuditAction,
     resource_type: Optional[str] = None,
     resource_id: Optional[str] = None,
+    dashboard_id: Optional[str] = None,
+    access_surface: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
     correlation_id: Optional[str] = None,
     source: str = "system",
@@ -761,6 +798,8 @@ def log_system_audit_event_sync(
         user_id=None,  # System events have no user
         resource_type=resource_type,
         resource_id=resource_id,
+        dashboard_id=dashboard_id,
+        access_surface=access_surface,
         metadata=metadata or {},
         correlation_id=correlation_id,
         source=source,
@@ -778,6 +817,8 @@ async def log_system_audit_event(
     action: AuditAction,
     resource_type: Optional[str] = None,
     resource_id: Optional[str] = None,
+    dashboard_id: Optional[str] = None,
+    access_surface: Optional[str] = None,
     metadata: Optional[dict[str, Any]] = None,
     correlation_id: Optional[str] = None,
     source: str = "system",
@@ -813,6 +854,8 @@ async def log_system_audit_event(
         action=action,
         resource_type=resource_type,
         resource_id=resource_id,
+        dashboard_id=dashboard_id,
+        access_surface=access_surface,
         metadata=metadata,
         correlation_id=correlation_id,
         source=source,
@@ -905,6 +948,12 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
     AuditAction.AUTH_LOGIN: AuditableEventMetadata(
         description="User login attempt",
         required_fields=(),
+        risk_level="high",
+        compliance_tags=("SOC2", "GDPR"),
+    ),
+    AuditAction.AUTH_LOGIN_SUCCESS: AuditableEventMetadata(
+        description="User login succeeded",
+        required_fields=("user_id", "tenant_id"),
         risk_level="high",
         compliance_tags=("SOC2", "GDPR"),
     ),
@@ -1379,6 +1428,18 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
         risk_level="medium",
         compliance_tags=("SOC2",),
     ),
+    AuditAction.AUTH_JWT_REFRESH: AuditableEventMetadata(
+        description="JWT embed token refreshed",
+        required_fields=("user_id", "tenant_id", "dashboard_id"),
+        risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.AUTH_JWT_REFRESH_FAILED: AuditableEventMetadata(
+        description="JWT embed token refresh failed",
+        required_fields=("user_id", "tenant_id", "reason"),
+        risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
     AuditAction.AUTH_JWT_REVOKED: AuditableEventMetadata(
         description="JWT embed tokens revoked for a user",
         required_fields=("user_id", "tenant_id", "reason", "revoked_by"),
@@ -1401,6 +1462,18 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
         description="Dashboard access denied due to permissions or billing",
         required_fields=("user_id", "tenant_id", "dashboard_id", "reason"),
         risk_level="high",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.DASHBOARD_VIEWED: AuditableEventMetadata(
+        description="Dashboard viewed",
+        required_fields=("user_id", "tenant_id", "dashboard_id"),
+        risk_level="low",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.DASHBOARD_LOAD_FAILED: AuditableEventMetadata(
+        description="Dashboard failed to load",
+        required_fields=("user_id", "tenant_id", "dashboard_id", "reason"),
+        risk_level="medium",
         compliance_tags=("SOC2",),
     ),
     AuditAction.RATE_LIMIT_TRIGGERED: AuditableEventMetadata(
