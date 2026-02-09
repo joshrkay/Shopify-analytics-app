@@ -263,7 +263,7 @@ class TestAuditEvents:
             db=db_session,
             tenant_id="tenant-1",
             user_id="user-1",
-            previous_tenant_id="tenant-0",
+            dashboard_id="dashboard-1",
             access_surface="external_app",
         )
 
