@@ -47,8 +47,7 @@ from src.api.dq import routes as sync_health
 from src.api.routes import admin_diagnostics
 from src.api.routes import agency_access
 from src.api.routes import auth_refresh_jwt
-from src.api import audit_logs
-from src.api import audit_export
+from src.api.routes import shopify_embed_entry
 
 # Configure structured logging
 logging.basicConfig(
@@ -128,6 +127,11 @@ tenant_middleware = TenantContextMiddleware()
 app.middleware("http")(tenant_middleware)
 app.add_middleware(AuditLoggingMiddleware)
 
+
+# Include Shopify embedded app entry point (bypasses Clerk authentication)
+# This handles GET / which is loaded by Shopify Admin in an iframe.
+# Authentication is via Shopify HMAC verification, not Clerk JWT.
+app.include_router(shopify_embed_entry.router)
 
 # Include health route (bypasses authentication)
 app.include_router(health.router)
