@@ -57,7 +57,7 @@ export async function generateEmbedToken(
   if (accessSurface) {
     body.access_surface = accessSurface;
   }
-  const response = await fetch(`${API_BASE_URL}/embed/token`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/embed/token`, {
     method: 'POST',
     headers: createHeaders(),
     body: JSON.stringify(body),
@@ -87,7 +87,7 @@ export async function refreshEmbedToken(
   if (accessSurface) {
     body.access_surface = accessSurface;
   }
-  const response = await fetch(`${API_BASE_URL}/embed/token/refresh`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/embed/token/refresh`, {
     method: 'POST',
     headers: createHeaders(),
     body: JSON.stringify(body),
@@ -101,7 +101,7 @@ export async function refreshEmbedToken(
  * @returns Embed configuration including allowed dashboards and refresh interval
  */
 export async function getEmbedConfig(): Promise<EmbedConfig> {
-  const response = await fetch(`${API_BASE_URL}/embed/config`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/embed/config`, {
     method: 'GET',
     headers: createHeaders(),
   });
@@ -116,7 +116,7 @@ export async function getEmbedConfig(): Promise<EmbedConfig> {
  * @returns Health status of embed service
  */
 export async function checkEmbedHealth(): Promise<EmbedHealthResponse> {
-  const response = await fetch(`${API_BASE_URL}/embed/health`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/embed/health`, {
     method: 'GET',
   });
   return handleResponse<EmbedHealthResponse>(response);
