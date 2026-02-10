@@ -13,9 +13,9 @@
  * Phase 4A - Version History Integration
  */
 
-import { useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Page, SkeletonPage, Banner, Layout } from '@shopify/polaris';
+import { useState, useCallback, useEffect } from 'react';
+import { useParams, useNavigate, useBlocker } from 'react-router-dom';
+import { Page, SkeletonPage, Banner, Layout, Modal, Text } from '@shopify/polaris';
 import { DashboardBuilderProvider, useDashboardBuilder } from '../contexts/DashboardBuilderContext';
 import { DashboardToolbar } from '../components/dashboards/DashboardToolbar';
 import { DashboardGrid } from '../components/dashboards/DashboardGrid';
@@ -28,9 +28,11 @@ function BuilderContent() {
   const {
     dashboard,
     loadError,
+    isDirty,
     isSaving,
     saveError,
     saveErrorStatus,
+    autoSaveMessage,
     publishDashboard,
     clearError,
     refreshDashboard,
@@ -38,6 +40,19 @@ function BuilderContent() {
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+
+  // Block navigation when there are unsaved changes
+  const blocker = useBlocker(isDirty);
+
+  // Also guard browser close / refresh
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   const handleRestore = useCallback((restored: Dashboard) => {
     // Refresh the builder context to pick up restored state
@@ -92,6 +107,11 @@ function BuilderContent() {
           {saveError}
         </Banner>
       )}
+      {autoSaveMessage && !saveError && (
+        <Banner tone="warning">
+          {autoSaveMessage}
+        </Banner>
+      )}
       <Layout>
         <Layout.Section>
           <DashboardToolbar />
@@ -110,6 +130,30 @@ function BuilderContent() {
         onClose={() => setShowHistory(false)}
         onRestore={handleRestore}
       />
+
+      {/* Unsaved changes confirmation modal */}
+      <Modal
+        open={blocker.state === 'blocked'}
+        onClose={() => blocker.reset?.()}
+        title="You have unsaved changes"
+        primaryAction={{
+          content: 'Leave anyway',
+          destructive: true,
+          onAction: () => blocker.proceed?.(),
+        }}
+        secondaryActions={[
+          {
+            content: 'Stay on page',
+            onAction: () => blocker.reset?.(),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <Text as="p" variant="bodyMd">
+            Your unsaved changes will be lost if you leave this page.
+          </Text>
+        </Modal.Section>
+      </Modal>
     </Page>
   );
 }

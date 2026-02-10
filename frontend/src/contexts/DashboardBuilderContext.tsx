@@ -21,6 +21,7 @@ import {
   useEffect,
   useCallback,
   useRef,
+  useMemo,
   type ReactNode,
 } from 'react';
 import type {
@@ -55,6 +56,8 @@ interface DashboardBuilderState {
   isSaving: boolean;
   saveError: string | null;
   saveErrorStatus: number | null;
+  autoSaveStatus: 'idle' | 'saving' | 'error';
+  autoSaveFailures: number;
   selectedReportId: string | null;
   isReportConfigOpen: boolean;
 }
@@ -82,6 +85,15 @@ interface DashboardBuilderActions {
 
   // Refresh
   refreshDashboard: () => Promise<void>;
+
+  // Auto-save
+  autoSaveMessage: string | null;
+
+  // Undo / Redo
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 type DashboardBuilderContextValue = DashboardBuilderState & DashboardBuilderActions;
@@ -96,6 +108,10 @@ const DashboardBuilderContext = createContext<DashboardBuilderContextValue | nul
 // Initial State
 // =============================================================================
 
+const AUTO_SAVE_INTERVAL_MS = 30_000;
+const AUTO_SAVE_MAX_FAILURES = 3;
+const AUTO_SAVE_RETRY_DELAYS = [5_000, 10_000, 20_000];
+
 const initialState: DashboardBuilderState = {
   dashboard: null,
   loadError: null,
@@ -103,6 +119,8 @@ const initialState: DashboardBuilderState = {
   isSaving: false,
   saveError: null,
   saveErrorStatus: null,
+  autoSaveStatus: 'idle',
+  autoSaveFailures: 0,
   selectedReportId: null,
   isReportConfigOpen: false,
 };
@@ -127,6 +145,12 @@ export function DashboardBuilderProvider({
 
   // Track pending position changes from moveReport (not yet persisted)
   const pendingPositionsRef = useRef<Map<string, GridPosition>>(new Map());
+
+  // Undo/redo history stack (max 20 entries)
+  const MAX_HISTORY = 20;
+  const undoStackRef = useRef<Report[][]>([]);
+  const redoStackRef = useRef<Report[][]>([]);
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   // ---------------------------------------------------------------------------
   // Fetch dashboard on mount (or when dashboardId changes)
@@ -181,6 +205,8 @@ export function DashboardBuilderProvider({
       isSaving: false,
       saveError: null,
       saveErrorStatus: null,
+      autoSaveStatus: 'idle',
+      autoSaveFailures: 0,
     }));
   }, []);
 
@@ -445,6 +471,9 @@ export function DashboardBuilderProvider({
   );
 
   const moveReport = useCallback((reportId: string, newPosition: GridPosition) => {
+    // Push current state to undo stack before changing
+    pushHistory();
+
     // Track the pending position change
     pendingPositionsRef.current.set(reportId, newPosition);
 
@@ -462,7 +491,7 @@ export function DashboardBuilderProvider({
         isDirty: true,
       };
     });
-  }, []);
+  }, [pushHistory]);
 
   const commitLayout = useCallback(async () => {
     const pending = pendingPositionsRef.current;
@@ -538,6 +567,80 @@ export function DashboardBuilderProvider({
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Undo / Redo
+  // ---------------------------------------------------------------------------
+
+  const pushHistory = useCallback(() => {
+    if (!state.dashboard) return;
+    const snapshot = state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } }));
+    undoStackRef.current = [
+      ...undoStackRef.current.slice(-(MAX_HISTORY - 1)),
+      snapshot,
+    ];
+    redoStackRef.current = [];
+    setHistoryVersion((v) => v + 1);
+  }, [state.dashboard]);
+
+  const undo = useCallback(() => {
+    const stack = undoStackRef.current;
+    if (stack.length === 0 || !state.dashboard) return;
+    const previous = stack[stack.length - 1];
+    undoStackRef.current = stack.slice(0, -1);
+    redoStackRef.current = [
+      ...redoStackRef.current,
+      state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } })),
+    ];
+    setState((prev) => {
+      if (!prev.dashboard) return prev;
+      return {
+        ...prev,
+        dashboard: { ...prev.dashboard, reports: previous },
+        isDirty: true,
+      };
+    });
+    setHistoryVersion((v) => v + 1);
+  }, [state.dashboard]);
+
+  const redo = useCallback(() => {
+    const stack = redoStackRef.current;
+    if (stack.length === 0 || !state.dashboard) return;
+    const next = stack[stack.length - 1];
+    redoStackRef.current = stack.slice(0, -1);
+    undoStackRef.current = [
+      ...undoStackRef.current,
+      state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } })),
+    ];
+    setState((prev) => {
+      if (!prev.dashboard) return prev;
+      return {
+        ...prev,
+        dashboard: { ...prev.dashboard, reports: next },
+        isDirty: true,
+      };
+    });
+    setHistoryVersion((v) => v + 1);
+  }, [state.dashboard]);
+
+  const canUndo = undoStackRef.current.length > 0;
+  const canRedo = redoStackRef.current.length > 0;
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Shift+Z
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo, redo]);
+
+  // ---------------------------------------------------------------------------
   // Error Handling
   // ---------------------------------------------------------------------------
 
@@ -571,6 +674,67 @@ export function DashboardBuilderProvider({
   }, [dashboardId]);
 
   // ---------------------------------------------------------------------------
+  // Auto-save every 30 seconds (draft only)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!state.dashboard || state.dashboard.status !== 'draft' || !state.isDirty) {
+      return;
+    }
+    // Don't auto-save if already saving or if auto-save has exceeded max failures
+    if (state.isSaving || state.autoSaveFailures >= AUTO_SAVE_MAX_FAILURES) {
+      return;
+    }
+
+    const delay = state.autoSaveFailures > 0
+      ? AUTO_SAVE_RETRY_DELAYS[Math.min(state.autoSaveFailures - 1, AUTO_SAVE_RETRY_DELAYS.length - 1)]
+      : AUTO_SAVE_INTERVAL_MS;
+
+    const timer = setTimeout(async () => {
+      setState((prev) => ({ ...prev, autoSaveStatus: 'saving' }));
+      try {
+        const current = state.dashboard;
+        if (!current) return;
+        const updated = await updateDashboard(current.id, {
+          name: current.name,
+          description: current.description ?? undefined,
+          layout_json: current.layout_json,
+          expected_updated_at: expectedUpdatedAtRef.current ?? undefined,
+        });
+        pendingPositionsRef.current = new Map();
+        expectedUpdatedAtRef.current = updated.updated_at;
+        setState((prev) => ({
+          ...prev,
+          dashboard: updated,
+          isDirty: false,
+          autoSaveStatus: 'idle',
+          autoSaveFailures: 0,
+          saveError: null,
+          saveErrorStatus: null,
+        }));
+      } catch {
+        setState((prev) => ({
+          ...prev,
+          autoSaveStatus: 'error',
+          autoSaveFailures: prev.autoSaveFailures + 1,
+        }));
+      }
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [state.dashboard, state.isDirty, state.isSaving, state.autoSaveFailures]);
+
+  const autoSaveMessage = useMemo(() => {
+    if (state.autoSaveStatus === 'saving') return 'Saving...';
+    if (state.autoSaveStatus === 'error' && state.autoSaveFailures < AUTO_SAVE_MAX_FAILURES) {
+      return 'Changes not saved. Retrying...';
+    }
+    if (state.autoSaveFailures >= AUTO_SAVE_MAX_FAILURES) {
+      return 'Unable to save. Please check your connection.';
+    }
+    return null;
+  }, [state.autoSaveStatus, state.autoSaveFailures]);
+
+  // ---------------------------------------------------------------------------
   // Context Value
   // ---------------------------------------------------------------------------
 
@@ -589,6 +753,11 @@ export function DashboardBuilderProvider({
     closeReportConfig,
     clearError,
     refreshDashboard,
+    autoSaveMessage,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   };
 
   return (

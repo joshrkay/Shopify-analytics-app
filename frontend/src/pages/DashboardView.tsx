@@ -30,6 +30,7 @@ import {
 import ReactGridLayout from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import '../styles/dashboard-print.css';
 import { getDashboard } from '../services/customDashboardsApi';
 import { getErrorMessage, getErrorStatus } from '../services/apiUtils';
 import { ViewReportCard } from '../components/dashboards/ViewReportCard';
@@ -171,6 +172,10 @@ export function DashboardView() {
       onAction: () => setShowHistory(true),
     });
   }
+  secondaryActions.push({
+    content: 'Print',
+    onAction: () => window.print(),
+  });
 
   // Status badge
   const statusBadge =
