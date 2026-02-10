@@ -2,8 +2,9 @@
 Dataset Discovery Service.
 
 Queries Superset API for available datasets and their column metadata.
-Caches results with 5-minute TTL. Returns column-level metadata including
-is_metric, is_dimension, and data_type for frontend chart builder filtering.
+Caches results with 5-minute TTL and bounded cache size.
+Returns column-level metadata including is_metric, is_dimension, and
+data_type for frontend chart builder filtering.
 
 Handles Superset unavailability by returning stale cached data with a
 stale flag. Validates existing report configs against current schema
@@ -12,12 +13,13 @@ and returns warnings for missing columns.
 Phase 2A - Dataset Discovery API
 """
 
-import hashlib
 import json
 import logging
 import os
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import httpx
@@ -38,6 +40,8 @@ DATETIME_DATA_TYPES = frozenset({
 })
 
 CACHE_TTL_SECONDS = 300  # 5 minutes
+MAX_CACHE_ENTRIES = 200  # Bound cache memory
+MAX_PAGINATION_PAGES = 50  # Guard against runaway pagination loops
 
 
 @dataclass
@@ -87,7 +91,7 @@ def classify_column(column_name: str, data_type: str) -> ColumnMetadata:
     upper_type = (data_type or "VARCHAR").upper().strip()
 
     is_temporal = upper_type in DATETIME_DATA_TYPES
-    is_metric = upper_type in METRIC_DATA_TYPES and not is_temporal
+    is_metric = upper_type in METRIC_DATA_TYPES
     # Dimensions: anything that isn't purely a metric (strings, booleans, etc.)
     # Temporal columns are also valid dimensions (GROUP BY date).
     is_dimension = not is_metric or is_temporal
@@ -99,6 +103,32 @@ def classify_column(column_name: str, data_type: str) -> ColumnMetadata:
         is_dimension=is_dimension,
         is_temporal=is_temporal,
     )
+
+
+class _BoundedCache:
+    """TTL cache with bounded size. Evicts oldest entries when full."""
+
+    def __init__(self, max_entries: int = MAX_CACHE_ENTRIES, ttl: int = CACHE_TTL_SECONDS):
+        self._store: OrderedDict[str, tuple[float, Any]] = OrderedDict()
+        self._max_entries = max_entries
+        self._ttl = ttl
+
+    def get(self, key: str) -> Optional[tuple[bool, float, Any]]:
+        """Return (is_stale, cached_at_timestamp, data) or None."""
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        cached_at, data = entry
+        is_stale = (time.time() - cached_at) > self._ttl
+        return is_stale, cached_at, data
+
+    def set(self, key: str, data: Any) -> None:
+        """Set cache entry, evicting oldest if at capacity."""
+        if key in self._store:
+            self._store.move_to_end(key)
+        self._store[key] = (time.time(), data)
+        while len(self._store) > self._max_entries:
+            self._store.popitem(last=False)
 
 
 class DatasetDiscoveryService:
@@ -117,14 +147,22 @@ class DatasetDiscoveryService:
         self._timeout = timeout_seconds
         self._token: Optional[str] = None
         self._csrf: Optional[str] = None
+        self._token_obtained_at: float = 0.0
+        self._cache = _BoundedCache()
 
-        # In-memory cache: {cache_key: (timestamp, data)}
-        self._cache: dict[str, tuple[float, Any]] = {}
+    def _clear_auth(self) -> None:
+        """Clear cached auth tokens to force re-authentication."""
+        self._token = None
+        self._csrf = None
+        self._token_obtained_at = 0.0
 
     def _ensure_auth(self, client: httpx.Client) -> None:
-        """Authenticate with Superset if not already authenticated."""
-        if self._token:
+        """Authenticate with Superset. Re-authenticates if token is older than 30 minutes."""
+        token_age = time.time() - self._token_obtained_at
+        if self._token and token_age < 1800:  # 30 minute token lifetime
             return
+        # Clear stale token and re-authenticate
+        self._clear_auth()
         resp = client.post(
             f"{self._superset_url}/api/v1/security/login",
             json={
@@ -136,6 +174,7 @@ class DatasetDiscoveryService:
         )
         resp.raise_for_status()
         self._token = resp.json()["access_token"]
+        self._token_obtained_at = time.time()
 
         csrf_resp = client.get(
             f"{self._superset_url}/api/v1/security/csrf_token/",
@@ -152,17 +191,11 @@ class DatasetDiscoveryService:
             "Content-Type": "application/json",
         }
 
-    def _get_cached(self, key: str) -> Optional[tuple[bool, float, Any]]:
-        """Return (is_stale, cached_at_timestamp, data) or None if no cache."""
-        entry = self._cache.get(key)
-        if entry is None:
-            return None
-        cached_at, data = entry
-        is_stale = (time.time() - cached_at) > CACHE_TTL_SECONDS
-        return is_stale, cached_at, data
-
-    def _set_cache(self, key: str, data: Any) -> None:
-        self._cache[key] = (time.time(), data)
+    def _handle_401(self, resp: httpx.Response) -> None:
+        """Clear auth on 401 so next call re-authenticates."""
+        if resp.status_code == 401:
+            logger.warning("dataset_discovery.superset_401_clearing_token")
+            self._clear_auth()
 
     def discover_datasets(self) -> DatasetDiscoveryResult:
         """
@@ -171,13 +204,19 @@ class DatasetDiscoveryService:
         Returns cached data with stale=True if Superset is unavailable.
         """
         cache_key = "all_datasets"
-        cached = self._get_cached(cache_key)
+        cached = self._cache.get(cache_key)
+
+        # Return fresh cache immediately
+        if cached is not None:
+            is_stale, _, _ = cached
+            if not is_stale:
+                _, cached_at, data = cached
+                return DatasetDiscoveryResult(datasets=data)
 
         try:
             datasets = self._fetch_datasets_from_superset()
-            result = DatasetDiscoveryResult(datasets=datasets)
-            self._set_cache(cache_key, datasets)
-            return result
+            self._cache.set(cache_key, datasets)
+            return DatasetDiscoveryResult(datasets=datasets)
         except Exception as exc:
             logger.warning(
                 "dataset_discovery.superset_unavailable",
@@ -185,25 +224,29 @@ class DatasetDiscoveryService:
             )
             if cached is not None:
                 _, cached_at, data = cached
-                from datetime import datetime, timezone
                 return DatasetDiscoveryResult(
                     datasets=data,
                     stale=True,
                     cached_at=datetime.fromtimestamp(cached_at, tz=timezone.utc).isoformat(),
-                    error=f"Superset unavailable: {exc}",
+                    error="Superset temporarily unavailable, showing cached data",
                 )
             return DatasetDiscoveryResult(
-                error=f"Superset unavailable and no cached data: {exc}",
+                error="Superset unavailable and no cached data available",
             )
 
     def get_dataset_columns(self, dataset_id: int) -> list[ColumnMetadata]:
         """Fetch columns for a specific dataset by Superset dataset ID."""
         cache_key = f"dataset_columns_{dataset_id}"
-        cached = self._get_cached(cache_key)
+        cached = self._cache.get(cache_key)
+
+        if cached is not None:
+            is_stale, _, data = cached
+            if not is_stale:
+                return data
 
         try:
             columns = self._fetch_columns_from_superset(dataset_id)
-            self._set_cache(cache_key, columns)
+            self._cache.set(cache_key, columns)
             return columns
         except Exception as exc:
             logger.warning(
@@ -244,7 +287,7 @@ class DatasetDiscoveryService:
             self._ensure_auth(client)
             page = 0
             page_size = 100
-            while True:
+            while page < MAX_PAGINATION_PAGES:
                 resp = client.get(
                     f"{self._superset_url}/api/v1/dataset/",
                     headers=self._auth_headers(),
@@ -259,6 +302,7 @@ class DatasetDiscoveryService:
                         })
                     },
                 )
+                self._handle_401(resp)
                 resp.raise_for_status()
                 result = resp.json().get("result", [])
                 if not result:
@@ -294,6 +338,7 @@ class DatasetDiscoveryService:
                 f"{self._superset_url}/api/v1/dataset/{dataset_id}",
                 headers=self._auth_headers(),
             )
+            self._handle_401(resp)
             resp.raise_for_status()
             ds_data = resp.json().get("result", {})
             raw_columns = ds_data.get("columns", [])

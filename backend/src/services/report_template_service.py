@@ -227,6 +227,7 @@ class ReportTemplateService:
         self,
         template_id: str,
         dashboard_name: Optional[str] = None,
+        user_billing_tier: str = "free",
     ) -> InstantiationResult:
         """
         Clone a template into a user's dashboard with all reports.
@@ -236,6 +237,8 @@ class ReportTemplateService:
 
         Abstract chart types in the template config are mapped to current
         Superset viz_type plugins during instantiation.
+
+        SECURITY: Verifies user's billing tier meets template's min_billing_tier.
         """
         template = self.get_template(template_id)
         if template is None:
@@ -248,6 +251,17 @@ class ReportTemplateService:
             return InstantiationResult(
                 success=False,
                 error="Template is no longer active",
+            )
+
+        # Verify billing tier
+        user_level = BILLING_TIER_ORDER.get(user_billing_tier.lower(), 0)
+        required_level = BILLING_TIER_ORDER.get(
+            (template.min_billing_tier or "free").lower(), 0
+        )
+        if user_level < required_level:
+            return InstantiationResult(
+                success=False,
+                error=f"Template requires '{template.min_billing_tier}' tier or higher",
             )
 
         config = template.config_json or {}
@@ -303,7 +317,7 @@ class ReportTemplateService:
             )
             return InstantiationResult(
                 success=False,
-                error=f"Instantiation failed: {exc}",
+                error="Instantiation failed. Please try again or contact support.",
             )
 
     def _create_dashboard(self, name: str, template_id: str) -> str:

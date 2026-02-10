@@ -23,11 +23,21 @@ from pydantic import BaseModel, Field
 from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session
 from src.api.dependencies.entitlements import check_custom_reports_entitlement
+from src.constants.permissions import roles_have_permission, Permission
 from src.services.report_template_service import ReportTemplateService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
+
+
+def _require_admin_role(tenant_ctx) -> None:
+    """Enforce admin role on the current request. Raises 403 if not admin."""
+    if not roles_have_permission(tenant_ctx.roles, Permission.ADMIN_SYSTEM_CONFIG):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
 
 
 # =============================================================================
@@ -122,17 +132,18 @@ async def list_templates(
     request: Request,
     db_session=Depends(check_custom_reports_entitlement),
     category: Optional[str] = Query(None, description="Filter by category"),
-    billing_tier: str = Query("free", description="Current billing tier for filtering"),
 ):
     """
     List active templates available for the user's billing tier.
 
-    Templates are filtered by billing tier - only templates at or below
+    Templates are filtered by billing tier from JWT - only templates at or below
     the user's tier are shown. Deactivated templates are excluded.
 
     SECURITY: Requires valid tenant context and CUSTOM_REPORTS entitlement.
+    Billing tier sourced from JWT, never from client input.
     """
     tenant_ctx = get_tenant_context(request)
+    billing_tier = tenant_ctx.billing_tier
     logger.info(
         "Template list requested",
         extra={
@@ -235,9 +246,16 @@ async def instantiate_template(
     result = service.instantiate_template(
         template_id,
         dashboard_name=body.dashboard_name,
+        user_billing_tier=tenant_ctx.billing_tier,
     )
 
     if not result.success:
+        # Distinguish "not found" from other errors
+        if result.error and "not found" in result.error.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=result.error,
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result.error or "Instantiation failed",
@@ -271,6 +289,7 @@ async def create_template(
     SECURITY: Requires valid tenant context. Admin role enforced.
     """
     tenant_ctx = get_tenant_context(request)
+    _require_admin_role(tenant_ctx)
     logger.info(
         "Template creation requested",
         extra={"tenant_id": tenant_ctx.tenant_id, "name": body.name},
@@ -321,6 +340,7 @@ async def update_template(
     SECURITY: Requires valid tenant context. Admin role enforced.
     """
     tenant_ctx = get_tenant_context(request)
+    _require_admin_role(tenant_ctx)
 
     service = ReportTemplateService(db_session, tenant_ctx.tenant_id)
     updates = body.model_dump(exclude_unset=True)
@@ -375,6 +395,7 @@ async def deactivate_template(
     SECURITY: Requires valid tenant context. Admin role enforced.
     """
     tenant_ctx = get_tenant_context(request)
+    _require_admin_role(tenant_ctx)
     logger.info(
         "Template deactivation requested",
         extra={"tenant_id": tenant_ctx.tenant_id, "template_id": template_id},

@@ -17,11 +17,10 @@ Phase 2B - Chart Preview Backend
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
+from fastapi import APIRouter, Request, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 
 from src.platform.tenant_context import get_tenant_context
-from src.database.session import get_db_session
 from src.api.dependencies.entitlements import check_custom_reports_entitlement
 from src.services.dataset_discovery_service import (
     DatasetDiscoveryService,
@@ -32,6 +31,7 @@ from src.services.chart_query_service import (
     ChartConfig,
     ChartQueryService,
     ChartPreviewResult,
+    validate_viz_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,23 +103,6 @@ class ValidateConfigResponse(BaseModel):
     warnings: list[ConfigWarningResponse] = Field(
         default_factory=list, description="Warnings for missing columns"
     )
-
-
-class MetricInput(BaseModel):
-    """Metric definition for chart preview."""
-
-    label: str = Field(..., description="Display label for the metric")
-    column: Optional[str] = Field(None, description="Column name (for SIMPLE expression)")
-    aggregate: str = Field("SUM", description="Aggregation function")
-    expressionType: str = Field("SIMPLE", description="SIMPLE or SQL")
-
-
-class FilterInput(BaseModel):
-    """Filter definition for chart preview."""
-
-    column: str = Field(..., description="Column to filter on")
-    operator: str = Field("==", description="Comparison operator")
-    value: Any = Field(..., description="Filter value")
 
 
 class ChartPreviewRequest(BaseModel):
@@ -370,6 +353,14 @@ async def chart_preview(
             detail="At least one metric is required",
         )
 
+    try:
+        resolved_viz = validate_viz_type(body.viz_type)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
     logger.info(
         "Chart preview requested",
         extra={
@@ -389,7 +380,7 @@ async def chart_preview(
         time_range=body.time_range,
         time_column=body.time_column,
         time_grain=body.time_grain,
-        viz_type=body.viz_type,
+        viz_type=resolved_viz,
     )
 
     service = _get_chart_query_service()
