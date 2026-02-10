@@ -31,6 +31,7 @@ import ReactGridLayout from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { getDashboard } from '../services/customDashboardsApi';
+import { getErrorMessage, getErrorStatus } from '../services/apiUtils';
 import { ViewReportCard } from '../components/dashboards/ViewReportCard';
 import { ShareModal } from '../components/dashboards/ShareModal';
 import { VersionHistory } from '../components/dashboards/VersionHistory';
@@ -47,6 +48,7 @@ export function DashboardView() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -68,9 +70,8 @@ export function DashboardView() {
       } catch (err) {
         if (!cancelled) {
           console.error('Failed to fetch dashboard:', err);
-          setError(
-            err instanceof Error ? err.message : 'Failed to load dashboard',
-          );
+          setError(getErrorMessage(err, 'Failed to load dashboard'));
+          setErrorStatus(getErrorStatus(err));
         }
       } finally {
         if (!cancelled) {
@@ -127,9 +128,23 @@ export function DashboardView() {
 
   // Error state
   if (error || !dashboard) {
+    const errorTitle =
+      errorStatus === 403
+        ? 'Access denied'
+        : errorStatus === 404
+          ? 'Dashboard not found'
+          : 'Error loading dashboard';
+
     return (
-      <Page title="Dashboard">
-        <Banner tone="critical">
+      <Page
+        title="Dashboard"
+        breadcrumbs={[{ content: 'Dashboards', url: '/dashboards' }]}
+      >
+        <Banner
+          tone="critical"
+          title={errorTitle}
+          action={{ content: 'Back to dashboards', onAction: () => navigate('/dashboards') }}
+        >
           {error || 'Dashboard not found'}
         </Banner>
       </Page>

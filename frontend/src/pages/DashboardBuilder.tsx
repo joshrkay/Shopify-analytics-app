@@ -25,7 +25,16 @@ import { VersionHistory } from '../components/dashboards/VersionHistory';
 import type { Dashboard } from '../types/customDashboards';
 
 function BuilderContent() {
-  const { dashboard, isSaving, saveError, publishDashboard, clearError, refreshDashboard } = useDashboardBuilder();
+  const {
+    dashboard,
+    loadError,
+    isSaving,
+    saveError,
+    saveErrorStatus,
+    publishDashboard,
+    clearError,
+    refreshDashboard,
+  } = useDashboardBuilder();
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -37,6 +46,20 @@ function BuilderContent() {
     }
     setShowHistory(false);
   }, [refreshDashboard]);
+
+  // Error state: show error page instead of skeleton forever
+  if (!dashboard && loadError) {
+    return (
+      <Page
+        title="Dashboard"
+        breadcrumbs={[{ content: 'Dashboards', url: '/dashboards' }]}
+      >
+        <Banner tone="critical" title="Failed to load dashboard">
+          {loadError}
+        </Banner>
+      </Page>
+    );
+  }
 
   if (!dashboard) return <SkeletonPage primaryAction />;
 
@@ -57,7 +80,15 @@ function BuilderContent() {
       breadcrumbs={[{ content: 'Dashboards', url: '/dashboards' }]}
     >
       {saveError && (
-        <Banner tone="critical" onDismiss={clearError}>
+        <Banner
+          tone="critical"
+          onDismiss={clearError}
+          action={
+            saveErrorStatus === 409
+              ? { content: 'Reload dashboard', onAction: refreshDashboard }
+              : undefined
+          }
+        >
           {saveError}
         </Banner>
       )}

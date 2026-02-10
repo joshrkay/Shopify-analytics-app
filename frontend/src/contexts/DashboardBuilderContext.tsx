@@ -9,6 +9,7 @@
  * - Optimistic locking via expectedUpdatedAt (409 conflict handling)
  * - Report CRUD with automatic dashboard refresh
  * - Report configurator panel open/close state
+ * - Version tracking sync after report mutations (keeps expectedUpdatedAt fresh)
  *
  * Phase 3 - Dashboard Builder UI
  */
@@ -41,7 +42,7 @@ import {
   deleteReport,
   reorderReports,
 } from '../services/customReportsApi';
-import { isApiError } from '../services/apiUtils';
+import { getErrorMessage, getErrorStatus } from '../services/apiUtils';
 
 // =============================================================================
 // Types
@@ -49,9 +50,11 @@ import { isApiError } from '../services/apiUtils';
 
 interface DashboardBuilderState {
   dashboard: Dashboard | null;
+  loadError: string | null;
   isDirty: boolean;
   isSaving: boolean;
   saveError: string | null;
+  saveErrorStatus: number | null;
   selectedReportId: string | null;
   isReportConfigOpen: boolean;
 }
@@ -95,9 +98,11 @@ const DashboardBuilderContext = createContext<DashboardBuilderContextValue | nul
 
 const initialState: DashboardBuilderState = {
   dashboard: null,
+  loadError: null,
   isDirty: false,
   isSaving: false,
   saveError: null,
+  saveErrorStatus: null,
   selectedReportId: null,
   isReportConfigOpen: false,
 };
@@ -139,9 +144,11 @@ export function DashboardBuilderProvider({
 
         setState({
           dashboard,
+          loadError: null,
           isDirty: false,
           isSaving: false,
           saveError: null,
+          saveErrorStatus: null,
           selectedReportId: null,
           isReportConfigOpen: false,
         });
@@ -150,7 +157,7 @@ export function DashboardBuilderProvider({
         console.error('Failed to fetch dashboard:', err);
         setState((prev) => ({
           ...prev,
-          saveError: err instanceof Error ? err.message : 'Failed to load dashboard',
+          loadError: getErrorMessage(err, 'Failed to load dashboard'),
         }));
       }
     }
@@ -173,18 +180,36 @@ export function DashboardBuilderProvider({
       isDirty: false,
       isSaving: false,
       saveError: null,
+      saveErrorStatus: null,
     }));
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Helper: handle 409 conflict errors
+  // Helper: sync expectedUpdatedAt after report mutations
+  //
+  // Report CRUD on the backend bumps the dashboard's updated_at and
+  // version_number. Without this sync, the next saveDashboard call would
+  // send a stale expected_updated_at and receive a 409 Conflict.
   // ---------------------------------------------------------------------------
-  const handleApiError = useCallback((err: unknown): string => {
-    if (isApiError(err) && err.status === 409) {
-      return 'Dashboard was modified by another user. Please reload.';
+  const syncExpectedUpdatedAt = useCallback(async () => {
+    try {
+      const fresh = await getDashboard(dashboardId);
+      expectedUpdatedAtRef.current = fresh.updated_at;
+      setState((prev) => {
+        if (!prev.dashboard) return prev;
+        return {
+          ...prev,
+          dashboard: {
+            ...prev.dashboard,
+            version_number: fresh.version_number,
+            updated_at: fresh.updated_at,
+          },
+        };
+      });
+    } catch {
+      // Non-critical: stale version info won't block the user immediately
     }
-    return err instanceof Error ? err.message : 'An unexpected error occurred';
-  }, []);
+  }, [dashboardId]);
 
   // ---------------------------------------------------------------------------
   // Dashboard Actions
@@ -198,6 +223,7 @@ export function DashboardBuilderProvider({
       dashboard,
       isDirty: false,
       saveError: null,
+      saveErrorStatus: null,
     }));
   }, []);
 
@@ -220,7 +246,7 @@ export function DashboardBuilderProvider({
   );
 
   const saveDashboard = useCallback(async () => {
-    setState((prev) => ({ ...prev, isSaving: true, saveError: null }));
+    setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
     try {
       const current = state.dashboard;
@@ -238,17 +264,17 @@ export function DashboardBuilderProvider({
       pendingPositionsRef.current = new Map();
       syncDashboard(updated);
     } catch (err) {
-      const errorMessage = handleApiError(err);
       setState((prev) => ({
         ...prev,
         isSaving: false,
-        saveError: errorMessage,
+        saveError: getErrorMessage(err, 'Failed to save dashboard'),
+        saveErrorStatus: getErrorStatus(err),
       }));
     }
-  }, [state.dashboard, syncDashboard, handleApiError]);
+  }, [state.dashboard, syncDashboard]);
 
   const publishDashboard = useCallback(async () => {
-    setState((prev) => ({ ...prev, isSaving: true, saveError: null }));
+    setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
     try {
       const current = state.dashboard;
@@ -272,14 +298,14 @@ export function DashboardBuilderProvider({
       pendingPositionsRef.current = new Map();
       syncDashboard(published);
     } catch (err) {
-      const errorMessage = handleApiError(err);
       setState((prev) => ({
         ...prev,
         isSaving: false,
-        saveError: errorMessage,
+        saveError: getErrorMessage(err, 'Failed to publish dashboard'),
+        saveErrorStatus: getErrorStatus(err),
       }));
     }
-  }, [state.dashboard, state.isDirty, syncDashboard, handleApiError]);
+  }, [state.dashboard, state.isDirty, syncDashboard]);
 
   // ---------------------------------------------------------------------------
   // Report Actions
@@ -287,7 +313,7 @@ export function DashboardBuilderProvider({
 
   const addReport = useCallback(
     async (body: CreateReportRequest) => {
-      setState((prev) => ({ ...prev, isSaving: true, saveError: null }));
+      setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
       try {
         const current = state.dashboard;
@@ -307,23 +333,27 @@ export function DashboardBuilderProvider({
             },
             isSaving: false,
             saveError: null,
+            saveErrorStatus: null,
           };
         });
+
+        // Sync version tracking so next saveDashboard won't get 409
+        syncExpectedUpdatedAt();
       } catch (err) {
-        const errorMessage = handleApiError(err);
         setState((prev) => ({
           ...prev,
           isSaving: false,
-          saveError: errorMessage,
+          saveError: getErrorMessage(err, 'Failed to add report'),
+          saveErrorStatus: getErrorStatus(err),
         }));
       }
     },
-    [state.dashboard, handleApiError],
+    [state.dashboard, syncExpectedUpdatedAt],
   );
 
   const updateReportAction = useCallback(
     async (reportId: string, updates: UpdateReportRequest) => {
-      setState((prev) => ({ ...prev, isSaving: true, saveError: null }));
+      setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
       try {
         const current = state.dashboard;
@@ -345,26 +375,30 @@ export function DashboardBuilderProvider({
             },
             isSaving: false,
             saveError: null,
+            saveErrorStatus: null,
           };
         });
 
         // Clear any pending position for this report since it was just persisted
         pendingPositionsRef.current.delete(reportId);
+
+        // Sync version tracking so next saveDashboard won't get 409
+        syncExpectedUpdatedAt();
       } catch (err) {
-        const errorMessage = handleApiError(err);
         setState((prev) => ({
           ...prev,
           isSaving: false,
-          saveError: errorMessage,
+          saveError: getErrorMessage(err, 'Failed to update report'),
+          saveErrorStatus: getErrorStatus(err),
         }));
       }
     },
-    [state.dashboard, handleApiError],
+    [state.dashboard, syncExpectedUpdatedAt],
   );
 
   const removeReport = useCallback(
     async (reportId: string) => {
-      setState((prev) => ({ ...prev, isSaving: true, saveError: null }));
+      setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
       try {
         const current = state.dashboard;
@@ -387,6 +421,7 @@ export function DashboardBuilderProvider({
             },
             isSaving: false,
             saveError: null,
+            saveErrorStatus: null,
             // Close configurator if the removed report was selected
             selectedReportId:
               prev.selectedReportId === reportId ? null : prev.selectedReportId,
@@ -394,16 +429,19 @@ export function DashboardBuilderProvider({
               prev.selectedReportId === reportId ? false : prev.isReportConfigOpen,
           };
         });
+
+        // Sync version tracking so next saveDashboard won't get 409
+        syncExpectedUpdatedAt();
       } catch (err) {
-        const errorMessage = handleApiError(err);
         setState((prev) => ({
           ...prev,
           isSaving: false,
-          saveError: errorMessage,
+          saveError: getErrorMessage(err, 'Failed to remove report'),
+          saveErrorStatus: getErrorStatus(err),
         }));
       }
     },
-    [state.dashboard, handleApiError],
+    [state.dashboard, syncExpectedUpdatedAt],
   );
 
   const moveReport = useCallback((reportId: string, newPosition: GridPosition) => {
@@ -430,7 +468,7 @@ export function DashboardBuilderProvider({
     const pending = pendingPositionsRef.current;
     if (pending.size === 0) return;
 
-    setState((prev) => ({ ...prev, isSaving: true, saveError: null }));
+    setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
     try {
       const current = state.dashboard;
@@ -463,17 +501,21 @@ export function DashboardBuilderProvider({
           isDirty: false,
           isSaving: false,
           saveError: null,
+          saveErrorStatus: null,
         };
       });
+
+      // Sync version tracking after layout commit
+      syncExpectedUpdatedAt();
     } catch (err) {
-      const errorMessage = handleApiError(err);
       setState((prev) => ({
         ...prev,
         isSaving: false,
-        saveError: errorMessage,
+        saveError: getErrorMessage(err, 'Failed to save layout'),
+        saveErrorStatus: getErrorStatus(err),
       }));
     }
-  }, [state.dashboard, handleApiError]);
+  }, [state.dashboard, syncExpectedUpdatedAt]);
 
   // ---------------------------------------------------------------------------
   // Report Configurator
@@ -500,7 +542,7 @@ export function DashboardBuilderProvider({
   // ---------------------------------------------------------------------------
 
   const clearError = useCallback(() => {
-    setState((prev) => ({ ...prev, saveError: null }));
+    setState((prev) => ({ ...prev, saveError: null, saveErrorStatus: null }));
   }, []);
 
   const refreshDashboard = useCallback(async () => {
@@ -510,9 +552,11 @@ export function DashboardBuilderProvider({
       pendingPositionsRef.current = new Map();
       setState({
         dashboard,
+        loadError: null,
         isDirty: false,
         isSaving: false,
         saveError: null,
+        saveErrorStatus: null,
         selectedReportId: null,
         isReportConfigOpen: false,
       });
@@ -520,7 +564,8 @@ export function DashboardBuilderProvider({
       console.error('Failed to refresh dashboard:', err);
       setState((prev) => ({
         ...prev,
-        saveError: err instanceof Error ? err.message : 'Failed to refresh dashboard',
+        saveError: getErrorMessage(err, 'Failed to refresh dashboard'),
+        saveErrorStatus: getErrorStatus(err),
       }));
     }
   }, [dashboardId]);
