@@ -28,6 +28,10 @@ import Paywall from './pages/Paywall';
 import InsightsFeed from './pages/InsightsFeed';
 import ApprovalsInbox from './pages/ApprovalsInbox';
 import WhatsNew from './pages/WhatsNew';
+import DashboardList from './pages/DashboardList';
+import { DashboardBuilder } from './pages/DashboardBuilder';
+import { DashboardView } from './pages/DashboardView';
+import { TemplateGallery } from './pages/TemplateGallery';
 
 /**
  * Authenticated app content.
@@ -48,6 +52,10 @@ function AuthenticatedApp() {
         <Route path="/insights" element={<InsightsFeed />} />
         <Route path="/approvals" element={<ApprovalsInbox />} />
         <Route path="/whats-new" element={<WhatsNew />} />
+        <Route path="/dashboards" element={<DashboardList />} />
+        <Route path="/dashboards/templates" element={<TemplateGallery />} />
+        <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
+        <Route path="/dashboards/:dashboardId/edit" element={<DashboardBuilder />} />
         <Route path="/" element={<Navigate to="/analytics" replace />} />
       </Routes>
     </>

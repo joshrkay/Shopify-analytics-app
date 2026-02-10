@@ -8,7 +8,7 @@
  * Story 9.8 - "What Changed?" Debug Panel
  */
 
-import { InlineStack, Box } from '@shopify/polaris';
+import { InlineStack, Box, Button } from '@shopify/polaris';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChangelogBadge } from '../changelog/ChangelogBadge';
 import { WhatChangedButton } from '../whatChanged/WhatChangedButton';
@@ -35,6 +35,11 @@ export function AppHeader() {
       borderColor="border"
     >
       <InlineStack align="end" gap="400" blockAlign="center">
+        {/* Dashboards nav link */}
+        <Button variant="plain" onClick={() => navigate('/dashboards')}>
+          Dashboards
+        </Button>
+
         {/* What's New badge with unread count */}
         {!isOnWhatsNewPage && (
           <ChangelogBadge
