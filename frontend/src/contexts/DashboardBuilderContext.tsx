@@ -150,7 +150,6 @@ export function DashboardBuilderProvider({
   const MAX_HISTORY = 20;
   const undoStackRef = useRef<Report[][]>([]);
   const redoStackRef = useRef<Report[][]>([]);
-  const [historyVersion, setHistoryVersion] = useState(0);
 
   // ---------------------------------------------------------------------------
   // Fetch dashboard on mount (or when dashboardId changes)
@@ -173,6 +172,8 @@ export function DashboardBuilderProvider({
           isSaving: false,
           saveError: null,
           saveErrorStatus: null,
+          autoSaveStatus: 'idle',
+          autoSaveFailures: 0,
           selectedReportId: null,
           isReportConfigOpen: false,
         });
@@ -470,6 +471,77 @@ export function DashboardBuilderProvider({
     [state.dashboard, syncExpectedUpdatedAt],
   );
 
+  // ---------------------------------------------------------------------------
+  // Undo / Redo
+  // ---------------------------------------------------------------------------
+
+  const pushHistory = useCallback(() => {
+    if (!state.dashboard) return;
+    const snapshot = state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } }));
+    undoStackRef.current = [
+      ...undoStackRef.current.slice(-(MAX_HISTORY - 1)),
+      snapshot,
+    ];
+    redoStackRef.current = [];
+  }, [state.dashboard]);
+
+  const undo = useCallback(() => {
+    const stack = undoStackRef.current;
+    if (stack.length === 0 || !state.dashboard) return;
+    const previous = stack[stack.length - 1];
+    undoStackRef.current = stack.slice(0, -1);
+    redoStackRef.current = [
+      ...redoStackRef.current,
+      state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } })),
+    ];
+    setState((prev) => {
+      if (!prev.dashboard) return prev;
+      return {
+        ...prev,
+        dashboard: { ...prev.dashboard, reports: previous },
+        isDirty: true,
+      };
+    });
+  }, [state.dashboard]);
+
+  const redo = useCallback(() => {
+    const stack = redoStackRef.current;
+    if (stack.length === 0 || !state.dashboard) return;
+    const next = stack[stack.length - 1];
+    redoStackRef.current = stack.slice(0, -1);
+    undoStackRef.current = [
+      ...undoStackRef.current,
+      state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } })),
+    ];
+    setState((prev) => {
+      if (!prev.dashboard) return prev;
+      return {
+        ...prev,
+        dashboard: { ...prev.dashboard, reports: next },
+        isDirty: true,
+      };
+    });
+  }, [state.dashboard]);
+
+  const canUndo = undoStackRef.current.length > 0;
+  const canRedo = redoStackRef.current.length > 0;
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Shift+Z
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo, redo]);
+
   const moveReport = useCallback((reportId: string, newPosition: GridPosition) => {
     // Push current state to undo stack before changing
     pushHistory();
@@ -567,80 +639,6 @@ export function DashboardBuilderProvider({
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Undo / Redo
-  // ---------------------------------------------------------------------------
-
-  const pushHistory = useCallback(() => {
-    if (!state.dashboard) return;
-    const snapshot = state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } }));
-    undoStackRef.current = [
-      ...undoStackRef.current.slice(-(MAX_HISTORY - 1)),
-      snapshot,
-    ];
-    redoStackRef.current = [];
-    setHistoryVersion((v) => v + 1);
-  }, [state.dashboard]);
-
-  const undo = useCallback(() => {
-    const stack = undoStackRef.current;
-    if (stack.length === 0 || !state.dashboard) return;
-    const previous = stack[stack.length - 1];
-    undoStackRef.current = stack.slice(0, -1);
-    redoStackRef.current = [
-      ...redoStackRef.current,
-      state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } })),
-    ];
-    setState((prev) => {
-      if (!prev.dashboard) return prev;
-      return {
-        ...prev,
-        dashboard: { ...prev.dashboard, reports: previous },
-        isDirty: true,
-      };
-    });
-    setHistoryVersion((v) => v + 1);
-  }, [state.dashboard]);
-
-  const redo = useCallback(() => {
-    const stack = redoStackRef.current;
-    if (stack.length === 0 || !state.dashboard) return;
-    const next = stack[stack.length - 1];
-    redoStackRef.current = stack.slice(0, -1);
-    undoStackRef.current = [
-      ...undoStackRef.current,
-      state.dashboard.reports.map((r) => ({ ...r, position_json: { ...r.position_json } })),
-    ];
-    setState((prev) => {
-      if (!prev.dashboard) return prev;
-      return {
-        ...prev,
-        dashboard: { ...prev.dashboard, reports: next },
-        isDirty: true,
-      };
-    });
-    setHistoryVersion((v) => v + 1);
-  }, [state.dashboard]);
-
-  const canUndo = undoStackRef.current.length > 0;
-  const canRedo = redoStackRef.current.length > 0;
-
-  // Keyboard shortcuts: Ctrl+Z / Ctrl+Shift+Z
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          redo();
-        } else {
-          undo();
-        }
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo]);
-
-  // ---------------------------------------------------------------------------
   // Error Handling
   // ---------------------------------------------------------------------------
 
@@ -660,6 +658,8 @@ export function DashboardBuilderProvider({
         isSaving: false,
         saveError: null,
         saveErrorStatus: null,
+        autoSaveStatus: 'idle',
+        autoSaveFailures: 0,
         selectedReportId: null,
         isReportConfigOpen: false,
       });

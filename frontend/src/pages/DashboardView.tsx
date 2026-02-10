@@ -34,6 +34,7 @@ import '../styles/dashboard-print.css';
 import { getDashboard } from '../services/customDashboardsApi';
 import { getErrorMessage, getErrorStatus } from '../services/apiUtils';
 import { ViewReportCard } from '../components/dashboards/ViewReportCard';
+import { FilterBar, type ActiveFilter } from '../components/dashboards/FilterBar';
 import { ShareModal } from '../components/dashboards/ShareModal';
 import { VersionHistory } from '../components/dashboards/VersionHistory';
 import type { Dashboard, Report } from '../types/customDashboards';
@@ -52,6 +53,13 @@ export function DashboardView() {
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+  const [filterVersion, setFilterVersion] = useState(0);
+
+  const handleFilterChange = useCallback((filters: ActiveFilter[]) => {
+    setActiveFilters(filters);
+    setFilterVersion((v) => v + 1);
+  }, []);
 
   // Fetch dashboard on mount
   useEffect(() => {
@@ -197,6 +205,12 @@ export function DashboardView() {
     >
       <Layout>
         <Layout.Section>
+          {dashboard.filters_json && dashboard.filters_json.length > 0 && (
+            <FilterBar
+              filters={dashboard.filters_json}
+              onFilterChange={handleFilterChange}
+            />
+          )}
           {reports.length === 0 ? (
             <Box paddingBlockStart="800">
               <EmptyState
@@ -233,7 +247,11 @@ export function DashboardView() {
             >
               {reports.map((report: Report) => (
                 <div key={report.id}>
-                  <ViewReportCard report={report} />
+                  <ViewReportCard
+                    report={report}
+                    activeFilters={activeFilters}
+                    filterVersion={filterVersion}
+                  />
                 </div>
               ))}
             </ReactGridLayout>

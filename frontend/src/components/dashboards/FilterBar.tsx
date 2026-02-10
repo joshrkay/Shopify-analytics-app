@@ -45,7 +45,7 @@ export function FilterBar({ filters, onFilterChange }: FilterBarProps) {
   });
 
   const handleChange = useCallback(
-    (column: string, datasetNames: string[], value: unknown) => {
+    (column: string, _datasetNames: string[], value: unknown) => {
       const updated = { ...filterValues, [column]: value };
       setFilterValues(updated);
 

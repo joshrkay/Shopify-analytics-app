@@ -28,11 +28,19 @@ import type {
 } from '../../types/customDashboards';
 import { getChartTypeLabel } from '../../types/customDashboards';
 
-interface ViewReportCardProps {
-  report: Report;
+interface ActiveFilter {
+  column: string;
+  value: unknown;
+  dataset_names: string[];
 }
 
-export function ViewReportCard({ report }: ViewReportCardProps) {
+interface ViewReportCardProps {
+  report: Report;
+  activeFilters?: ActiveFilter[];
+  filterVersion?: number;
+}
+
+export function ViewReportCard({ report, activeFilters = [], filterVersion = 0 }: ViewReportCardProps) {
   const [previewData, setPreviewData] = useState<Record<string, unknown>[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -89,6 +97,17 @@ export function ViewReportCard({ report }: ViewReportCardProps) {
             value: f.value as string | number | boolean | null,
           }));
 
+        // Merge dashboard-level active filters that apply to this report's dataset
+        for (const af of activeFilters) {
+          if (af.dataset_names.includes(report.dataset_name) && af.value) {
+            filterDefs.push({
+              column: af.column,
+              operator: '==',
+              value: af.value as string | number | boolean | null,
+            });
+          }
+        }
+
         const response: ChartPreviewResponse = await chartPreview({
           dataset_name: report.dataset_name,
           metrics: metricDefs,
@@ -123,7 +142,7 @@ export function ViewReportCard({ report }: ViewReportCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [report]);
+  }, [report, activeFilters, filterVersion]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
