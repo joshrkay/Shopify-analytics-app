@@ -15,13 +15,11 @@ RUN npm install
 # Copy frontend source and build
 COPY frontend/ ./
 
-# VITE_CLERK_PUBLISHABLE_KEY must be available at build time since Vite
-# inlines environment variables into the bundle.
-#
-# Strategy: Explicitly source .env.production and export its variables
-# before running vite build. This is more reliable than depending on
-# Vite's .env file loading or Docker ARG/ENV interactions.
-ARG VITE_CLERK_PUBLISHABLE_KEY
+# VITE_CLERK_PUBLISHABLE_KEY is a public key (pk_test_/pk_live_) that must
+# be baked into the frontend bundle at build time.
+# Hardcoded here because Render's Docker build does not reliably pass
+# build-args or preserve .env files in the build context.
+RUN VITE_CLERK_PUBLISHABLE_KEY="pk_test_d2VsY29tZS1sYW1iLTM3LmNsZXJrLmFjY291bnRzLmRldiQ" npx vite build
 
 # Build: if build-arg is provided use it, otherwise source .env.production
 RUN echo "==> .env.production contents:" && cat .env.production 2>/dev/null || echo "(file not found)" \
