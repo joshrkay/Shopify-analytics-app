@@ -15,19 +15,29 @@ RUN npm install
 # Copy frontend source and build
 COPY frontend/ ./
 
-# VITE_CLERK_PUBLISHABLE_KEY must be set at build time since Vite
+# VITE_CLERK_PUBLISHABLE_KEY must be available at build time since Vite
 # inlines environment variables into the bundle.
+#
+# Priority order:
+#   1. Render build-arg (if provided and non-empty)
+#   2. frontend/.env.production (committed fallback)
+#
+# IMPORTANT: Do NOT use ENV here. Setting ENV with an empty ARG creates
+# VITE_CLERK_PUBLISHABLE_KEY="" in the process environment, which Vite
+# treats as "already set" and skips loading from .env.production.
 ARG VITE_CLERK_PUBLISHABLE_KEY
-ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
 
-# Diagnostic: confirm whether the build arg was received from Render
-RUN echo "==> VITE_CLERK_PUBLISHABLE_KEY is set: $(test -n \"$VITE_CLERK_PUBLISHABLE_KEY\" && echo 'YES' || echo 'NO (will fall back to .env.production)')"
+# Diagnostic: show which source will provide the Clerk key
+RUN echo "==> Build-arg VITE_CLERK_PUBLISHABLE_KEY: $(test -n \"$VITE_CLERK_PUBLISHABLE_KEY\" && echo 'YES (from Render)' || echo 'not set (will use .env.production)')" \
+    && if [ -f .env.production ]; then echo "==> .env.production exists: YES"; else echo "==> .env.production exists: NO"; fi
 
-# Use npx vite build directly instead of "npm run build" (which runs
-# tsc && vite build). The codebase has pre-existing TypeScript errors
-# that block tsc, but Vite/esbuild transpiles fine without strict
-# type checking. Type errors should be fixed separately.
-RUN npx vite build
+# Build the frontend bundle. If the build-arg is empty, unset it so
+# Vite falls through to .env.production.
+RUN if [ -z "$VITE_CLERK_PUBLISHABLE_KEY" ]; then \
+      echo "==> Unsetting empty VITE_CLERK_PUBLISHABLE_KEY so Vite reads .env.production"; \
+      unset VITE_CLERK_PUBLISHABLE_KEY; \
+    fi \
+    && npx vite build
 
 
 ###############################################################################
