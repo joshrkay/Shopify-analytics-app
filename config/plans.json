@@ -1,41 +1,84 @@
 {
+  "version": "2.1.0",
+  "shopify_source_of_truth": true,
   "grace_period_days": 3,
   "canceled_behavior": "immediate",
   "past_due_behavior": "hard_block",
   "expired_behavior": "hard_block",
   "grace_period_behavior": "allow_with_warning",
+  "plans": {
+    "free": {
+      "features": [
+        "dashboard.view",
+        "reports.basic"
+      ],
+      "limits": {
+        "monthly_orders": 1000,
+        "team_members": 1
+      }
+    },
+    "growth": {
+      "features": [
+        "dashboard.view",
+        "dashboard.customize",
+        "reports.basic",
+        "reports.advanced",
+        "exports.csv"
+      ],
+      "limits": {
+        "monthly_orders": 20000,
+        "team_members": 10
+      }
+    },
+    "enterprise": {
+      "features": [
+        "dashboard.view",
+        "dashboard.customize",
+        "reports.basic",
+        "reports.advanced",
+        "exports.csv",
+        "exports.api",
+        "sso",
+        "audit.logs"
+      ],
+      "limits": {
+        "monthly_orders": -1,
+        "team_members": -1
+      }
+    }
+  },
   "features": {
     "premium_analytics": {
       "description": "Advanced analytics and reporting features",
-      "required_plan": "plan_growth"
+      "required_plan": "growth"
     },
     "ai_insights": {
       "description": "AI-powered insights and recommendations",
-      "required_plan": "plan_free"
+      "required_plan": "growth"
     },
     "custom_reports": {
       "description": "Custom report builder",
-      "required_plan": "plan_growth"
+      "required_plan": "growth"
     },
     "data_export": {
       "description": "Export data to CSV/Excel",
-      "required_plan": "plan_enterprise"
+      "required_plan": "enterprise"
     },
     "api_access": {
       "description": "API access for integrations",
-      "required_plan": "plan_growth"
+      "required_plan": "growth"
     },
     "agency_access": {
       "description": "Multi-tenant agency access",
-      "required_plan": "plan_growth"
+      "required_plan": "enterprise"
     },
     "ai_actions": {
       "description": "AI-powered actions and automations",
-      "required_plan": "plan_growth"
+      "required_plan": "enterprise"
     },
     "advanced_analytics": {
       "description": "Advanced analytics including attribution models",
-      "required_plan": "plan_enterprise"
+      "required_plan": "enterprise"
     }
   },
   "premium_jobs": {
