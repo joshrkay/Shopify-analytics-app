@@ -1,0 +1,158 @@
+{
+  "plans": [
+    {
+      "id": "plan_free",
+      "name": "free",
+      "display_name": "Free",
+      "tier": 0,
+      "is_active": true,
+      "features": {
+        "ai_insights": true,
+        "premium_analytics": false,
+        "custom_reports": false,
+        "data_export": false,
+        "api_access": false,
+        "agency_access": false,
+        "ai_actions": false,
+        "advanced_analytics": false,
+        "custom_dashboards": false
+      },
+      "limits": {
+        "max_dashboards": 1,
+        "max_users": 2,
+        "api_calls_per_month": 100,
+        "ai_insights_per_month": 50,
+        "data_retention_days": 30,
+        "export_rows_per_request": 0
+      },
+      "trial": { "enabled": false, "days": 0 }
+    },
+    {
+      "id": "plan_growth",
+      "name": "growth",
+      "display_name": "Growth",
+      "tier": 1,
+      "is_active": true,
+      "features": {
+        "ai_insights": true,
+        "premium_analytics": true,
+        "custom_reports": true,
+        "data_export": false,
+        "api_access": true,
+        "agency_access": true,
+        "ai_actions": true,
+        "advanced_analytics": false,
+        "custom_dashboards": true
+      },
+      "limits": {
+        "max_dashboards": 10,
+        "max_users": 10,
+        "api_calls_per_month": 10000,
+        "ai_insights_per_month": 500,
+        "data_retention_days": 90,
+        "export_rows_per_request": 1000
+      },
+      "trial": { "enabled": true, "days": 14 }
+    },
+    {
+      "id": "plan_enterprise",
+      "name": "enterprise",
+      "display_name": "Enterprise",
+      "tier": 2,
+      "is_active": true,
+      "features": {
+        "ai_insights": true,
+        "premium_analytics": true,
+        "custom_reports": true,
+        "data_export": true,
+        "api_access": true,
+        "agency_access": true,
+        "ai_actions": true,
+        "advanced_analytics": true,
+        "custom_dashboards": true
+      },
+      "limits": {
+        "max_dashboards": -1,
+        "max_users": -1,
+        "api_calls_per_month": -1,
+        "ai_insights_per_month": -1,
+        "data_retention_days": 365,
+        "export_rows_per_request": 100000
+      },
+      "trial": { "enabled": true, "days": 30 }
+    }
+  ],
+  "billing_config": {
+    "grace_period_days": 3,
+    "warning_notification_days_before": 3,
+    "access_during_grace": "full",
+    "auto_cancel_after_suspension_days": 30,
+    "upgrade_timing": "immediate",
+    "downgrade_timing": "end_of_period",
+    "proration_enabled": true
+  },
+  "billing_rules": {
+    "grace_period_days": 3,
+    "retry_strategy": "exponential_backoff",
+    "max_retries": 5,
+    "retry_intervals_hours": [24, 48, 72, 96, 120]
+  },
+  "access_rules": {
+    "active": {
+      "access_level": "full",
+      "restrictions": [],
+      "warnings": []
+    },
+    "trialing": {
+      "access_level": "full",
+      "restrictions": [],
+      "warnings": []
+    },
+    "grace_period": {
+      "access_level": "full_until_period_end",
+      "restrictions": [],
+      "warnings": ["Your subscription will end soon. Renew to keep access."]
+    },
+    "past_due": {
+      "access_level": "read_only",
+      "restrictions": ["writes_blocked"],
+      "warnings": ["Payment is past due. Update payment method to restore full access."]
+    },
+    "frozen": {
+      "access_level": "limited",
+      "restrictions": ["writes_blocked", "sync_paused"],
+      "warnings": ["Subscription is frozen."]
+    },
+    "canceled": {
+      "access_level": "full_until_period_end",
+      "restrictions": [],
+      "warnings": ["Subscription canceled. Access until period end."]
+    },
+    "expired": {
+      "access_level": "read_only_analytics",
+      "restrictions": ["writes_blocked", "premium_features_blocked"],
+      "warnings": ["Subscription has expired."]
+    },
+    "pending": {
+      "access_level": "none",
+      "restrictions": [],
+      "warnings": []
+    },
+    "none": {
+      "access_level": "none",
+      "restrictions": [],
+      "warnings": []
+    }
+  },
+  "feature_descriptions": {
+    "premium_analytics": "Advanced analytics and reporting features",
+    "ai_insights": "AI-powered insights and recommendations",
+    "custom_reports": "Custom report builder",
+    "data_export": "Export data to CSV/Excel",
+    "api_access": "API access for integrations",
+    "agency_access": "Multi-tenant agency access",
+    "ai_actions": "AI-powered actions and automations",
+    "advanced_analytics": "Advanced analytics including attribution models",
+    "custom_dashboards": "Build and save custom dashboards"
+  }
+}
