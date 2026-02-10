@@ -52,6 +52,8 @@ from src.api.routes import auth_refresh_jwt
 from src.api.routes import audit_logs
 from src.api.routes import audit_export
 from src.api.routes import shopify_embed_entry
+from src.api.routes import datasets
+from src.api.routes import templates
 
 # Configure structured logging
 logging.basicConfig(
@@ -243,6 +245,12 @@ app.include_router(agency_access.router)
 app.include_router(auth_refresh_jwt.router)
 app.include_router(audit_logs.router)
 app.include_router(audit_export.router)
+
+# Include dataset discovery and chart preview routes (Phase 2A/2B)
+app.include_router(datasets.router)
+
+# Include report template routes (Phase 2C)
+app.include_router(templates.router)
 
 
 # ---------------------------------------------------------------------------
