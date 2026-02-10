@@ -54,6 +54,9 @@ from src.api.routes import audit_export
 from src.api.routes import shopify_embed_entry
 from src.api.routes import datasets
 from src.api.routes import templates
+from src.api.routes import custom_dashboards
+from src.api.routes import dashboard_shares
+from src.api.routes import report_templates
 
 # Configure structured logging
 logging.basicConfig(
@@ -246,11 +249,10 @@ app.include_router(auth_refresh_jwt.router)
 app.include_router(audit_logs.router)
 app.include_router(audit_export.router)
 
-# Include dataset discovery and chart preview routes (Phase 2A/2B)
-app.include_router(datasets.router)
-
-# Include report template routes (Phase 2C)
-app.include_router(templates.router)
+# Custom Reports & Dashboard Builder (requires authentication + custom_reports entitlement for writes)
+app.include_router(custom_dashboards.router)
+app.include_router(dashboard_shares.router)
+app.include_router(report_templates.router)
 
 
 # ---------------------------------------------------------------------------

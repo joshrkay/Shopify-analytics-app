@@ -1,367 +1,201 @@
 """
-Report Template Service.
+Report Template Service - Business logic for dashboard templates.
 
-CRUD for system-defined templates (admin-only create/update/delete).
-Instantiation logic: clones a template into user's dashboard + reports
-with atomic rollback on partial failure.
+Handles listing templates filtered by billing tier and instantiating
+templates into user-owned custom dashboards.
 
-Handles billing tier filtering and abstract-to-concrete viz_type mapping.
+Key edge cases:
+- Template instantiation validates required datasets exist
+- Partial instantiation failure rolls back entire transaction
+- Deactivated templates remain functional for existing dashboards
 
-Phase 2C - Template System Backend
+Phase: Custom Reports & Dashboard Builder
 """
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Optional
+import uuid
+from typing import Optional, List
 
 from sqlalchemy.orm import Session
 
-from src.models.report_template import ReportTemplate, TemplateCategory
+from src.models.report_template import ReportTemplate
+from src.models.custom_dashboard import CustomDashboard, DashboardStatus
+from src.models.custom_report import CustomReport
+from src.models.dashboard_version import DashboardVersion
+from src.models.dashboard_audit import DashboardAudit, DashboardAuditAction
 
 logger = logging.getLogger(__name__)
 
-# Map abstract chart types to current Superset viz_type plugins.
-# This indirection allows templates to survive Superset chart plugin upgrades.
-ABSTRACT_TO_VIZ_TYPE: dict[str, str] = {
-    "line": "echarts_timeseries_line",
-    "bar": "echarts_timeseries_bar",
-    "pie": "pie",
-    "big_number": "big_number",
-    "table": "table",
-    "area": "echarts_area",
-    "scatter": "echarts_timeseries_scatter",
-}
-
-# Billing tier ordering for entitlement checks
-BILLING_TIER_ORDER: dict[str, int] = {
-    "free": 0,
-    "starter": 1,
-    "growth": 2,
-    "pro": 3,
-    "enterprise": 4,
-}
+# Billing tier ordering for comparison
+_TIER_ORDER = {"free": 0, "growth": 1, "pro": 2, "enterprise": 3}
 
 
-@dataclass
-class TemplateInfo:
-    """Public-facing template info for gallery listing."""
-
-    id: str
-    name: str
-    description: str
-    category: str
-    thumbnail_url: Optional[str]
-    min_billing_tier: str
-    report_count: int
-    version: int
+class TemplateNotFoundError(Exception):
+    """Template does not exist or is not active."""
 
 
-@dataclass
-class InstantiationResult:
-    """Result of template instantiation into a user's dashboard."""
+class TemplateRequirementsError(Exception):
+    """Template's required datasets are not available."""
 
-    success: bool
-    dashboard_id: Optional[str] = None
-    report_ids: list[str] = field(default_factory=list)
-    error: Optional[str] = None
+    def __init__(self, missing_datasets: List[str]):
+        self.missing_datasets = missing_datasets
+        names = ", ".join(missing_datasets)
+        super().__init__(f"Missing required datasets: {names}")
 
 
 class ReportTemplateService:
-    """Manages report templates and instantiation."""
+    """Service for report template operations."""
 
-    def __init__(self, db: Session, tenant_id: str):
-        if not tenant_id:
-            raise ValueError("tenant_id is required")
+    def __init__(self, db: Session, billing_tier: str = "free"):
         self.db = db
-        self.tenant_id = tenant_id
+        self.billing_tier = billing_tier.lower()
 
     def list_templates(
         self,
-        billing_tier: str = "free",
         category: Optional[str] = None,
-    ) -> list[TemplateInfo]:
+    ) -> List[ReportTemplate]:
         """
-        List active templates visible to the given billing tier.
+        List active templates accessible at the caller's billing tier.
 
-        Templates with min_billing_tier above the user's tier are excluded.
+        Higher-tier templates are included but marked with their
+        min_billing_tier so the frontend can show them as locked.
         """
         query = self.db.query(ReportTemplate).filter(
             ReportTemplate.is_active.is_(True),
         )
 
         if category:
-            try:
-                cat_enum = TemplateCategory(category)
-                query = query.filter(ReportTemplate.category == cat_enum)
-            except ValueError:
-                logger.warning(
-                    "report_template.invalid_category",
-                    extra={"category": category, "tenant_id": self.tenant_id},
-                )
-                return []
+            query = query.filter(ReportTemplate.category == category)
 
-        templates = query.order_by(ReportTemplate.name).all()
+        return query.order_by(ReportTemplate.sort_order).all()
 
-        # Filter by billing tier
-        user_tier_level = BILLING_TIER_ORDER.get(billing_tier.lower(), 0)
-        result: list[TemplateInfo] = []
-        for t in templates:
-            required_level = BILLING_TIER_ORDER.get(
-                (t.min_billing_tier or "free").lower(), 0
-            )
-            if user_tier_level >= required_level:
-                config = t.config_json or {}
-                report_count = len(config.get("reports", []))
-                result.append(TemplateInfo(
-                    id=t.id,
-                    name=t.name,
-                    description=t.description or "",
-                    category=t.category.value if t.category else "",
-                    thumbnail_url=t.thumbnail_url,
-                    min_billing_tier=t.min_billing_tier or "free",
-                    report_count=report_count,
-                    version=t.version or 1,
-                ))
-
-        return result
-
-    def get_template(self, template_id: str) -> Optional[ReportTemplate]:
+    def get_template(self, template_id: str) -> ReportTemplate:
         """Get a single template by ID."""
-        return (
-            self.db.query(ReportTemplate)
-            .filter(ReportTemplate.id == template_id)
-            .first()
-        )
+        template = self.db.query(ReportTemplate).filter(
+            ReportTemplate.id == template_id,
+            ReportTemplate.is_active.is_(True),
+        ).first()
 
-    def create_template(
-        self,
-        name: str,
-        description: str,
-        category: str,
-        config_json: dict[str, Any],
-        min_billing_tier: str = "free",
-        thumbnail_url: Optional[str] = None,
-    ) -> ReportTemplate:
-        """Create a new template (admin-only)."""
-        cat_enum = TemplateCategory(category)
-        template = ReportTemplate(
-            name=name,
-            description=description,
-            category=cat_enum,
-            config_json=config_json,
-            min_billing_tier=min_billing_tier,
-            thumbnail_url=thumbnail_url,
-            is_active=True,
-            version=1,
-        )
-        self.db.add(template)
-        self.db.commit()
-        self.db.refresh(template)
+        if not template:
+            raise TemplateNotFoundError(f"Template {template_id} not found or inactive")
 
-        logger.info(
-            "report_template.created",
-            extra={
-                "template_id": template.id,
-                "name": name,
-                "category": category,
-                "tenant_id": self.tenant_id,
-            },
-        )
         return template
 
-    def update_template(
-        self,
-        template_id: str,
-        **kwargs: Any,
-    ) -> Optional[ReportTemplate]:
-        """Update template fields (admin-only). Bumps version."""
-        template = self.get_template(template_id)
-        if template is None:
-            return None
-
-        allowed_fields = {
-            "name", "description", "category", "config_json",
-            "min_billing_tier", "thumbnail_url", "is_active",
-        }
-        for key, value in kwargs.items():
-            if key not in allowed_fields:
-                continue
-            if key == "category" and value is not None:
-                value = TemplateCategory(value)
-            setattr(template, key, value)
-
-        template.version = (template.version or 1) + 1
-        self.db.commit()
-        self.db.refresh(template)
-
-        logger.info(
-            "report_template.updated",
-            extra={
-                "template_id": template_id,
-                "new_version": template.version,
-                "tenant_id": self.tenant_id,
-            },
-        )
-        return template
-
-    def deactivate_template(self, template_id: str) -> bool:
-        """
-        Deactivate a template (hide from gallery).
-
-        Existing dashboards created from this template continue working.
-        """
-        template = self.get_template(template_id)
-        if template is None:
-            return False
-
-        template.is_active = False
-        self.db.commit()
-
-        logger.info(
-            "report_template.deactivated",
-            extra={"template_id": template_id, "tenant_id": self.tenant_id},
-        )
-        return True
+    def can_use_template(self, template: ReportTemplate) -> bool:
+        """Check if the caller's billing tier meets the template minimum."""
+        caller_rank = _TIER_ORDER.get(self.billing_tier, 0)
+        required_rank = _TIER_ORDER.get(template.min_billing_tier, 0)
+        return caller_rank >= required_rank
 
     def instantiate_template(
         self,
         template_id: str,
-        dashboard_name: Optional[str] = None,
-        user_billing_tier: str = "free",
-    ) -> InstantiationResult:
+        tenant_id: str,
+        user_id: str,
+        dashboard_name: str,
+        available_datasets: Optional[List[str]] = None,
+    ) -> CustomDashboard:
         """
-        Clone a template into a user's dashboard with all reports.
+        Create a dashboard from a template.
 
-        Atomic: if any report fails to create, the entire instantiation
-        rolls back (no partial dashboards with missing reports).
+        Validates billing tier and required datasets before creating.
+        Entire operation is atomic — rolls back on any failure.
 
-        Abstract chart types in the template config are mapped to current
-        Superset viz_type plugins during instantiation.
+        Args:
+            template_id: Template to instantiate
+            tenant_id: Target tenant
+            user_id: Creating user
+            dashboard_name: Name for the new dashboard
+            available_datasets: Datasets available to this tenant (for validation)
 
-        SECURITY: Verifies user's billing tier meets template's min_billing_tier.
+        Raises:
+            TemplateNotFoundError: Template doesn't exist
+            TemplateRequirementsError: Missing required datasets
+            ValueError: Billing tier too low
         """
         template = self.get_template(template_id)
-        if template is None:
-            return InstantiationResult(
-                success=False,
-                error=f"Template '{template_id}' not found",
+
+        if not self.can_use_template(template):
+            raise ValueError(
+                f"Template '{template.name}' requires {template.min_billing_tier} plan"
             )
 
-        if not template.is_active:
-            return InstantiationResult(
-                success=False,
-                error="Template is no longer active",
-            )
+        # Validate required datasets
+        if available_datasets is not None and template.required_datasets:
+            missing = [
+                ds for ds in template.required_datasets
+                if ds not in available_datasets
+            ]
+            if missing:
+                raise TemplateRequirementsError(missing)
 
-        # Verify billing tier
-        user_level = BILLING_TIER_ORDER.get(user_billing_tier.lower(), 0)
-        required_level = BILLING_TIER_ORDER.get(
-            (template.min_billing_tier or "free").lower(), 0
+        # Create dashboard
+        dashboard = CustomDashboard(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            name=dashboard_name,
+            description=template.description,
+            status=DashboardStatus.DRAFT.value,
+            layout_json=template.layout_json,
+            template_id=template.id,
+            is_template_derived=True,
+            version_number=1,
+            created_by=user_id,
         )
-        if user_level < required_level:
-            return InstantiationResult(
-                success=False,
-                error=f"Template requires '{template.min_billing_tier}' tier or higher",
+        self.db.add(dashboard)
+        self.db.flush()
+
+        # Create reports from template config
+        for idx, report_config in enumerate(template.reports_json):
+            report = CustomReport(
+                id=str(uuid.uuid4()),
+                tenant_id=tenant_id,
+                dashboard_id=dashboard.id,
+                name=report_config["name"],
+                description=report_config.get("description"),
+                chart_type=report_config["chart_type"],
+                dataset_name=report_config["dataset_name"],
+                config_json=report_config["config_json"],
+                position_json=report_config["position_json"],
+                sort_order=idx,
+                created_by=user_id,
             )
+            self.db.add(report)
 
-        config = template.config_json or {}
-        reports = config.get("reports", [])
-        if not reports:
-            return InstantiationResult(
-                success=False,
-                error="Template has no report definitions",
-            )
+        self.db.flush()
 
-        # Use savepoint for atomic rollback on partial failure
-        savepoint = self.db.begin_nested()
-        try:
-            resolved_name = dashboard_name or template.name
-            dashboard_id = self._create_dashboard(resolved_name, template_id)
-            report_ids: list[str] = []
-
-            for idx, report_def in enumerate(reports):
-                report_id = self._create_report_from_template(
-                    dashboard_id,
-                    report_def,
-                    position=idx,
-                )
-                report_ids.append(report_id)
-
-            savepoint.commit()
-
-            logger.info(
-                "report_template.instantiated",
-                extra={
-                    "template_id": template_id,
-                    "dashboard_id": dashboard_id,
-                    "report_count": len(report_ids),
-                    "tenant_id": self.tenant_id,
+        # Create initial version
+        version = DashboardVersion(
+            id=str(uuid.uuid4()),
+            dashboard_id=dashboard.id,
+            version_number=1,
+            snapshot_json={
+                "dashboard": {
+                    "name": dashboard.name,
+                    "description": dashboard.description,
+                    "layout_json": dashboard.layout_json,
+                    "filters_json": dashboard.filters_json,
                 },
-            )
+                "reports": template.reports_json,
+            },
+            change_summary=f"Created from template: {template.name}",
+            created_by=user_id,
+        )
+        self.db.add(version)
 
-            return InstantiationResult(
-                success=True,
-                dashboard_id=dashboard_id,
-                report_ids=report_ids,
-            )
-
-        except Exception as exc:
-            savepoint.rollback()
-            logger.error(
-                "report_template.instantiation_failed",
-                extra={
-                    "template_id": template_id,
-                    "error": str(exc),
-                    "tenant_id": self.tenant_id,
-                },
-            )
-            return InstantiationResult(
-                success=False,
-                error="Instantiation failed. Please try again or contact support.",
-            )
-
-    def _create_dashboard(self, name: str, template_id: str) -> str:
-        """Create a dashboard record. Returns its ID."""
-        from src.models.base import generate_uuid
-        dashboard_id = generate_uuid()
-        # Dashboard creation uses the existing custom_dashboards table
-        # which will be created by the migration in Phase 1.
-        # For now, return the generated ID for the service contract.
-        logger.info(
-            "report_template.dashboard_created",
-            extra={
-                "dashboard_id": dashboard_id,
-                "template_id": template_id,
-                "tenant_id": self.tenant_id,
+        # Audit
+        audit = DashboardAudit(
+            id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
+            dashboard_id=dashboard.id,
+            action=DashboardAuditAction.CREATED.value,
+            actor_id=user_id,
+            details_json={
+                "template_id": template.id,
+                "template_name": template.name,
             },
         )
-        return dashboard_id
+        self.db.add(audit)
 
-    def _create_report_from_template(
-        self,
-        dashboard_id: str,
-        report_def: dict[str, Any],
-        position: int,
-    ) -> str:
-        """Create a single report from a template definition."""
-        from src.models.base import generate_uuid
-        report_id = generate_uuid()
-
-        # Map abstract chart type to concrete Superset viz_type
-        abstract_type = report_def.get("chart_type", "line")
-        report_def["viz_type"] = ABSTRACT_TO_VIZ_TYPE.get(
-            abstract_type, abstract_type
-        )
-
-        logger.info(
-            "report_template.report_created",
-            extra={
-                "report_id": report_id,
-                "dashboard_id": dashboard_id,
-                "chart_type": abstract_type,
-                "viz_type": report_def["viz_type"],
-                "position": position,
-                "tenant_id": self.tenant_id,
-            },
-        )
-        return report_id
+        self.db.commit()
+        return dashboard
