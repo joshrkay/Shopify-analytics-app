@@ -23,6 +23,14 @@ export interface ApiError extends Error {
 }
 
 /**
+ * Type guard to check if an error is an ApiError.
+ * Use this instead of `instanceof ApiError` since ApiError is an interface.
+ */
+export function isApiError(err: unknown): err is ApiError {
+  return err instanceof Error && 'status' in err && 'detail' in err;
+}
+
+/**
  * Token provider function type.
  * Can be async (for Clerk's getToken) or sync (for localStorage).
  */
@@ -45,7 +53,7 @@ let tokenProvider: TokenProvider | null = null;
  *   setTokenProvider(() => getToken());
  * }, [getToken]);
  */
-export function setTokenProvider(provider: TokenProvider): void {
+export function setTokenProvider(provider: TokenProvider | null): void {
   tokenProvider = provider;
 }
 
@@ -135,7 +143,7 @@ export async function handleResponse<T>(response: Response): Promise<T> {
  * Build query string from a filters object.
  * Handles undefined values and converts booleans/numbers to strings.
  */
-export function buildQueryString(filters: Record<string, unknown>): string {
+export function buildQueryString<T extends object>(filters: T): string {
   const params = new URLSearchParams();
 
   for (const [key, value] of Object.entries(filters)) {
@@ -146,4 +154,44 @@ export function buildQueryString(filters: Record<string, unknown>): string {
 
   const queryString = params.toString();
   return queryString ? `?${queryString}` : '';
+}
+
+/**
+ * Get the HTTP status code from an error, or null if not an API error.
+ */
+export function getErrorStatus(err: unknown): number | null {
+  return isApiError(err) ? err.status : null;
+}
+
+/**
+ * Map API error to a user-friendly message with status-specific defaults.
+ *
+ * Provides distinct messages for:
+ * - 402: Plan limit / upgrade required
+ * - 403: Permission denied
+ * - 404: Resource not found
+ * - 409: Concurrent edit conflict
+ * - 422: Validation error
+ *
+ * The backend's `detail` field always takes priority when present.
+ */
+export function getErrorMessage(err: unknown, fallback: string): string {
+  if (!isApiError(err)) {
+    return err instanceof Error ? err.message : fallback;
+  }
+
+  switch (err.status) {
+    case 402:
+      return err.detail || 'You\'ve reached your plan limit. Upgrade to continue.';
+    case 403:
+      return err.detail || 'You don\'t have permission to perform this action.';
+    case 404:
+      return err.detail || 'The requested resource was not found.';
+    case 409:
+      return err.detail || 'This resource was modified by another user. Please reload and try again.';
+    case 422:
+      return err.detail || 'Invalid input. Please check your data and try again.';
+    default:
+      return err.detail || err.message || fallback;
+  }
 }

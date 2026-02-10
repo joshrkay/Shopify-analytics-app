@@ -7,14 +7,17 @@ All routes require valid JWT with tenant context.
 
 import os
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.platform.tenant_context import TenantContextMiddleware
 from src.platform.csp_middleware import EmbedOnlyCSPMiddleware
+from src.middleware.audit_middleware import AuditLoggingMiddleware
 from src.api.routes import health
 from src.api.routes import debug
 from src.api.routes import billing
@@ -27,6 +30,8 @@ from src.api.routes import sync
 from src.api.routes import data_health
 from src.api.routes import backfills
 from src.api.routes import embed
+from src.api.routes import auth_revoke_tokens
+from src.api.routes import dashboards_allowed
 from src.api.routes import insights
 from src.api.routes import recommendations
 from src.api.routes import action_proposals
@@ -43,6 +48,16 @@ from src.api.routes import user_tenants
 from src.api.routes import dashboard_bindings
 from src.api.dq import routes as sync_health
 from src.api.routes import admin_diagnostics
+from src.api.routes import agency_access
+from src.api.routes import auth_refresh_jwt
+from src.api.routes import audit_logs
+from src.api.routes import audit_export
+from src.api.routes import shopify_embed_entry
+from src.api.routes import datasets
+from src.api.routes import templates
+from src.api.routes import custom_dashboards
+from src.api.routes import dashboard_shares
+from src.api.routes import report_templates
 
 # Configure structured logging
 logging.basicConfig(
@@ -120,6 +135,7 @@ app.add_middleware(EmbedOnlyCSPMiddleware)
 # Middleware uses lazy initialization - env vars validated in lifespan startup
 tenant_middleware = TenantContextMiddleware()
 app.middleware("http")(tenant_middleware)
+app.add_middleware(AuditLoggingMiddleware)
 
 
 # Include health route (bypasses authentication)
@@ -159,6 +175,12 @@ app.include_router(backfills.router)
 
 # Include embed routes for Shopify Admin embedding (requires authentication)
 app.include_router(embed.router)
+
+# Include token revocation routes (Phase 1 - JWT Issuance)
+app.include_router(auth_revoke_tokens.router)
+
+# Include dashboard access routes (Phase 5 - Dashboard Visibility Gate)
+app.include_router(dashboards_allowed.router)
 
 # Include sync health routes for data quality monitoring (requires authentication)
 app.include_router(sync_health.router)
@@ -220,6 +242,57 @@ app.include_router(dashboard_bindings.router)
 # Include admin diagnostics routes (requires admin role)
 # Story 4.2 - Data Quality Root Cause Signals
 app.include_router(admin_diagnostics.router)
+
+# Include agency access routes (requires authentication)
+# Story 5.5.2 - Agency Access Request + Tenant Approval Workflow
+app.include_router(agency_access.router)
+
+# Include auth JWT refresh routes (requires authentication)
+# Story 5.5.3 - Tenant Selector + JWT Refresh for Active Tenant Context
+app.include_router(auth_refresh_jwt.router)
+app.include_router(audit_logs.router)
+app.include_router(audit_export.router)
+
+# Custom Reports & Dashboard Builder (requires authentication + custom_reports entitlement for writes)
+app.include_router(custom_dashboards.router)
+app.include_router(dashboard_shares.router)
+app.include_router(report_templates.router)
+
+
+# ---------------------------------------------------------------------------
+# Serve the built React frontend (bundled into /app/backend/static by Docker)
+# ---------------------------------------------------------------------------
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+if STATIC_DIR.is_dir():
+    # Mount Vite's hashed asset files (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="frontend-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(request: Request, full_path: str):
+        """
+        SPA catch-all: serve the file if it exists in static/, otherwise
+        serve index.html so React Router can handle client-side routing.
+
+        This MUST be registered after all API routes so /api/* and /health
+        are matched first.
+        """
+        # Try to serve an exact static file (e.g. favicon.ico, vite.svg)
+        file_path = STATIC_DIR / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(str(file_path))
+
+        # Everything else → index.html (React Router handles the route)
+        return FileResponse(str(STATIC_DIR / "index.html"))
+else:
+    logger.warning(
+        "Frontend static directory not found at %s — "
+        "falling back to bootstrap page. Build the frontend and "
+        "copy dist/ to backend/static/ to serve the full UI.",
+        STATIC_DIR,
+    )
+    # Keep the shopify_embed_entry bootstrap fallback if static dir missing
+    app.include_router(shopify_embed_entry.router)
 
 
 # Global exception handler for tenant isolation errors

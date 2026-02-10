@@ -68,6 +68,11 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "refresh_count",       # Number of times this session refreshed
         "new_lifetime_minutes",
     ],
+    "auth.jwt_refresh_failed": [
+        "user_id",
+        "tenant_id",
+        "failure_reason",
+    ],
 
     "auth.jwt_revoked": [
         "user_id",
@@ -346,6 +351,12 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "embed_context",       # Whether viewed in embedded mode
         "view_duration_ms",    # How long dashboard was viewed (if available)
         "filters_applied",     # List of filter names used
+    ],
+    "dashboard.load_failed": [
+        "user_id",
+        "tenant_id",
+        "dashboard_id",
+        "failure_reason",
     ],
 
     "dashboard.created": [
@@ -1275,6 +1286,39 @@ AUDITABLE_EVENTS: Final[dict[str, list[str]]] = {
         "tenant_id",
         "reason",
     ],
+
+    # =========================================================================
+    # EMBED SECURITY & ACCESS EVENTS (Phase 1 - JWT Issuance)
+    # =========================================================================
+    # Track embedding security events, access denials, and rate limiting.
+
+    "embed.navigation_blocked": [
+        "user_id",              # User who attempted navigation
+        "tenant_id",            # Tenant context
+        "blocked_path",         # Path that was blocked
+        "reason",               # Enum: csp_violation, policy_block, invalid_route
+    ],
+
+    "embed.load_failed": [
+        "tenant_id",            # Tenant context
+        "error_type",           # Enum: token_invalid, network, timeout, csp_block
+        "access_surface",       # shopify_embed or external_app
+    ],
+
+    "dashboard.access_denied": [
+        "user_id",              # User who was denied
+        "tenant_id",            # Tenant context
+        "dashboard_id",         # Dashboard that was denied
+        "reason",               # Enum: billing_tier, permission, not_found
+    ],
+
+    "rate_limit.triggered": [
+        "user_id",              # User who hit the limit
+        "tenant_id",            # Tenant context
+        "endpoint",             # API endpoint that was rate-limited
+        "limit",                # Configured limit value
+        "window",               # Time window (e.g., "60s", "1h")
+    ],
 }
 
 
@@ -1286,6 +1330,7 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
     "authentication": [
         "auth.jwt_issued",
         "auth.jwt_refresh",
+        "auth.jwt_refresh_failed",
         "auth.jwt_revoked",
         "auth.jwt_validation_failed",
         "auth.login_success",
@@ -1322,6 +1367,7 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
     ],
     "dashboard": [
         "dashboard.viewed",
+        "dashboard.load_failed",
         "dashboard.created",
         "dashboard.edited",
         "dashboard.deleted",
@@ -1439,6 +1485,12 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
         "data.quality.fail",
         "data.quality.recovered",
     ],
+    "embed_security": [
+        "embed.navigation_blocked",
+        "embed.load_failed",
+        "dashboard.access_denied",
+        "rate_limit.triggered",
+    ],
 }
 
 
@@ -1450,6 +1502,7 @@ EVENT_CATEGORIES: Final[dict[str, list[str]]] = {
 EVENT_SEVERITY: Final[dict[str, str]] = {
     # Critical - Immediate response required
     "auth.login_failed": "high",
+    "auth.jwt_refresh_failed": "high",
     "auth.jwt_validation_failed": "medium",
     "rls.denied": "high",
     "rls.bypass_attempted": "critical",
@@ -1476,6 +1529,7 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
 
     # Low - Informational, review daily
     "dashboard.viewed": "low",
+    "dashboard.load_failed": "medium",
     "dashboard.exported": "low",
     "explore.query_executed": "low",
     "cache.cleared": "low",
@@ -1557,6 +1611,12 @@ EVENT_SEVERITY: Final[dict[str, str]] = {
     "data.quality.warn": "medium",
     "data.quality.fail": "high",
     "data.quality.recovered": "low",
+
+    # Embed security events (Phase 1 - JWT Issuance)
+    "embed.navigation_blocked": "medium",
+    "embed.load_failed": "medium",
+    "dashboard.access_denied": "high",
+    "rate_limit.triggered": "medium",
 }
 
 

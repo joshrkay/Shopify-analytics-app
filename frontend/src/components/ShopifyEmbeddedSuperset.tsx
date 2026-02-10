@@ -16,8 +16,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,
   SkeletonBodyText,
-  Banner,
-  Button,
   Spinner,
   BlockStack,
   Text,
@@ -25,11 +23,12 @@ import {
 import type { ShopifyEmbeddedSupersetProps, EmbedState } from '../types/embed';
 import {
   generateEmbedToken,
-  TokenRefreshManager,
   sendMessageToParent,
   addParentMessageListener,
 } from '../services/embedApi';
 import type { EmbedTokenResponse } from '../services/embedApi';
+import { UnifiedTokenRefreshManager } from '../utils/tokenRefresh';
+import { AnalyticsHealthBanner } from './AnalyticsHealthBanner';
 
 import './ShopifyEmbeddedSuperset.css';
 
@@ -64,8 +63,10 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
     refreshBefore: null,
   });
 
+  const [isRetrying, setIsRetrying] = useState(false);
+
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const refreshManagerRef = useRef<TokenRefreshManager | null>(null);
+  const refreshManagerRef = useRef<UnifiedTokenRefreshManager | null>(null);
   const retryCountRef = useRef(0);
 
   /**
@@ -124,17 +125,18 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
     setState((prev) => ({ ...prev, status: 'loading', error: null }));
 
     try {
-      const tokenResponse = await generateEmbedToken(dashboardId);
+      const tokenResponse = await generateEmbedToken(dashboardId, 'shopify_embed');
 
       // Initialize refresh manager
       if (refreshManagerRef.current) {
         refreshManagerRef.current.stop();
       }
-      refreshManagerRef.current = new TokenRefreshManager(
+      refreshManagerRef.current = new UnifiedTokenRefreshManager({
         dashboardId,
-        handleTokenSuccess,
-        handleRefreshError
-      );
+        accessSurface: 'shopify_embed',
+        onRefreshed: handleTokenSuccess,
+        onError: handleRefreshError,
+      });
       refreshManagerRef.current.start(tokenResponse);
 
       handleTokenSuccess(tokenResponse);
@@ -237,7 +239,8 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
    */
   const handleRetry = useCallback(() => {
     retryCountRef.current = 0;
-    fetchToken();
+    setIsRetrying(true);
+    fetchToken().finally(() => setIsRetrying(false));
   }, [fetchToken]);
 
   /**
@@ -282,22 +285,14 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
       return errorComponent;
     }
 
-    const errorMessage = state.error?.message || 'An unexpected error occurred';
-    const isAuthError = (state.error as any)?.status === 401 || (state.error as any)?.status === 403;
-
     return (
       <Card>
-        <Banner
-          title={isAuthError ? 'Authentication Required' : 'Failed to Load Analytics'}
-          tone="critical"
-        >
-          <p>{errorMessage}</p>
-        </Banner>
-        <div style={{ marginTop: '16px', textAlign: 'center' }}>
-          <Button onClick={handleRetry}>
-            {isAuthError ? 'Sign In Again' : 'Retry'}
-          </Button>
-        </div>
+        <AnalyticsHealthBanner
+          onRetry={handleRetry}
+          isRetrying={isRetrying}
+          errorType={state.error?.message || 'unknown'}
+          accessSurface="shopify_embed"
+        />
       </Card>
     );
   };
@@ -334,7 +329,7 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
       {(state.status === 'ready' || state.status === 'refreshing') && renderIframe()}
 
       {/* Hidden status indicator for debugging */}
-      {process.env.NODE_ENV === 'development' && (
+      {import.meta.env.DEV && (
         <div className="superset-embed-debug">
           Status: {state.status} | Token expires:{' '}
           {state.expiresAt?.toLocaleTimeString() || 'N/A'}

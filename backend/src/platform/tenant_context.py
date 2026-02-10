@@ -217,6 +217,7 @@ class TenantContext:
         org_id: str,  # Clerk org_id for reference
         allowed_tenants: Optional[list[str]] = None,
         billing_tier: Optional[str] = None,
+        resolved_permissions: Optional[set[str]] = None,
     ):
         if not tenant_id:
             raise ValueError("tenant_id cannot be empty")
@@ -225,6 +226,10 @@ class TenantContext:
         self.roles = roles
         self.org_id = org_id
         self.billing_tier = billing_tier or "free"
+        # Data-driven permissions resolved from DB (Story 5.5.1)
+        # When set, RBAC decorators check this first before hardcoded matrix.
+        # None = fall back to hardcoded ROLE_PERMISSIONS matrix.
+        self.resolved_permissions = resolved_permissions
 
         # Determine role category and multi-tenant access
         self._role_category = get_primary_role_category(roles)
@@ -507,8 +512,17 @@ class TenantContextMiddleware:
 
         SECURITY: tenant_id is ONLY extracted from JWT, never from request body/query.
         """
-        # Skip tenant check for health endpoint, webhooks, and API documentation (public)
-        if request.url.path in ("/health", "/docs", "/redoc", "/openapi.json") or request.url.path.startswith("/api/webhooks/"):
+        # Skip tenant check for health endpoint, webhooks, API documentation,
+        # Shopify embedded app entry point, and frontend static assets.
+        # The root path "/" serves the React SPA (or bootstrap page). Shopify
+        # loads this URL in an iframe. Frontend assets under /assets/ are
+        # hashed bundles from the Vite build and contain no tenant data.
+        PUBLIC_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+        if (
+            request.url.path in PUBLIC_PATHS
+            or request.url.path.startswith("/api/webhooks/")
+            or request.url.path.startswith("/assets/")
+        ):
             return await call_next(request)
 
         # Check if authentication is configured (set in app lifespan)
@@ -766,6 +780,35 @@ class TenantContextMiddleware:
                 # Emit audit event for role changes (if any)
                 if authz_result.roles_changed and authz_result.audit_action:
                     guard.emit_enforcement_audit_event(request, authz_result)
+
+                # Resolve data-driven permissions from DB (Story 5.5.1)
+                # This populates resolved_permissions on TenantContext so RBAC
+                # decorators check DB-driven roles instead of the hardcoded matrix.
+                try:
+                    from src.services.rbac import resolve_permissions_for_user
+                    from src.models.user import User
+
+                    user = db.query(User).filter(
+                        User.clerk_user_id == str(user_id)
+                    ).first()
+                    if user:
+                        perms = resolve_permissions_for_user(db, user.id, active_tenant_id)
+                        if perms:
+                            # Only override when DB has actual permission records.
+                            # Empty set means no data-driven roles exist yet;
+                            # leave as None to fall back to hardcoded matrix.
+                            tenant_context.resolved_permissions = perms
+                except Exception:
+                    # Graceful degradation: if resolution fails, decorators
+                    # fall back to the hardcoded ROLE_PERMISSIONS matrix.
+                    logger.debug(
+                        "Data-driven permission resolution skipped",
+                        extra={
+                            "user_id": str(user_id),
+                            "tenant_id": active_tenant_id,
+                        },
+                        exc_info=True,
+                    )
 
             finally:
                 db.close()

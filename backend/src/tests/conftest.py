@@ -103,6 +103,17 @@ def db_engine():
     from src.models import connector_credential  # noqa: F401 - Credential Vault
     from src.models import connection_consent  # noqa: F401 - Consent Flow
     from src.models import explore_guardrail_exception  # noqa: F401 - Story 5.4
+    from src.models import role, user_role_assignment  # noqa: F401 - Story 5.5.1
+    from src.models import agency_access_request  # noqa: F401 - Story 5.5.2
+    from src.models import access_revocation  # noqa: F401 - Story 5.5.4
+    from src.platform import audit  # noqa: F401 - Audit log model
+    # Custom Reports & Dashboard Builder models
+    from src.models import report_template  # noqa: F401
+    from src.models import custom_dashboard  # noqa: F401
+    from src.models import custom_report  # noqa: F401
+    from src.models import dashboard_version  # noqa: F401
+    from src.models import dashboard_share  # noqa: F401
+    from src.models import dashboard_audit  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 

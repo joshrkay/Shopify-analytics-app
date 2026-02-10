@@ -11,6 +11,13 @@ from src.models.organization import Organization
 from src.models.tenant import Tenant, TenantStatus
 from src.models.user import User
 from src.models.user_tenant_roles import UserTenantRole
+# RBAC models (Story 5.5.1)
+from src.models.role import Role, RolePermission
+from src.models.user_role_assignment import UserRoleAssignment
+# Agency access models (Story 5.5.2)
+from src.models.agency_access_request import AgencyAccessRequest, AgencyAccessRequestStatus
+# Access revocation models (Story 5.5.4)
+from src.models.access_revocation import AccessRevocation, RevocationStatus
 from src.models.store import ShopifyStore
 from src.models.plan import Plan, PlanFeature
 from src.models.subscription import Subscription
@@ -85,6 +92,13 @@ from src.models.data_change_event import (
     AFFECTED_METRICS,
 )
 from src.models.dashboard_metric_binding import DashboardMetricBinding
+# Custom Reports & Dashboard Builder models
+from src.models.report_template import ReportTemplate, TemplateCategory
+from src.models.custom_dashboard import CustomDashboard, DashboardStatus
+from src.models.custom_report import CustomReport, ChartType, CHART_MIN_DIMENSIONS
+from src.models.dashboard_version import DashboardVersion, MAX_DASHBOARD_VERSIONS
+from src.models.dashboard_share import DashboardShare, SharePermission
+from src.models.dashboard_audit import DashboardAudit, DashboardAuditAction
 from src.models.data_availability import (
     DataAvailability,
     AvailabilityState,
@@ -101,6 +115,10 @@ from src.models.dataset_metrics import (
 from src.models.explore_guardrail_exception import (
     ExploreGuardrailException,
     GuardrailExceptionStatus,
+)
+from src.models.report_template import (
+    ReportTemplate,
+    TemplateCategory,
 )
 try:
     from .merchant_data_health import (
@@ -234,4 +252,31 @@ __all__ = [
     "DatasetSyncStatus",
     "ExploreGuardrailException",
     "GuardrailExceptionStatus",
+    # Report Template models (Phase 2C)
+    "ReportTemplate",
+    "TemplateCategory",
+    # RBAC models (Story 5.5.1)
+    "Role",
+    "RolePermission",
+    "UserRoleAssignment",
+    # Agency access models (Story 5.5.2)
+    "AgencyAccessRequest",
+    "AgencyAccessRequestStatus",
+    # Access revocation models (Story 5.5.4)
+    "AccessRevocation",
+    "RevocationStatus",
+    # Custom Reports & Dashboard Builder models
+    "ReportTemplate",
+    "TemplateCategory",
+    "CustomDashboard",
+    "DashboardStatus",
+    "CustomReport",
+    "ChartType",
+    "CHART_MIN_DIMENSIONS",
+    "DashboardVersion",
+    "MAX_DASHBOARD_VERSIONS",
+    "DashboardShare",
+    "SharePermission",
+    "DashboardAudit",
+    "DashboardAuditAction",
 ]
