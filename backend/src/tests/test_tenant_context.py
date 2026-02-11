@@ -564,6 +564,53 @@ class TestTenantContextMiddleware:
         assert data["tenant_id"] == "org-456"
         assert data["user_id"] == "user-123"
 
+
+
+    @pytest.mark.asyncio
+    @patch('src.platform.tenant_context.get_db_session_sync')
+    @patch('src.platform.tenant_context._get_tenant_guard_class')
+    @patch('src.platform.tenant_context.jwt.decode')
+    @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
+    async def test_unexpected_tenant_guard_error_returns_500(
+        self,
+        mock_get_key,
+        mock_decode,
+        mock_get_guard_class,
+        mock_get_db_session_sync,
+        app_with_middleware,
+    ):
+        """Non-DB guard errors should still surface as internal auth failures."""
+        mock_signing_key = MagicMock()
+        mock_signing_key.key = "mock-key"
+        mock_get_key.return_value = mock_signing_key
+
+        mock_decode.return_value = {
+            "sub": "user-123",
+            "org_id": "org-456",
+            "org_role": "org:admin",
+            "metadata": {"roles": ["merchant_admin"]},
+            "iss": "https://test.clerk.accounts.dev",
+            "exp": 9999999999,
+        }
+
+        mock_db = Mock()
+        mock_get_db_session_sync.return_value = iter([mock_db])
+
+        mock_guard = Mock()
+        mock_guard.enforce_authorization.side_effect = TypeError("bad guard state")
+        mock_get_guard_class.return_value = Mock(return_value=mock_guard)
+
+        client = TestClient(app_with_middleware)
+
+        response = client.get(
+            "/api/data",
+            headers={"Authorization": "Bearer valid-token"},
+        )
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert response.json()["detail"] == "Internal error during authentication"
+        mock_db.close.assert_called_once()
+
     @pytest.mark.asyncio
     @patch('src.platform.tenant_context.jwt.decode')
     @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
