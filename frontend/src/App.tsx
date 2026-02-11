@@ -102,8 +102,12 @@ function AuthenticatedApp() {
 
 /** Inner shell: only mounts once the Clerk org is active so the token has org_id. */
 function AppWithOrg() {
-  useClerkToken();
+  const { isTokenReady } = useClerkToken();  // was: useClerkToken()
   const { entitlements } = useEntitlements();
+
+  if (!isTokenReady) {
+    return <SkeletonPage />;  // NEW: blocks all API calls until token is cached
+  }
 
   return (
     <DataHealthProvider>
