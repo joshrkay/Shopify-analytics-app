@@ -5,3 +5,5 @@
  */
 
 export { AppHeader } from './AppHeader';
+export { Sidebar } from './Sidebar';
+export { RootLayout, SidebarProvider, useSidebar } from './RootLayout';

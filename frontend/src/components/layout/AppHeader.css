@@ -1,0 +1,26 @@
+.sidebar-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--p-space-100);
+  border: none;
+  border-radius: var(--p-border-radius-200);
+  background: transparent;
+  color: var(--p-color-text);
+  cursor: pointer;
+}
+
+.sidebar-hamburger:hover {
+  background: var(--p-color-bg-surface-hover);
+}
+
+.sidebar-hamburger:focus-visible {
+  outline: 2px solid var(--p-color-border-emphasis);
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .sidebar-hamburger {
+    display: flex;
+  }
+}

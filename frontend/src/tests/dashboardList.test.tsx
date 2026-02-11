@@ -80,8 +80,8 @@ const createMockEntitlements = (overrides?: Partial<EntitlementsResponse>): Enti
   plan_id: 'plan-1',
   plan_name: 'Pro',
   features: {
-    custom_dashboards: {
-      feature: 'custom_dashboards',
+    custom_reports: {
+      feature: 'custom_reports',
       is_entitled: true,
       billing_state: 'active',
       plan_id: 'plan-1',

@@ -166,7 +166,7 @@ export function DashboardList() {
   }, [fetchDashboards]);
 
   // Check if user can create dashboards (entitlement + count limit)
-  const hasEntitlement = isFeatureEntitled(entitlements, 'custom_dashboards');
+  const hasEntitlement = isFeatureEntitled(entitlements, 'custom_reports');
   const canCreate = hasEntitlement && (dashboardCount?.can_create ?? true);
   const atLimit = hasEntitlement && dashboardCount !== null && !dashboardCount.can_create;
 
