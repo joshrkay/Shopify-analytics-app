@@ -534,10 +534,10 @@ class TestTenantContextMiddleware:
     @patch('src.platform.tenant_context.get_db_session_sync')
     @patch('src.platform.tenant_context.jwt.decode')
     @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
-    async def test_db_authorization_failure_falls_back_to_jwt_context(
+    async def test_db_authorization_failure_returns_503(
         self, mock_get_key, mock_decode, mock_get_db_session_sync, app_with_middleware
     ):
-        """Test middleware degrades gracefully when DB authorization is unavailable."""
+        """Test middleware returns 503 when DB authorization is unavailable (fail-closed)."""
         mock_signing_key = MagicMock()
         mock_signing_key.key = "mock-key"
         mock_get_key.return_value = mock_signing_key
@@ -559,10 +559,8 @@ class TestTenantContextMiddleware:
             headers={"Authorization": "Bearer valid-token"},
         )
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["tenant_id"] == "org-456"
-        assert data["user_id"] == "user-123"
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert "Authorization service temporarily unavailable" in response.json()["detail"]
 
 
 

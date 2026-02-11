@@ -824,13 +824,24 @@ class TenantContextMiddleware:
                         exc_info=True,
                     )
             except (RuntimeError, ValueError, SQLAlchemyError) as db_error:
-                logger.warning(
-                    f"DB authorization enforcement skipped: {type(db_error).__name__}: {str(db_error)}",
+                logger.error(
+                    f"DB authorization enforcement failed (fail-closed): {type(db_error).__name__}: {str(db_error)}",
                     extra={
                         "user_id": str(user_id),
                         "tenant_id": active_tenant_id,
                         "path": request.url.path,
                     },
+                )
+                _emit_tenant_violation_audit_log(
+                    request=request,
+                    violation_type=TenantViolationType.AUTHORIZATION_ENFORCEMENT_FAILED,
+                    error_message=f"DB authorization unavailable: {type(db_error).__name__}",
+                    user_id=str(user_id),
+                    org_id=str(org_id),
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    content={"detail": "Authorization service temporarily unavailable. Please retry."},
                 )
             finally:
                 if db is not None:
@@ -865,7 +876,7 @@ class TenantContextMiddleware:
             )
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
-                content={"detail": f"Invalid or expired token: {str(e)}"}
+                content={"detail": "Invalid or expired token"}
             )
         except HTTPException as he:
             return JSONResponse(

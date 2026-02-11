@@ -24,9 +24,6 @@ class TenantOverride:
         if not tenant_id:
             raise ValueError("tenant_id is required")
         if not feature_key:
-        if not self.tenant_id:
-            raise ValueError("tenant_id is required")
-        if not self.feature_key:
             raise ValueError("feature_key is required")
         if self.expires_at.tzinfo is None:
             raise ValueError("expires_at must be timezone-aware")
@@ -113,7 +110,6 @@ def resolve_entitlement(
     """Resolve entitlements in deterministic order: override -> plan -> deny."""
     normalized_tenant_id = str(tenant_id).strip()
     if not normalized_tenant_id:
-    if not tenant_id:
         raise ValueError("tenant_id is required")
 
     resolved_at = now or datetime.now(timezone.utc)

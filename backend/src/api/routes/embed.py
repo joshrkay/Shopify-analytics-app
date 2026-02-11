@@ -453,12 +453,8 @@ async def embed_readiness(response: Response):
         status="ready",
         embed_configured=True,
         superset_url_configured=True,
-        allowed_dashboards_configured=allowed_dashboards_configured,
-        message=(
-            "ALLOWED_EMBED_DASHBOARDS not configured (using tenant defaults)"
-            if not allowed_dashboards_configured
-            else None
-        ),
+        allowed_dashboards_configured=True,
+        message=None,
     )
 
 

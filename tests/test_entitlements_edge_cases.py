@@ -147,3 +147,77 @@ def test_fail_closed_error_code_surfaces():
         service.get_entitlements("tenant-1")
 
     assert exc.value.error_code == "ENTITLEMENTS_UNAVAILABLE_FAIL_CLOSED"
+
+
+# =============================================================================
+# Regression tests for fixed validation bugs
+# =============================================================================
+
+
+def test_whitespace_only_tenant_id_rejected_by_resolve_entitlement():
+    """Whitespace-only tenant_id must be rejected (regression for duplicate-line bug)."""
+    plan = PlanDefinition(plan_key="free", feature_keys=frozenset({"reports.basic"}))
+
+    with pytest.raises(ValueError, match="tenant_id is required"):
+        resolve_entitlement(
+            tenant_id="   ",
+            plan=plan,
+            overrides=[],
+            requested_feature_keys=["reports.basic"],
+        )
+
+
+def test_empty_tenant_id_rejected_by_resolve_entitlement():
+    """Empty string tenant_id must be rejected."""
+    plan = PlanDefinition(plan_key="free", feature_keys=frozenset({"reports.basic"}))
+
+    with pytest.raises(ValueError, match="tenant_id is required"):
+        resolve_entitlement(
+            tenant_id="",
+            plan=plan,
+            overrides=[],
+            requested_feature_keys=["reports.basic"],
+        )
+
+
+def test_whitespace_only_feature_key_rejected_by_override():
+    """Whitespace-only feature_key must be rejected on TenantOverride (regression)."""
+    now = datetime.now(timezone.utc)
+
+    with pytest.raises(ValueError, match="feature_key is required"):
+        TenantOverride(
+            tenant_id="tenant-1",
+            feature_key="   ",
+            effect="grant",
+            expires_at=now + timedelta(hours=1),
+        )
+
+
+def test_whitespace_only_tenant_id_rejected_by_override():
+    """Whitespace-only tenant_id must be rejected on TenantOverride (regression)."""
+    now = datetime.now(timezone.utc)
+
+    with pytest.raises(ValueError, match="tenant_id is required"):
+        TenantOverride(
+            tenant_id="   ",
+            feature_key="reports.basic",
+            effect="grant",
+            expires_at=now + timedelta(hours=1),
+        )
+
+
+def test_whitespace_only_tenant_id_rejected_by_loader(tmp_path):
+    """Whitespace-only tenant_id must be rejected by EntitlementLoader (regression)."""
+    config_file = tmp_path / "plans.json"
+    config_file.write_text(
+        '{"plans": {"free": {"features": ["reports.basic"], "limits": {}}}}',
+        encoding="utf-8",
+    )
+
+    loader = EntitlementLoader(str(config_file))
+
+    with pytest.raises(ValueError, match="tenant_id is required"):
+        loader.resolve_for_tenant(
+            tenant_id="   ",
+            plan_key="free",
+        )
