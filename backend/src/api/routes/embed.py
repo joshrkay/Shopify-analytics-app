@@ -373,10 +373,14 @@ async def get_embed_config(
     superset_url = os.getenv("SUPERSET_EMBED_URL", "https://analytics.example.com")
     refresh_interval_minutes = int(os.getenv("EMBED_TOKEN_REFRESH_INTERVAL_MINUTES", "55"))
 
-    # Dashboard access is configured via environment variable.
-    # All tenants share the same dashboard list; per-tenant customization
-    # can be added via plan features in config/plans.json if needed.
-    allowed_dashboards = os.getenv("ALLOWED_EMBED_DASHBOARDS", "overview,sales,marketing").split(",")
+    # Use tenant-aware dashboard access rules so frontend receives
+    # real dashboards available for this user and plan.
+    access_service = DashboardAccessService(
+        tenant_id=tenant_ctx.tenant_id,
+        roles=tenant_ctx.roles,
+        billing_tier=tenant_ctx.billing_tier,
+    )
+    allowed_dashboards = access_service.get_allowed_dashboards()
 
     # Add CSP headers
     add_embed_csp_headers(response)
@@ -391,7 +395,7 @@ async def get_embed_config(
 
     return EmbedConfigResponse(
         superset_url=superset_url,
-        allowed_dashboards=[d.strip() for d in allowed_dashboards],
+        allowed_dashboards=allowed_dashboards,
         session_refresh_interval_ms=refresh_interval_minutes * 60 * 1000,
         csp_frame_ancestors=["self", "https://admin.shopify.com", "https://*.myshopify.com"],
     )
@@ -449,7 +453,12 @@ async def embed_readiness(response: Response):
         status="ready",
         embed_configured=True,
         superset_url_configured=True,
-        allowed_dashboards_configured=True,
+        allowed_dashboards_configured=allowed_dashboards_configured,
+        message=(
+            "ALLOWED_EMBED_DASHBOARDS not configured (using tenant defaults)"
+            if not allowed_dashboards_configured
+            else None
+        ),
     )
 
 

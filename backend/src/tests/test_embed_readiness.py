@@ -50,7 +50,7 @@ def test_embed_readiness_ready_when_all_env_present():
         _restore_env(old_secret, old_url, old_dashboards)
 
 
-def test_embed_readiness_not_ready_when_dashboards_missing():
+def test_embed_readiness_ready_when_dashboards_env_missing():
     old_secret = os.environ.get('SUPERSET_JWT_SECRET')
     old_url = os.environ.get('SUPERSET_EMBED_URL')
     old_dashboards = os.environ.get('ALLOWED_EMBED_DASHBOARDS')
@@ -63,8 +63,8 @@ def test_embed_readiness_not_ready_when_dashboards_missing():
         response = client.get('/api/v1/embed/health/readiness')
         assert response.status_code == 200
         body = response.json()
-        assert body['status'] == 'not_ready'
-        assert body['message'] == 'ALLOWED_EMBED_DASHBOARDS not configured'
+        assert body['status'] == 'ready'
+        assert body['message'] == 'ALLOWED_EMBED_DASHBOARDS not configured (using tenant defaults)'
         assert body['allowed_dashboards_configured'] is False
     finally:
         _restore_env(old_secret, old_url, old_dashboards)

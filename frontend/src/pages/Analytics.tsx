@@ -202,6 +202,9 @@ const Analytics: React.FC = () => {
     value: `custom:${d.id}`,
   }));
 
+
+  const hasSystemDashboards = systemOptions.length > 0;
+
   const dashboardOptions = [
     ...systemOptions,
     ...(customOptions.length > 0
@@ -247,6 +250,16 @@ const Analytics: React.FC = () => {
             <Layout.Section>
               <DashboardFreshnessIndicator variant="compact" />
             </Layout.Section>
+
+            {!hasSystemDashboards && (
+              <Layout.Section>
+                <Banner title="No Dashboards Available" tone="info">
+                  <p>
+                    Analytics is configured, but no embedded dashboards are currently available for your plan.
+                  </p>
+                </Banner>
+              </Layout.Section>
+            )}
 
             {/* Dashboard selector */}
             {dashboardOptions.length > 1 && (
