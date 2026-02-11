@@ -4,13 +4,15 @@
  * Sets up the Clerk token provider for API utilities.
  * This hook should be called once at the app root level.
  *
- * Features: 
+ * Features:
  * - Syncs Clerk token to API utilities
  * - Caches token in localStorage for offline/fallback use
  * - Clears token on sign out
+ * - Periodic token refresh (every 50s) to prevent expiration
+ * - isTokenReady flag to gate API calls until first token is cached
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import { setTokenProvider, setAuthToken, clearAuthToken } from '../services/apiUtils';
 
@@ -18,15 +20,18 @@ import { setTokenProvider, setAuthToken, clearAuthToken } from '../services/apiU
  * Hook to set up Clerk token integration with API utilities.
  *
  * Call this once in a component that's inside ClerkProvider and SignedIn.
+ * Returns { isTokenReady } — gate rendering on this to avoid stale-token API calls.
  *
  * @example
  * function AuthenticatedApp() {
- *   useClerkToken();
+ *   const { isTokenReady } = useClerkToken();
+ *   if (!isTokenReady) return <Loading />;
  *   return <YourApp />;
  * }
  */
-export function useClerkToken(): void {
+export function useClerkToken(): { isTokenReady: boolean } {
   const { getToken, isSignedIn } = useAuth();
+  const [isTokenReady, setIsTokenReady] = useState(false);
 
   // Create a stable token provider function
   const tokenProvider = useCallback(async () => {
@@ -48,21 +53,29 @@ export function useClerkToken(): void {
   useEffect(() => {
     if (isSignedIn) {
       setTokenProvider(tokenProvider);
-      // Fetch initial token
-      tokenProvider();
+      // Fetch initial token and mark ready once cached
+      tokenProvider().then((token) => {
+        if (token) {
+          setIsTokenReady(true);
+        }
+      });
       // Clerk session tokens expire after ~60s.
       // Refresh the cached localStorage token periodically
       // so sync createHeaders() callers always have a valid token.
       const refreshInterval = setInterval(() => {
         tokenProvider();
-      }, 50000);
+      }, 50_000);
       return () => clearInterval(refreshInterval);
     } else {
       // Clear token on sign out
       setTokenProvider(null);
       clearAuthToken();
+      setIsTokenReady(false);
     }
   }, [isSignedIn, tokenProvider]);
+
+  return { isTokenReady };
+}
 
 /**
  * Hook to get the current Clerk session token.
