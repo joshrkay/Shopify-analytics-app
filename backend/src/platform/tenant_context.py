@@ -33,6 +33,7 @@ from enum import Enum
 import httpx
 from fastapi import Request, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from starlette.responses import JSONResponse
 import jwt
 from jwt import PyJWKClient, PyJWKClientError
 from jwt.exceptions import InvalidTokenError, DecodeError
@@ -543,9 +544,9 @@ class TenantContextMiddleware:
                 violation_type=TenantViolationType.SERVICE_UNAVAILABLE,
                 error_message="Authentication service not configured",
             )
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service not configured. Please set CLERK_FRONTEND_API environment variable."
+                content={"detail": "Authentication service not configured. Please set CLERK_FRONTEND_API environment variable."}
             )
 
         # Extract Bearer token
@@ -562,9 +563,9 @@ class TenantContextMiddleware:
                 violation_type=TenantViolationType.MISSING_AUTH_TOKEN,
                 error_message="Missing or invalid authorization token",
             )
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Missing or invalid authorization token"
+                content={"detail": "Missing or invalid authorization token"}
             )
 
         token = credentials.credentials
@@ -598,14 +599,19 @@ class TenantContextMiddleware:
             # - metadata: Custom session/user metadata (contains allowed_tenants, billing_tier, etc.)
 
             user_id = payload.get("sub")
-            org_id = payload.get("org_id")
+            # Support both Clerk JWT v1 (org_id) and v2 (o.id) formats
+            org_id = payload.get("org_id") or (payload.get("o") or {}).get("id")
 
             # Extract custom metadata (Clerk stores custom claims in metadata or public_metadata)
             metadata = payload.get("metadata", {}) or payload.get("public_metadata", {}) or {}
 
             # Extract roles - Clerk uses org_role (single role) or custom roles in metadata
-            org_role = payload.get("org_role", "")
-            org_permissions = payload.get("org_permissions", [])
+            # Support both Clerk JWT v1 and v2 formats for role/permissions
+            org_role = payload.get("org_role", "") or (payload.get("o") or {}).get("rol", "")
+            _o = payload.get("o") or {}
+            org_permissions = payload.get("org_permissions", []) or (
+                _o.get("per", "").split(",") if _o.get("per") else []
+            )
 
             # Convert Clerk org_role to roles list
             # Clerk org_role format: "org:admin", "org:member", etc.
@@ -632,9 +638,9 @@ class TenantContextMiddleware:
                     error_message="Token missing organization identifier",
                     user_id=str(user_id) if user_id else None,
                 )
-                raise HTTPException(
+                return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Token missing organization identifier. Ensure user is part of a Clerk Organization."
+                    content={"detail": "Token missing organization identifier. Ensure user is part of a Clerk Organization."}
                 )
 
             if not user_id:
@@ -648,9 +654,9 @@ class TenantContextMiddleware:
                     error_message="Token missing user identifier",
                     org_id=str(org_id) if org_id else None,
                 )
-                raise HTTPException(
+                return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Token missing user identifier"
+                    content={"detail": "Token missing user identifier"}
                 )
 
             # Extract allowed_tenants for agency users (from metadata)
@@ -687,9 +693,9 @@ class TenantContextMiddleware:
                     org_id=str(org_id),
                     extra_metadata={"tenant_count": e.tenant_count},
                 )
-                raise HTTPException(
+                return JSONResponse(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail={
+                    content={
                         "error": "TENANT_SELECTION_REQUIRED",
                         "message": str(e),
                         "tenant_count": e.tenant_count,
@@ -703,9 +709,9 @@ class TenantContextMiddleware:
                     user_id=str(user_id),
                     org_id=str(org_id),
                 )
-                raise HTTPException(
+                return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User has no tenant access"
+                    content={"detail": "User has no tenant access"}
                 )
 
             # Ensure active_tenant_id is in allowed_tenants for agency users
@@ -763,9 +769,9 @@ class TenantContextMiddleware:
                         },
                     )
 
-                    raise HTTPException(
+                    return JSONResponse(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail=authz_result.denial_reason or "Access denied",
+                        content={"detail": authz_result.denial_reason or "Access denied"},
                         headers={
                             "X-Error-Code": authz_result.error_code or "ACCESS_DENIED",
                         },
@@ -846,21 +852,24 @@ class TenantContextMiddleware:
                 error_message=f"Invalid or expired token: {str(e)}",
                 extra_metadata={"error_type": type(e).__name__},
             )
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Invalid or expired token: {str(e)}"
+                content={"detail": f"Invalid or expired token: {str(e)}"}
             )
-        except HTTPException:
-            raise
+        except HTTPException as he:
+            return JSONResponse(
+                status_code=he.status_code,
+                content={"detail": he.detail},
+            )
         except Exception as e:
             logger.error("Unexpected error during tenant context extraction", extra={
                 "error": str(e),
                 "error_type": type(e).__name__,
                 "path": request.url.path
             })
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal error during authentication"
+                content={"detail": "Internal error during authentication"}
             )
         
         # Continue to next middleware/handler
