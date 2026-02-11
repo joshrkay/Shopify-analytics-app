@@ -41,6 +41,7 @@ from src.api.routes import admin_changelog
 from src.api.routes import what_changed
 from src.api.routes import shopify_ingestion
 from src.api.routes import ad_platform_ingestion
+from src.api.routes import sources
 from src.api.routes import webhooks_clerk
 from src.api.routes import tenant_members
 from src.api.routes import user_tenants
@@ -218,6 +219,10 @@ app.include_router(shopify_ingestion.router)
 # Include ad platform ingestion routes (requires authentication)
 # Ad platform data source setup and sync via Airbyte
 app.include_router(ad_platform_ingestion.router)
+
+# Include unified sources routes (requires authentication)
+# Story 2.1.1 - Unified Source domain model
+app.include_router(sources.router)
 
 # Include Clerk webhook routes (uses Svix signature verification, not JWT)
 # Epic 1.1 - Identity synchronization from Clerk
