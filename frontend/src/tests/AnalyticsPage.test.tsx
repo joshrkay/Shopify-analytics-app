@@ -11,7 +11,7 @@ vi.mock('../services/embedApi', () => ({
 }));
 
 vi.mock('../services/customDashboardsApi', () => ({
-  listDashboards: vi.fn().mockResolvedValue({ dashboards: [], has_more: false }),
+  listDashboards: vi.fn(),
 }));
 
 vi.mock('../components/ShopifyEmbeddedSuperset', () => ({
@@ -35,6 +35,7 @@ vi.mock('../components/health/DashboardFreshnessIndicator', () => ({
 }));
 
 import { checkEmbedReadiness, getEmbedConfig } from '../services/embedApi';
+import { listDashboards } from '../services/customDashboardsApi';
 
 const mockTranslations = {
   Polaris: {
@@ -61,12 +62,38 @@ describe('Analytics page bootstrap', () => {
       superset_url_configured: true,
       allowed_dashboards_configured: true,
     });
+    (listDashboards as any).mockResolvedValue({ dashboards: [], has_more: false });
     (getEmbedConfig as any).mockResolvedValue({
       superset_url: 'https://analytics.example.com',
       allowed_dashboards: ['overview'],
       session_refresh_interval_ms: 300000,
       csp_frame_ancestors: ['self'],
     });
+  });
+
+
+  it('renders full analytics layout with system and custom dashboards', async () => {
+    (getEmbedConfig as any).mockResolvedValue({
+      superset_url: 'https://analytics.example.com',
+      allowed_dashboards: ['overview', 'sales'],
+      session_refresh_interval_ms: 300000,
+      csp_frame_ancestors: ['self'],
+    });
+    (listDashboards as any).mockResolvedValue({
+      dashboards: [{ id: 'db_1', name: 'QBR Report', status: 'published' }],
+      has_more: true,
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Analytics')).toBeInTheDocument();
+      expect(screen.getByText('Select Dashboard')).toBeInTheDocument();
+      expect(screen.getByText('Embedded Dashboard')).toBeInTheDocument();
+      expect(screen.getByText('Create Custom Dashboard')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('No Dashboards Available')).not.toBeInTheDocument();
   });
 
   it('shows permission-specific message for 403 config response', async () => {
@@ -101,6 +128,7 @@ describe('Analytics page bootstrap', () => {
 
 
   it('shows informational banner when no embedded dashboards are available', async () => {
+    (listDashboards as any).mockResolvedValue({ dashboards: [], has_more: false });
     (getEmbedConfig as any).mockResolvedValue({
       superset_url: 'https://analytics.example.com',
       allowed_dashboards: [],
