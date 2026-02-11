@@ -41,6 +41,8 @@ class EntitlementLoader:
         overrides: Optional[Iterable[TenantOverride]] = None,
         feature_keys: Optional[Iterable[str]] = None,
     ) -> Entitlement:
+        normalized_tenant_id = str(tenant_id).strip()
+        if not normalized_tenant_id:
         if not tenant_id:
             raise ValueError("tenant_id is required")
 

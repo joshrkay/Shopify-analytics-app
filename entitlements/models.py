@@ -19,6 +19,11 @@ class TenantOverride:
     expires_at: datetime
 
     def __post_init__(self) -> None:
+        tenant_id = self.tenant_id.strip()
+        feature_key = self.feature_key.strip()
+        if not tenant_id:
+            raise ValueError("tenant_id is required")
+        if not feature_key:
         if not self.tenant_id:
             raise ValueError("tenant_id is required")
         if not self.feature_key:
@@ -27,6 +32,8 @@ class TenantOverride:
             raise ValueError("expires_at must be timezone-aware")
         if self.effect not in ("grant", "deny"):
             raise ValueError("effect must be one of: grant, deny")
+        object.__setattr__(self, "tenant_id", tenant_id)
+        object.__setattr__(self, "feature_key", feature_key)
 
     def is_active(self, now: Optional[datetime] = None) -> bool:
         compare_at = now or datetime.now(timezone.utc)
@@ -58,7 +65,10 @@ class Entitlement:
     def has_feature(self, feature_key: str) -> bool:
         if not self.tenant_id:
             raise ValueError("tenant_id is required for entitlement lookups")
-        result = self.features.get(feature_key)
+        normalized_key = str(feature_key).strip()
+        if not normalized_key:
+            return False
+        result = self.features.get(normalized_key)
         return bool(result and result.granted)
 
 
@@ -71,6 +81,7 @@ class PlanDefinition:
     limits: Mapping[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "plan_key", self.plan_key.strip())
         object.__setattr__(self, "feature_keys", frozenset(self.feature_keys))
         object.__setattr__(self, "limits", MappingProxyType(dict(self.limits)))
 
@@ -100,6 +111,8 @@ def resolve_entitlement(
     now: Optional[datetime] = None,
 ) -> Entitlement:
     """Resolve entitlements in deterministic order: override -> plan -> deny."""
+    normalized_tenant_id = str(tenant_id).strip()
+    if not normalized_tenant_id:
     if not tenant_id:
         raise ValueError("tenant_id is required")
 
@@ -107,16 +120,26 @@ def resolve_entitlement(
 
     active_overrides: Dict[str, TenantOverride] = {}
     for override in overrides:
-        if override.tenant_id != tenant_id:
+        if override.tenant_id != normalized_tenant_id:
             continue
-        if override.is_active(resolved_at):
-            existing = active_overrides.get(override.feature_key)
-            if existing is None or override.expires_at > existing.expires_at:
-                # Deterministic precedence for duplicate overrides: furthest expiry wins.
+        if not override.is_active(resolved_at):
+            continue
+
+        existing = active_overrides.get(override.feature_key)
+        if existing is None:
+            active_overrides[override.feature_key] = override
+            continue
+
+        if override.expires_at > existing.expires_at:
+            active_overrides[override.feature_key] = override
+        elif override.expires_at == existing.expires_at:
+            # deterministic fail-safe tie-break: deny overrides win at equal expiry
+            if override.effect == "deny" and existing.effect != "deny":
                 active_overrides[override.feature_key] = override
 
     features: Dict[str, FeatureEntitlement] = {}
-    for feature_key in sorted(set(requested_feature_keys)):
+    normalized_requested = sorted({str(k).strip() for k in requested_feature_keys if str(k).strip()})
+    for feature_key in normalized_requested:
         override = active_overrides.get(feature_key)
         if override:
             features[feature_key] = FeatureEntitlement(
