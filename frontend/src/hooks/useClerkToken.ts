@@ -4,7 +4,7 @@
  * Sets up the Clerk token provider for API utilities.
  * This hook should be called once at the app root level.
  *
- * Features:
+ * Features: 
  * - Syncs Clerk token to API utilities
  * - Caches token in localStorage for offline/fallback use
  * - Clears token on sign out
@@ -50,13 +50,19 @@ export function useClerkToken(): void {
       setTokenProvider(tokenProvider);
       // Fetch initial token
       tokenProvider();
+      // Clerk session tokens expire after ~60s.
+      // Refresh the cached localStorage token periodically
+      // so sync createHeaders() callers always have a valid token.
+      const refreshInterval = setInterval(() => {
+        tokenProvider();
+      }, 50000);
+      return () => clearInterval(refreshInterval);
     } else {
       // Clear token on sign out
       setTokenProvider(null);
       clearAuthToken();
     }
   }, [isSignedIn, tokenProvider]);
-}
 
 /**
  * Hook to get the current Clerk session token.
