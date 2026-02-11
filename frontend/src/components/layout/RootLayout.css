@@ -1,0 +1,11 @@
+.root-layout {
+  display: flex;
+  height: calc(100vh - 49px);
+  overflow: hidden;
+}
+
+.root-layout__content {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+}

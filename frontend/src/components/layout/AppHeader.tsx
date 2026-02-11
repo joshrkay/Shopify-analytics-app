@@ -1,16 +1,15 @@
 /**
  * AppHeader Component
  *
- * Global header with navigation links and status indicators.
- * Includes ChangelogBadge and WhatChangedButton for stories 9.7 and 9.8.
- * Adds "Analytics" and "Dashboards" nav items for Phase 4D.
+ * Slim top utility bar with changelog and debug controls.
+ * Navigation has moved to the Sidebar component (Phase 0).
  *
  * Story 9.7 - In-App Changelog & Release Notes
  * Story 9.8 - "What Changed?" Debug Panel
- * Phase 4D  - Integration & Navigation Polish
+ * Story 0.1.2 - AppHeader becomes slim top utility bar
  */
 
-import { Button, InlineStack, Box } from '@shopify/polaris';
+import { InlineStack, Box } from '@shopify/polaris';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChangelogBadge } from '../changelog/ChangelogBadge';
 import { WhatChangedButton } from '../whatChanged/WhatChangedButton';
@@ -24,8 +23,6 @@ export function AppHeader() {
   };
 
   const isOnWhatsNewPage = location.pathname === '/whats-new';
-  const isOnAnalytics = location.pathname === '/analytics';
-  const isOnDashboards = location.pathname.startsWith('/dashboards');
 
   return (
     <Box
@@ -37,39 +34,20 @@ export function AppHeader() {
       borderBlockEndWidth="025"
       borderColor="border"
     >
-      <InlineStack align="space-between" gap="400" blockAlign="center">
-        {/* Left: Navigation links */}
-        <InlineStack gap="200" blockAlign="center">
-          <Button
-            variant={isOnAnalytics ? 'primary' : 'plain'}
-            onClick={() => navigate('/analytics')}
-          >
-            Analytics
-          </Button>
-          <Button
-            variant={isOnDashboards ? 'primary' : 'plain'}
-            onClick={() => navigate('/dashboards')}
-          >
-            Dashboards
-          </Button>
-        </InlineStack>
-
-        {/* Right: Status indicators */}
-        <InlineStack gap="400" blockAlign="center">
-          {!isOnWhatsNewPage && (
-            <ChangelogBadge
-              onClick={handleWhatsNewClick}
-              showLabel
-              label="What's New"
-              refreshInterval={60000}
-            />
-          )}
-          <WhatChangedButton
-            variant="inline"
-            showBadge
+      <InlineStack align="end" gap="400" blockAlign="center">
+        {!isOnWhatsNewPage && (
+          <ChangelogBadge
+            onClick={handleWhatsNewClick}
+            showLabel
+            label="What's New"
             refreshInterval={60000}
           />
-        </InlineStack>
+        )}
+        <WhatChangedButton
+          variant="inline"
+          showBadge
+          refreshInterval={60000}
+        />
       </InlineStack>
     </Box>
   );

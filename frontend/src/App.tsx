@@ -40,6 +40,9 @@ import WhatsNew from './pages/WhatsNew';
 import { DashboardList } from './pages/DashboardList';
 import { DashboardView } from './pages/DashboardView';
 import { DashboardBuilder } from './pages/DashboardBuilder';
+import { RootLayout } from './components/layout';
+import DataSources from './pages/DataSources';
+import Settings from './pages/Settings';
 
 // =============================================================================
 // FeatureGateRoute — redirects to paywall if feature not entitled
@@ -112,37 +115,41 @@ function AppWithOrg() {
   return (
     <DataHealthProvider>
       <AppHeader />
-      <Routes>
-        <Route path="/admin/plans" element={<AdminPlans />} />
-        <Route path="/admin/diagnostics" element={<RootCausePanel />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/paywall" element={<Paywall />} />
-        <Route path="/insights" element={<InsightsFeed />} />
-        <Route path="/approvals" element={<ApprovalsInbox />} />
-        <Route path="/whats-new" element={<WhatsNew />} />
+      <RootLayout>
+        <Routes>
+          <Route path="/admin/plans" element={<AdminPlans />} />
+          <Route path="/admin/diagnostics" element={<RootCausePanel />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/paywall" element={<Paywall />} />
+          <Route path="/insights" element={<InsightsFeed />} />
+          <Route path="/approvals" element={<ApprovalsInbox />} />
+          <Route path="/whats-new" element={<WhatsNew />} />
+          <Route path="/data-sources" element={<DataSources />} />
+          <Route path="/settings" element={<Settings />} />
 
-        {/* Custom Dashboards — gated routes */}
-        <Route
-          path="/dashboards"
-          element={
-            <FeatureGateRoute feature="custom_dashboards" entitlements={entitlements}>
-              <DashboardList />
-            </FeatureGateRoute>
-          }
-        />
-        <Route
-          path="/dashboards/:dashboardId/edit"
-          element={
-            <FeatureGateRoute feature="custom_dashboards" entitlements={entitlements}>
-              <DashboardBuilder />
-            </FeatureGateRoute>
-          }
-        />
-        {/* View route is NOT gated — shared dashboards viewable on any plan */}
-        <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
+          {/* Custom Dashboards — gated routes */}
+          <Route
+            path="/dashboards"
+            element={
+              <FeatureGateRoute feature="custom_dashboards" entitlements={entitlements}>
+                <DashboardList />
+              </FeatureGateRoute>
+            }
+          />
+          <Route
+            path="/dashboards/:dashboardId/edit"
+            element={
+              <FeatureGateRoute feature="custom_dashboards" entitlements={entitlements}>
+                <DashboardBuilder />
+              </FeatureGateRoute>
+            }
+          />
+          {/* View route is NOT gated — shared dashboards viewable on any plan */}
+          <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
 
-        <Route path="/" element={<Navigate to="/analytics" replace />} />
-      </Routes>
+          <Route path="/" element={<Navigate to="/analytics" replace />} />
+        </Routes>
+      </RootLayout>
     </DataHealthProvider>
   );
 }
