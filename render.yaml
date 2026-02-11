@@ -232,7 +232,7 @@ databases:
   - name: markinsight-db
     databaseName: markinsight
     user: markinsight_user
-    plan: starter
+    plan: standard
     region: oregon
     # PostgreSQL version
     postgresMajorVersion: 15
@@ -241,6 +241,6 @@ databases:
   - name: markinsight-superset-db
     databaseName: superset_metadata
     user: superset_user
-    plan: starter
+    plan: standard
     region: oregon
     postgresMajorVersion: 15
