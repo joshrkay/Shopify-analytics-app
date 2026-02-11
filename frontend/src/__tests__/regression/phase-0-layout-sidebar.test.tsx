@@ -100,7 +100,7 @@ function makeEntitlements(featureFlags: Record<string, boolean>) {
 
 // Default entitlements: all features entitled
 const allEntitled = makeEntitlements({
-  custom_dashboards: true,
+  custom_reports: true,
   ai_insights: true,
 });
 
@@ -426,7 +426,7 @@ describe('Feature-gated nav items (Story 0.2.3)', () => {
 
   it('hides nav item when entitlement is false', () => {
     mockUseEntitlements.mockReturnValue({
-      entitlements: makeEntitlements({ custom_dashboards: false, ai_insights: true }),
+      entitlements: makeEntitlements({ custom_reports: false, ai_insights: true }),
       loading: false,
       error: null,
     });
@@ -439,7 +439,7 @@ describe('Feature-gated nav items (Story 0.2.3)', () => {
 
   it('shows nav item when entitlement is true', () => {
     mockUseEntitlements.mockReturnValue({
-      entitlements: makeEntitlements({ custom_dashboards: true, ai_insights: true }),
+      entitlements: makeEntitlements({ custom_reports: true, ai_insights: true }),
       loading: false,
       error: null,
     });
@@ -453,7 +453,7 @@ describe('Feature-gated nav items (Story 0.2.3)', () => {
   it('hides section header when all items in section are not entitled', () => {
     // Main section: Analytics (no feature gate, always visible), Dashboards + Insights both gated and false
     mockUseEntitlements.mockReturnValue({
-      entitlements: makeEntitlements({ custom_dashboards: false, ai_insights: false }),
+      entitlements: makeEntitlements({ custom_reports: false, ai_insights: false }),
       loading: false,
       error: null,
     });

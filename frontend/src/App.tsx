@@ -132,7 +132,7 @@ function AppWithOrg() {
           <Route
             path="/dashboards"
             element={
-              <FeatureGateRoute feature="custom_dashboards" entitlements={entitlements}>
+              <FeatureGateRoute feature="custom_reports" entitlements={entitlements}>
                 <DashboardList />
               </FeatureGateRoute>
             }
@@ -140,7 +140,7 @@ function AppWithOrg() {
           <Route
             path="/dashboards/:dashboardId/edit"
             element={
-              <FeatureGateRoute feature="custom_dashboards" entitlements={entitlements}>
+              <FeatureGateRoute feature="custom_reports" entitlements={entitlements}>
                 <DashboardBuilder />
               </FeatureGateRoute>
             }
