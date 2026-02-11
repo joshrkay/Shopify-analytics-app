@@ -43,7 +43,6 @@ class EntitlementLoader:
     ) -> Entitlement:
         normalized_tenant_id = str(tenant_id).strip()
         if not normalized_tenant_id:
-        if not tenant_id:
             raise ValueError("tenant_id is required")
 
         plan = self.get_plan(plan_key)
