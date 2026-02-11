@@ -6,4 +6,4 @@
 
 export { AppHeader } from './AppHeader';
 export { Sidebar } from './Sidebar';
-export { RootLayout } from './RootLayout';
+export { RootLayout, SidebarProvider, useSidebar } from './RootLayout';

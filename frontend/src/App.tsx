@@ -40,7 +40,7 @@ import WhatsNew from './pages/WhatsNew';
 import { DashboardList } from './pages/DashboardList';
 import { DashboardView } from './pages/DashboardView';
 import { DashboardBuilder } from './pages/DashboardBuilder';
-import { RootLayout } from './components/layout';
+import { RootLayout, SidebarProvider } from './components/layout';
 import DataSources from './pages/DataSources';
 import Settings from './pages/Settings';
 
@@ -114,6 +114,7 @@ function AppWithOrg() {
 
   return (
     <DataHealthProvider>
+      <SidebarProvider>
       <AppHeader />
       <RootLayout>
         <Routes>
@@ -150,6 +151,7 @@ function AppWithOrg() {
           <Route path="/" element={<Navigate to="/analytics" replace />} />
         </Routes>
       </RootLayout>
+      </SidebarProvider>
     </DataHealthProvider>
   );
 }

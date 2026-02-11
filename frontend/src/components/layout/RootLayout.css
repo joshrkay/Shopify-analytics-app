@@ -9,3 +9,18 @@
   overflow-y: auto;
   min-width: 0;
 }
+
+/* Mobile overlay — hidden by default */
+.root-layout__overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .root-layout__overlay--visible {
+    display: block;
+    position: fixed;
+    inset: 49px 0 0 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 99;
+  }
+}
