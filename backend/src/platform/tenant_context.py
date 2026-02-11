@@ -739,91 +739,100 @@ class TenantContextMiddleware:
             # - Role changes mid-session
             # - Billing downgrades that invalidate roles
             TenantGuard = _get_tenant_guard_class()
-
-            db_gen = get_db_session_sync()
-            db = next(db_gen)
             try:
-                guard = TenantGuard(db)
-                authz_result = guard.enforce_authorization(
-                    clerk_user_id=str(user_id),
-                    active_tenant_id=active_tenant_id,
-                    jwt_roles=roles if isinstance(roles, list) else [],
-                    request_path=str(request.url.path),
-                    request_method=request.method,
-                )
-
-                if not authz_result.is_authorized:
-                    # Emit audit event for the enforcement
-                    guard.emit_enforcement_audit_event(request, authz_result)
-
-                    # Emit violation audit log
-                    _emit_tenant_violation_audit_log(
-                        request=request,
-                        violation_type=TenantViolationType.AUTHORIZATION_ENFORCEMENT_FAILED,
-                        error_message=authz_result.denial_reason or "Authorization denied",
-                        user_id=str(user_id),
-                        org_id=str(org_id),
-                        extra_metadata={
-                            "error_code": authz_result.error_code,
-                            "tenant_id": active_tenant_id,
-                        },
-                    )
-
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content={"detail": authz_result.denial_reason or "Access denied"},
-                        headers={
-                            "X-Error-Code": authz_result.error_code or "ACCESS_DENIED",
-                        },
-                    )
-
-                # Update tenant context with DB-verified roles and billing tier
-                # This ensures the request uses current DB state, not stale JWT claims
-                if authz_result.roles:
-                    tenant_context = TenantContext(
-                        tenant_id=active_tenant_id,
-                        user_id=str(user_id),
-                        roles=authz_result.roles,  # Use DB-verified roles
-                        org_id=str(org_id),
-                        allowed_tenants=allowed_tenants if allowed_tenants else None,
-                        billing_tier=authz_result.billing_tier or billing_tier,
-                    )
-
-                # Emit audit event for role changes (if any)
-                if authz_result.roles_changed and authz_result.audit_action:
-                    guard.emit_enforcement_audit_event(request, authz_result)
-
-                # Resolve data-driven permissions from DB (Story 5.5.1)
-                # This populates resolved_permissions on TenantContext so RBAC
-                # decorators check DB-driven roles instead of the hardcoded matrix.
+                db_gen = get_db_session_sync()
+                db = next(db_gen)
                 try:
-                    from src.services.rbac import resolve_permissions_for_user
-                    from src.models.user import User
-
-                    user = db.query(User).filter(
-                        User.clerk_user_id == str(user_id)
-                    ).first()
-                    if user:
-                        perms = resolve_permissions_for_user(db, user.id, active_tenant_id)
-                        if perms:
-                            # Only override when DB has actual permission records.
-                            # Empty set means no data-driven roles exist yet;
-                            # leave as None to fall back to hardcoded matrix.
-                            tenant_context.resolved_permissions = perms
-                except Exception:
-                    # Graceful degradation: if resolution fails, decorators
-                    # fall back to the hardcoded ROLE_PERMISSIONS matrix.
-                    logger.debug(
-                        "Data-driven permission resolution skipped",
-                        extra={
-                            "user_id": str(user_id),
-                            "tenant_id": active_tenant_id,
-                        },
-                        exc_info=True,
+                    guard = TenantGuard(db)
+                    authz_result = guard.enforce_authorization(
+                        clerk_user_id=str(user_id),
+                        active_tenant_id=active_tenant_id,
+                        jwt_roles=roles if isinstance(roles, list) else [],
+                        request_path=str(request.url.path),
+                        request_method=request.method,
                     )
 
-            finally:
-                db.close()
+                    if not authz_result.is_authorized:
+                        # Emit audit event for the enforcement
+                        guard.emit_enforcement_audit_event(request, authz_result)
+
+                        # Emit violation audit log
+                        _emit_tenant_violation_audit_log(
+                            request=request,
+                            violation_type=TenantViolationType.AUTHORIZATION_ENFORCEMENT_FAILED,
+                            error_message=authz_result.denial_reason or "Authorization denied",
+                            user_id=str(user_id),
+                            org_id=str(org_id),
+                            extra_metadata={
+                                "error_code": authz_result.error_code,
+                                "tenant_id": active_tenant_id,
+                            },
+                        )
+
+                        return JSONResponse(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            content={"detail": authz_result.denial_reason or "Access denied"},
+                            headers={
+                                "X-Error-Code": authz_result.error_code or "ACCESS_DENIED",
+                            },
+                        )
+
+                    # Update tenant context with DB-verified roles and billing tier
+                    # This ensures the request uses current DB state, not stale JWT claims
+                    if authz_result.roles:
+                        tenant_context = TenantContext(
+                            tenant_id=active_tenant_id,
+                            user_id=str(user_id),
+                            roles=authz_result.roles,  # Use DB-verified roles
+                            org_id=str(org_id),
+                            allowed_tenants=allowed_tenants if allowed_tenants else None,
+                            billing_tier=authz_result.billing_tier or billing_tier,
+                        )
+
+                    # Emit audit event for role changes (if any)
+                    if authz_result.roles_changed and authz_result.audit_action:
+                        guard.emit_enforcement_audit_event(request, authz_result)
+
+                    # Resolve data-driven permissions from DB (Story 5.5.1)
+                    # This populates resolved_permissions on TenantContext so RBAC
+                    # decorators check DB-driven roles instead of the hardcoded matrix.
+                    try:
+                        from src.services.rbac import resolve_permissions_for_user
+                        from src.models.user import User
+
+                        user = db.query(User).filter(
+                            User.clerk_user_id == str(user_id)
+                        ).first()
+                        if user:
+                            perms = resolve_permissions_for_user(db, user.id, active_tenant_id)
+                            if perms:
+                                # Only override when DB has actual permission records.
+                                # Empty set means no data-driven roles exist yet;
+                                # leave as None to fall back to hardcoded matrix.
+                                tenant_context.resolved_permissions = perms
+                    except Exception:
+                        # Graceful degradation: if resolution fails, decorators
+                        # fall back to the hardcoded ROLE_PERMISSIONS matrix.
+                        logger.debug(
+                            "Data-driven permission resolution skipped",
+                            extra={
+                                "user_id": str(user_id),
+                                "tenant_id": active_tenant_id,
+                            },
+                            exc_info=True,
+                        )
+
+                finally:
+                    db.close()
+            except Exception as db_error:
+                logger.warning(
+                    f"DB authorization enforcement skipped: {type(db_error).__name__}: {str(db_error)}",
+                    extra={
+                        "user_id": str(user_id),
+                        "tenant_id": active_tenant_id,
+                        "path": request.url.path,
+                    },
+                )
 
             # Attach to request state
             request.state.tenant_context = tenant_context
@@ -862,7 +871,7 @@ class TenantContextMiddleware:
                 content={"detail": he.detail},
             )
         except Exception as e:
-            logger.error("Unexpected error during tenant context extraction", extra={
+            logger.error(f"Unexpected error during tenant context extraction: {type(e).__name__}: {str(e)}", extra={
                 "error": str(e),
                 "error_type": type(e).__name__,
                 "path": request.url.path
