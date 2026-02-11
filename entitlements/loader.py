@@ -25,13 +25,12 @@ class EntitlementLoader:
             self._config = parsed
 
     def get_plan(self, plan_key: str) -> PlanDefinition:
-        normalized_plan_key = str(plan_key).strip()
-        if not normalized_plan_key:
+        if not plan_key:
             raise ValueError("plan_key is required")
         with self._lock:
-            plan = self._config.plans.get(normalized_plan_key)
+            plan = self._config.plans.get(plan_key)
         if plan is None:
-            raise KeyError(f"unknown plan_key: {normalized_plan_key}")
+            raise KeyError(f"unknown plan_key: {plan_key}")
         return plan
 
     def resolve_for_tenant(
@@ -44,6 +43,7 @@ class EntitlementLoader:
     ) -> Entitlement:
         normalized_tenant_id = str(tenant_id).strip()
         if not normalized_tenant_id:
+        if not tenant_id:
             raise ValueError("tenant_id is required")
 
         plan = self.get_plan(plan_key)
@@ -54,14 +54,14 @@ class EntitlementLoader:
             with self._lock:
                 known = set(self._config.known_feature_keys())
             override_keys = {
-                o.feature_key for o in override_list if o.tenant_id == normalized_tenant_id
+                o.feature_key for o in override_list if o.tenant_id == tenant_id
             }
             requested = sorted(known | override_keys)
         else:
-            requested = sorted({str(k).strip() for k in feature_keys if str(k).strip()})
+            requested = sorted({str(k) for k in feature_keys if str(k).strip()})
 
         return resolve_entitlement(
-            tenant_id=normalized_tenant_id,
+            tenant_id=tenant_id,
             plan=plan,
             overrides=override_list,
             requested_feature_keys=requested,
@@ -82,36 +82,33 @@ class EntitlementLoader:
 
         plans: Dict[str, PlanDefinition] = {}
         for plan_key, plan_data in plans_raw.items():
-            normalized_plan_key = str(plan_key).strip()
-            if not normalized_plan_key:
+            if not isinstance(plan_key, str) or not plan_key.strip():
                 raise ValueError("each plan key must be a non-empty string")
             if not isinstance(plan_data, dict):
-                raise ValueError(f"plan '{normalized_plan_key}' must be an object")
+                raise ValueError(f"plan '{plan_key}' must be an object")
 
             features = plan_data.get("features", [])
             if not isinstance(features, list):
-                raise ValueError(f"plan '{normalized_plan_key}' features must be a list of feature keys")
+                raise ValueError(f"plan '{plan_key}' features must be a list of feature keys")
 
             normalized_features: List[str] = []
             for feature_key in features:
-                normalized_feature_key = str(feature_key).strip()
-                if not normalized_feature_key:
-                    raise ValueError(f"plan '{normalized_plan_key}' has invalid feature key: {feature_key!r}")
-                normalized_features.append(normalized_feature_key)
+                if not isinstance(feature_key, str) or not feature_key.strip():
+                    raise ValueError(f"plan '{plan_key}' has invalid feature key: {feature_key!r}")
+                normalized_features.append(feature_key)
 
             limits = plan_data.get("limits", {})
             if not isinstance(limits, dict):
-                raise ValueError(f"plan '{normalized_plan_key}' limits must be an object")
+                raise ValueError(f"plan '{plan_key}' limits must be an object")
 
             normalized_limits: Dict[str, int] = {}
             for limit_key, limit_value in limits.items():
-                normalized_limit_key = str(limit_key).strip()
-                if not normalized_limit_key:
-                    raise ValueError(f"plan '{normalized_plan_key}' has invalid limit key: {limit_key!r}")
-                normalized_limits[normalized_limit_key] = int(limit_value)
+                if not isinstance(limit_key, str) or not limit_key.strip():
+                    raise ValueError(f"plan '{plan_key}' has invalid limit key: {limit_key!r}")
+                normalized_limits[limit_key] = int(limit_value)
 
-            plans[normalized_plan_key] = PlanDefinition(
-                plan_key=normalized_plan_key,
+            plans[plan_key] = PlanDefinition(
+                plan_key=plan_key,
                 feature_keys=frozenset(normalized_features),
                 limits=normalized_limits,
             )
