@@ -49,6 +49,7 @@ import {
   reorderReports,
 } from '../services/customReportsApi';
 import { getErrorMessage, getErrorStatus } from '../services/apiUtils';
+import DOMPurify from 'dompurify';
 
 // =============================================================================
 // Types
@@ -108,11 +109,15 @@ interface DashboardBuilderActions {
   setSelectedCategory: (category?: ChartType) => void;
   addCatalogWidget: (item: WidgetCatalogItem) => void;
   removeWizardWidget: (reportId: string) => void;
+  moveWizardWidget: (reportId: string, newPosition: GridPosition) => void;
   setWizardDashboardName: (name: string) => void;
   setWizardDashboardDescription: (description: string) => void;
+  setPreviewDateRange: (range: string) => void;
+  setSaveAsTemplate: (value: boolean) => void;
   resetWizard: () => void;
   canProceedToCustomize: boolean;
   canProceedToPreview: boolean;
+  canSaveDashboard: boolean;
 }
 
 type DashboardBuilderContextValue = DashboardBuilderState & DashboardBuilderActions;
@@ -149,6 +154,8 @@ const initialState: DashboardBuilderState = {
     selectedWidgets: [],
     dashboardName: '',
     dashboardDescription: '',
+    previewDateRange: '30',
+    saveAsTemplate: false,
   },
 };
 
@@ -157,7 +164,7 @@ const initialState: DashboardBuilderState = {
 // =============================================================================
 
 interface DashboardBuilderProviderProps {
-  dashboardId: string;
+  dashboardId?: string;
   children: ReactNode;
 }
 
@@ -180,13 +187,17 @@ export function DashboardBuilderProvider({
 
   // ---------------------------------------------------------------------------
   // Fetch dashboard on mount (or when dashboardId changes)
+  // Skip fetch if dashboardId is not provided (wizard mode / create mode)
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    // Skip fetch if no dashboardId (wizard/create mode)
+    if (!dashboardId) return;
+
     let cancelled = false;
 
     async function fetchDashboard() {
       try {
-        const dashboard = await getDashboard(dashboardId);
+        const dashboard = await getDashboard(dashboardId!);
         if (cancelled) return;
 
         expectedUpdatedAtRef.current = dashboard.updated_at;
@@ -203,6 +214,7 @@ export function DashboardBuilderProvider({
           autoSaveFailures: 0,
           selectedReportId: null,
           isReportConfigOpen: false,
+          wizardState: initialState.wizardState,
         });
       } catch (err) {
         if (cancelled) return;
@@ -246,6 +258,9 @@ export function DashboardBuilderProvider({
   // send a stale expected_updated_at and receive a 409 Conflict.
   // ---------------------------------------------------------------------------
   const syncExpectedUpdatedAt = useCallback(async () => {
+    // Skip sync if no dashboardId (wizard/create mode)
+    if (!dashboardId) return;
+
     try {
       const fresh = await getDashboard(dashboardId);
       expectedUpdatedAtRef.current = fresh.updated_at;
@@ -719,6 +734,8 @@ export function DashboardBuilderProvider({
         selectedWidgets: [],
         dashboardName: '',
         dashboardDescription: '',
+        previewDateRange: '30',
+        saveAsTemplate: false,
       },
       isDirty: false,
     }));
@@ -771,7 +788,7 @@ export function DashboardBuilderProvider({
 
       // Create Report object from catalog item
       const newReport: Report = {
-        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `${item.id}::${Date.now()}`,
         dashboard_id: '', // Will be set when dashboard is created
         name: item.name,
         description: item.description,
@@ -815,6 +832,19 @@ export function DashboardBuilderProvider({
     }));
   }, []);
 
+  const moveWizardWidget = useCallback((reportId: string, newPosition: GridPosition) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        selectedWidgets: prev.wizardState.selectedWidgets.map((w) =>
+          w.id === reportId ? { ...w, position_json: newPosition } : w
+        ),
+      },
+      isDirty: true,
+    }));
+  }, []);
+
   const setWizardDashboardName = useCallback((name: string) => {
     setState((prev) => ({
       ...prev,
@@ -837,6 +867,26 @@ export function DashboardBuilderProvider({
     }));
   }, []);
 
+  const setPreviewDateRange = useCallback((range: string) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        previewDateRange: range,
+      },
+    }));
+  }, []);
+
+  const setSaveAsTemplate = useCallback((value: boolean) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        saveAsTemplate: value,
+      },
+    }));
+  }, []);
+
   const resetWizard = useCallback(() => {
     setState((prev) => ({
       ...prev,
@@ -856,6 +906,9 @@ export function DashboardBuilderProvider({
   }, []);
 
   const refreshDashboard = useCallback(async () => {
+    // Skip refresh if no dashboardId (wizard/create mode)
+    if (!dashboardId) return;
+
     try {
       const dashboard = await getDashboard(dashboardId);
       expectedUpdatedAtRef.current = dashboard.updated_at;
@@ -871,6 +924,7 @@ export function DashboardBuilderProvider({
         autoSaveFailures: 0,
         selectedReportId: null,
         isReportConfigOpen: false,
+        wizardState: initialState.wizardState,
       });
     } catch (err) {
       console.error('Failed to refresh dashboard:', err);
@@ -956,8 +1010,15 @@ export function DashboardBuilderProvider({
   }, [state.wizardState.selectedWidgets.length]);
 
   const canProceedToPreview = useMemo(() => {
-    return state.wizardState.selectedWidgets.length > 0;
-  }, [state.wizardState.selectedWidgets.length]);
+    return state.wizardState.dashboardName.trim().length > 0 &&
+           state.wizardState.selectedWidgets.length > 0;
+  }, [state.wizardState.dashboardName, state.wizardState.selectedWidgets.length]);
+
+  const canSaveDashboard = useMemo(() => {
+    if (!state.wizardState.isWizardMode) return true; // Edit mode always allows save
+    return state.wizardState.dashboardName.trim().length > 0 &&
+           state.wizardState.selectedWidgets.length > 0;
+  }, [state.wizardState.isWizardMode, state.wizardState.dashboardName, state.wizardState.selectedWidgets.length]);
 
   // ---------------------------------------------------------------------------
   // Context Value
@@ -990,11 +1051,15 @@ export function DashboardBuilderProvider({
     setSelectedCategory,
     addCatalogWidget,
     removeWizardWidget,
+    moveWizardWidget,
     setWizardDashboardName,
     setWizardDashboardDescription,
+    setPreviewDateRange,
+    setSaveAsTemplate,
     resetWizard,
     canProceedToCustomize,
     canProceedToPreview,
+    canSaveDashboard,
   };
 
   return (
