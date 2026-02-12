@@ -58,6 +58,8 @@ from src.api.routes import templates
 from src.api.routes import custom_dashboards
 from src.api.routes import dashboard_shares
 from src.api.routes import report_templates
+from src.platform.db_readiness import REQUIRED_IDENTITY_TABLES, check_required_tables
+from src.database.session import get_db_session_sync
 
 # Configure structured logging
 logging.basicConfig(
@@ -94,10 +96,42 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Clerk authentication configured", extra={"env_status": env_status})
 
+    # Check identity schema readiness (required for fail-closed auth enforcement)
+    app.state.identity_schema_ready = False
+    app.state.identity_schema_missing_tables = []
+    try:
+        db_gen = get_db_session_sync()
+        db = next(db_gen)
+        try:
+            readiness = check_required_tables(db, REQUIRED_IDENTITY_TABLES)
+            app.state.identity_schema_ready = readiness.ready
+            app.state.identity_schema_missing_tables = readiness.missing_tables
+            if readiness.ready:
+                logger.info(
+                    "Identity schema readiness check passed",
+                    extra={"required_tables": readiness.checked_tables},
+                )
+            else:
+                logger.error(
+                    "Identity schema readiness check failed",
+                    extra={
+                        "required_tables": readiness.checked_tables,
+                        "missing_tables": readiness.missing_tables,
+                    },
+                )
+        finally:
+            db.close()
+    except Exception as e:
+        logger.exception("Identity schema readiness check errored", extra={"error": str(e)})
+
     # Middleware will initialize lazily on first request if auth is configured
     logger.info(
         "Tenant context middleware ready",
-        extra={"auth_enabled": app.state.auth_configured}
+        extra={
+            "auth_enabled": app.state.auth_configured,
+            "identity_schema_ready": app.state.identity_schema_ready,
+            "identity_schema_missing_tables": app.state.identity_schema_missing_tables,
+        },
     )
 
     yield
