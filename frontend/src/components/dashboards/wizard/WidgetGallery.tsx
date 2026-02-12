@@ -31,7 +31,7 @@ export function WidgetGallery({
       <Box paddingBlockStart="800">
         <BlockStack gap="400" inlineAlign="center">
           <Spinner size="large" />
-          <p>Loading widgets...</p>
+          <Text as="p">Loading widgets...</Text>
         </BlockStack>
       </Box>
     );
