@@ -109,7 +109,9 @@ interface DashboardBuilderActions {
   setSelectedCategory: (category?: ChartType) => void;
   addCatalogWidget: (item: WidgetCatalogItem) => void;
   removeWizardWidget: (reportId: string) => void;
-  moveWizardWidget: (reportId: string, newPosition: GridPosition) => void;
+  updateWizardWidget: (widgetId: string, updates: Partial<Report>) => void;
+  openWizardWidgetConfig: (widgetId: string) => void;
+  bulkUpdateWizardWidgets: (widgets: Report[]) => void;
   setWizardDashboardName: (name: string) => void;
   setWizardDashboardDescription: (description: string) => void;
   setPreviewDateRange: (range: string) => void;
@@ -897,6 +899,38 @@ export function DashboardBuilderProvider({
     }));
   }, []);
 
+  const updateWizardWidget = useCallback((widgetId: string, updates: Partial<Report>) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        selectedWidgets: prev.wizardState.selectedWidgets.map((w) =>
+          w.id === widgetId ? { ...w, ...updates } : w,
+        ),
+      },
+      isDirty: true,
+    }));
+  }, []);
+
+  const openWizardWidgetConfig = useCallback((widgetId: string) => {
+    setState((prev) => ({
+      ...prev,
+      selectedReportId: widgetId,
+      isReportConfigOpen: true,
+    }));
+  }, []);
+
+  const bulkUpdateWizardWidgets = useCallback((widgets: Report[]) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        selectedWidgets: widgets,
+      },
+      isDirty: true,
+    }));
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Error Handling
   // ---------------------------------------------------------------------------
@@ -1051,7 +1085,9 @@ export function DashboardBuilderProvider({
     setSelectedCategory,
     addCatalogWidget,
     removeWizardWidget,
-    moveWizardWidget,
+    updateWizardWidget,
+    openWizardWidgetConfig,
+    bulkUpdateWizardWidgets,
     setWizardDashboardName,
     setWizardDashboardDescription,
     setPreviewDateRange,
