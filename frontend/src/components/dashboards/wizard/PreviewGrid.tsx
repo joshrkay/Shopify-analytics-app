@@ -1,10 +1,10 @@
 /**
  * Preview Grid Component
  *
- * Read-only grid layout for the preview step showing widgets with sample data.
+ * Read-only grid layout for the preview step showing widgets with sample or live data.
  * Matches the layout from the customize step but without drag/resize capability.
  *
- * Phase 3 - Dashboard Builder Wizard Enhancements
+ * Phase 2.6 - Preview Step Live Data Integration
  */
 
 import { useMemo } from 'react';
@@ -21,7 +21,12 @@ const GRID_COLS = 12;
 const ROW_HEIGHT = 80;
 const GRID_WIDTH = 1200;
 
-export function PreviewGrid() {
+interface PreviewGridProps {
+  useLiveData?: boolean; // NEW: Enable live data fetching
+  dateRange?: string; // NEW: Date range for queries
+}
+
+export function PreviewGrid({ useLiveData = false, dateRange = '30' }: PreviewGridProps) {
   const { wizardState } = useDashboardBuilder();
 
   // Build layout (read-only in preview)
@@ -69,7 +74,11 @@ export function PreviewGrid() {
       >
         {wizardState.selectedWidgets.map((widget) => (
           <div key={widget.id}>
-            <PreviewReportCard report={widget} />
+            <PreviewReportCard
+              report={widget}
+              useLiveData={useLiveData}
+              dateRange={dateRange}
+            />
           </div>
         ))}
       </ReactGridLayout>

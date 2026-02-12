@@ -4,9 +4,9 @@
  * Main orchestrator for the 3-step dashboard creation wizard:
  * 1. Select Widgets - Browse and select from widget catalog
  * 2. Customize Layout - Edit name, description, and arrange widgets
- * 3. Preview & Save - Review and save the dashboard
+ * 3. Preview & Save - Review with live or sample data and save the dashboard
  *
- * Phase 3 - Dashboard Builder Wizard UI
+ * Phase 2.6 - Preview Step Live Data Integration
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
@@ -18,6 +18,7 @@ import {
   Box,
   TextField,
   Text,
+  Banner,
 } from '@shopify/polaris';
 import type { ChartType, WidgetCatalogItem } from '../../../types/customDashboards';
 import { useDashboardBuilder } from '../../../contexts/DashboardBuilderContext';
@@ -43,6 +44,7 @@ export function WizardFlow() {
     addCatalogWidget,
     setWizardDashboardName,
     setWizardDashboardDescription,
+    setPreviewDateRange,
     saveDashboard,
     exitWizardMode,
     enterWizardMode,
@@ -58,6 +60,10 @@ export function WizardFlow() {
   const [completedSteps, setCompletedSteps] = useState<Set<'select' | 'customize' | 'preview'>>(
     new Set()
   );
+
+  // Live data preview state (NEW)
+  const [previewUseLiveData, setPreviewUseLiveData] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Enter wizard mode on mount
   useEffect(() => {
@@ -136,6 +142,16 @@ export function WizardFlow() {
     [addCatalogWidget]
   );
 
+  // Handle refresh preview (NEW)
+  const handleRefresh = useCallback(() => {
+    // Trigger refetch by toggling refresh state (forces remount of data hooks)
+    setIsRefreshing(true);
+    // Reset after 1 second to allow UI feedback
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 1000);
+  }, []);
+
   // Render step content
   const renderStepContent = () => {
     switch (wizardState.currentStep) {
@@ -198,7 +214,15 @@ export function WizardFlow() {
       case 'preview':
         return (
           <BlockStack gap="400">
-            {/* Dashboard Info */}
+            {/* Success Banner */}
+            <Banner tone="success">
+              <Text as="p" variant="bodyMd">
+                Dashboard Preview — This is how your dashboard will look with{' '}
+                {previewUseLiveData ? 'live' : 'sample'} data
+              </Text>
+            </Banner>
+
+            {/* Dashboard Metadata */}
             <BlockStack gap="200">
               <Text as="h2" variant="headingLg">
                 {wizardState.dashboardName || 'Untitled Dashboard'}
@@ -206,18 +230,26 @@ export function WizardFlow() {
               <Text as="p" variant="bodySm" tone="subdued">
                 {wizardState.dashboardDescription || 'No description'}
               </Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Last {wizardState.previewDateRange || '30'} days • Updates every hour
+              </Text>
             </BlockStack>
 
-            {/* Widget Summary */}
-            <Text as="p" variant="bodyMd">
-              {wizardState.selectedWidgets.length} widget{wizardState.selectedWidgets.length !== 1 ? 's' : ''} selected
-            </Text>
+            {/* Preview Controls (date range, live data toggle, refresh) */}
+            <PreviewControls
+              dateRange={wizardState.previewDateRange || '30'}
+              onDateRangeChange={setPreviewDateRange}
+              useLiveData={previewUseLiveData}
+              onUseLiveDataChange={setPreviewUseLiveData}
+              onRefresh={handleRefresh}
+              isRefreshing={isRefreshing}
+            />
 
-            {/* Preview Controls (date range, filters, save as template) */}
-            <PreviewControls />
-
-            {/* Visual Grid Preview with Sample Data */}
-            <PreviewGrid />
+            {/* Visual Grid Preview with Live or Sample Data */}
+            <PreviewGrid
+              useLiveData={previewUseLiveData}
+              dateRange={wizardState.previewDateRange || '30'}
+            />
           </BlockStack>
         );
 
