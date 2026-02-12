@@ -18,26 +18,36 @@ Story 2.1.1 — Unified Source domain model
 Phase 3 — Data Sources wizard backend routes
 """
 
+import json
 import logging
 import os
 import secrets
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 
 from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session
-from src.services.airbyte_service import AirbyteService, ConnectionNotFoundServiceError
+from src.services.airbyte_service import (
+    AirbyteService,
+    ConnectionNotFoundServiceError,
+    DuplicateConnectionError,
+)
 from src.services.ad_ingestion import (
     AdPlatform,
     AIRBYTE_SOURCE_TYPES,
 )
 from src.integrations.airbyte.client import get_airbyte_client, AirbyteError
+from src.integrations.airbyte.models import (
+    SourceCreationRequest,
+    ConnectionCreationRequest,
+)
 from src.api.schemas.sources import (
     SourceSummary,
     SourceListResponse,
     SourceCatalogEntry,
     SourceCatalogResponse,
+    OAuthInitiateRequest,
     OAuthInitiateResponse,
     OAuthCallbackRequest,
     OAuthCallbackResponse,
@@ -65,11 +75,125 @@ OAUTH_REDIRECT_URI = os.environ.get(
     "https://app.localhost/api/sources/oauth/callback",
 )
 
-# In-memory state store for OAuth flows (production would use Redis)
-_oauth_state_store: dict[str, dict] = {}
+# OAuth state TTL in seconds (10 minutes)
+OAUTH_STATE_TTL_SECONDS = 600
+
+# Sync settings key prefix for Redis
+_SYNC_SETTINGS_REDIS_PREFIX = "sync_settings:"
+_SYNC_SETTINGS_TTL_SECONDS = 86400  # 24 hours
 
 
-def _build_meta_oauth_url(state: str) -> str:
+# =============================================================================
+# Redis-backed OAuth state store with in-memory fallback
+# =============================================================================
+
+def _get_redis_client():
+    """Get the singleton RedisClient. Returns None if unavailable."""
+    try:
+        from src.entitlements.cache import RedisClient
+        client = RedisClient()
+        if client.available:
+            return client
+    except Exception:
+        pass
+    return None
+
+
+# In-memory fallback when Redis is unavailable
+_oauth_state_store_fallback: dict[str, dict] = {}
+
+
+def _store_oauth_state(state: str, data: dict) -> None:
+    """Store OAuth state in Redis (with TTL) or in-memory fallback."""
+    redis = _get_redis_client()
+    if redis:
+        redis.set(f"oauth_state:{state}", json.dumps(data), OAUTH_STATE_TTL_SECONDS)
+    else:
+        _oauth_state_store_fallback[state] = data
+
+
+def _pop_oauth_state(state: str) -> Optional[dict]:
+    """Retrieve and delete OAuth state from Redis or in-memory fallback."""
+    redis = _get_redis_client()
+    if redis:
+        raw = redis.get(f"oauth_state:{state}")
+        if raw:
+            redis.delete(f"oauth_state:{state}")
+            return json.loads(raw)
+        return None
+    return _oauth_state_store_fallback.pop(state, None)
+
+
+# =============================================================================
+# DB-backed sync settings helpers
+# =============================================================================
+
+_GLOBAL_SETTINGS_CONNECTION_NAME = "__global_sync_settings__"
+
+DEFAULT_SYNC_SETTINGS = {
+    "default_frequency": "hourly",
+    "pause_all_syncs": False,
+    "max_concurrent_syncs": 5,
+}
+
+FREQUENCY_TO_MINUTES = {
+    "hourly": 60,
+    "daily": 1440,
+    "weekly": 10080,
+}
+
+
+def _get_sync_settings_from_db(service: AirbyteService) -> dict:
+    """Load global sync settings from the DB via a sentinel connection record."""
+    result = service.list_connections(
+        connection_type="source",
+    )
+    for conn in result.connections:
+        if conn.connection_name == _GLOBAL_SETTINGS_CONNECTION_NAME:
+            # Settings stored in the sync_frequency_minutes field as JSON
+            if conn.sync_frequency_minutes:
+                try:
+                    return json.loads(conn.sync_frequency_minutes)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            break
+    return DEFAULT_SYNC_SETTINGS.copy()
+
+
+def _save_sync_settings_to_db(service: AirbyteService, settings: dict) -> None:
+    """Persist global sync settings to the DB via a sentinel connection record."""
+    result = service.list_connections(connection_type="source")
+    sentinel_id = None
+    for conn in result.connections:
+        if conn.connection_name == _GLOBAL_SETTINGS_CONNECTION_NAME:
+            sentinel_id = conn.id
+            break
+
+    settings_json = json.dumps(settings)
+
+    if sentinel_id:
+        # Update existing sentinel record's sync_frequency_minutes field
+        connection = service._repository.get_by_id(sentinel_id)
+        if connection:
+            connection.sync_frequency_minutes = settings_json
+            service.db.commit()
+    else:
+        # Create sentinel connection to hold settings
+        service.register_connection(
+            airbyte_connection_id=f"settings-{service.tenant_id[:16]}",
+            connection_name=_GLOBAL_SETTINGS_CONNECTION_NAME,
+            connection_type="source",
+            source_type="settings",
+            configuration={"type": "global_sync_settings"},
+            sync_frequency_minutes=settings_json,
+        )
+
+
+# =============================================================================
+# OAuth URL builders
+# =============================================================================
+
+def _build_meta_oauth_url(state: str, **kwargs) -> str:
     """Build Meta (Facebook) OAuth authorization URL."""
     client_id = os.environ.get("META_APP_ID", "")
     scopes = "ads_read,ads_management,read_insights"
@@ -83,7 +207,7 @@ def _build_meta_oauth_url(state: str) -> str:
     )
 
 
-def _build_google_oauth_url(state: str) -> str:
+def _build_google_oauth_url(state: str, **kwargs) -> str:
     """Build Google Ads OAuth authorization URL."""
     client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
     scopes = "https://www.googleapis.com/auth/adwords"
@@ -99,7 +223,7 @@ def _build_google_oauth_url(state: str) -> str:
     )
 
 
-def _build_tiktok_oauth_url(state: str) -> str:
+def _build_tiktok_oauth_url(state: str, **kwargs) -> str:
     """Build TikTok Ads OAuth authorization URL."""
     app_id = os.environ.get("TIKTOK_APP_ID", "")
     return (
@@ -110,7 +234,7 @@ def _build_tiktok_oauth_url(state: str) -> str:
     )
 
 
-def _build_snapchat_oauth_url(state: str) -> str:
+def _build_snapchat_oauth_url(state: str, **kwargs) -> str:
     """Build Snapchat Ads OAuth authorization URL."""
     client_id = os.environ.get("SNAPCHAT_CLIENT_ID", "")
     scopes = "snapchat-marketing-api"
@@ -124,13 +248,23 @@ def _build_snapchat_oauth_url(state: str) -> str:
     )
 
 
-def _build_shopify_oauth_url(state: str) -> str:
-    """Build Shopify OAuth authorization URL."""
+def _build_shopify_oauth_url(state: str, shop_domain: Optional[str] = None, **kwargs) -> str:
+    """Build Shopify OAuth authorization URL.
+
+    Args:
+        state: CSRF state token.
+        shop_domain: The merchant's *.myshopify.com domain.
+            Required for multi-tenant Shopify OAuth.
+    """
     api_key = os.environ.get("SHOPIFY_API_KEY", "")
     scopes = "read_orders,read_products,read_customers,read_analytics"
-    shop = os.environ.get("SHOPIFY_SHOP_DOMAIN", "example.myshopify.com")
+    if not shop_domain:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="shop_domain is required for Shopify OAuth",
+        )
     return (
-        f"https://{shop}/admin/oauth/authorize"
+        f"https://{shop_domain}/admin/oauth/authorize"
         f"?client_id={api_key}"
         f"&scope={scopes}"
         f"&redirect_uri={OAUTH_REDIRECT_URI}"
@@ -145,22 +279,6 @@ OAUTH_URL_BUILDERS: dict[str, callable] = {
     "tiktok_ads": _build_tiktok_oauth_url,
     "snapchat_ads": _build_snapchat_oauth_url,
     "shopify_email": _build_shopify_oauth_url,
-}
-
-
-# Default sync settings per tenant (production would be in DB)
-_tenant_sync_settings: dict[str, dict] = {}
-
-DEFAULT_SYNC_SETTINGS = {
-    "default_frequency": "hourly",
-    "pause_all_syncs": False,
-    "max_concurrent_syncs": 5,
-}
-
-FREQUENCY_TO_MINUTES = {
-    "hourly": 60,
-    "daily": 1440,
-    "weekly": 10080,
 }
 
 
@@ -193,6 +311,7 @@ async def list_sources(
         normalize_connection_to_source(conn)
         for conn in result.connections
         if conn.status != "deleted"
+        and conn.connection_name != _GLOBAL_SETTINGS_CONNECTION_NAME
     ]
 
     logger.info(
@@ -245,12 +364,15 @@ async def get_source_catalog(request: Request):
 async def initiate_oauth(
     request: Request,
     platform: str,
+    body: Optional[OAuthInitiateRequest] = None,
 ):
     """
     Initiate OAuth authorization flow for a data source platform.
 
     Generates a CSRF state token and returns the platform-specific
     authorization URL for the frontend to open in a popup.
+
+    For Shopify, the request body must include ``shop_domain``.
 
     SECURITY: State token prevents CSRF. Requires valid tenant context.
     """
@@ -272,17 +394,23 @@ async def initiate_oauth(
             detail=f"OAuth not configured for platform: {platform}",
         )
 
+    # Extract shop_domain for Shopify platforms
+    shop_domain = body.shop_domain if body else None
+
     # Generate CSRF state token
     state = secrets.token_urlsafe(32)
 
     # Store state with tenant context for validation on callback
-    _oauth_state_store[state] = {
+    state_data = {
         "tenant_id": tenant_ctx.tenant_id,
         "user_id": tenant_ctx.user_id,
         "platform": platform,
     }
+    if shop_domain:
+        state_data["shop_domain"] = shop_domain
+    _store_oauth_state(state, state_data)
 
-    authorization_url = url_builder(state)
+    authorization_url = url_builder(state, shop_domain=shop_domain)
 
     logger.info(
         "OAuth flow initiated",
@@ -320,7 +448,7 @@ async def oauth_callback(
     tenant_ctx = get_tenant_context(request)
 
     # Validate state token
-    state_data = _oauth_state_store.pop(body.state, None)
+    state_data = _pop_oauth_state(body.state)
     if not state_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -334,6 +462,7 @@ async def oauth_callback(
         )
 
     platform = state_data["platform"]
+    shop_domain = state_data.get("shop_domain")
 
     try:
         # Create Airbyte source for the platform
@@ -344,7 +473,7 @@ async def oauth_callback(
             airbyte_source_type = AIRBYTE_SOURCE_TYPES.get(platform_enum)
         except ValueError:
             # Shopify or other non-AdPlatform
-            if platform == "shopify":
+            if platform in ("shopify", "shopify_email"):
                 airbyte_source_type = "source-shopify"
 
         if not airbyte_source_type:
@@ -353,18 +482,21 @@ async def oauth_callback(
                 detail=f"No Airbyte source type for platform: {platform}",
             )
 
-        # Create the source in Airbyte with the auth code
-        source = await airbyte_client.create_source(
+        # Build source configuration
+        source_config: dict = {"auth_code": body.code}
+        if shop_domain:
+            source_config["shop"] = shop_domain
+
+        # Create the source in Airbyte using SourceCreationRequest
+        source_request = SourceCreationRequest(
             name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} - {tenant_ctx.tenant_id[:8]}",
             source_type=airbyte_source_type,
-            workspace_id=os.environ.get("AIRBYTE_WORKSPACE_ID", ""),
-            configuration={"auth_code": body.code},
+            configuration=source_config,
         )
+        source = await airbyte_client.create_source(source_request)
 
         # Get the default destination and create a connection
-        destinations = await airbyte_client.list_destinations(
-            workspace_id=os.environ.get("AIRBYTE_WORKSPACE_ID", ""),
-        )
+        destinations = await airbyte_client.list_destinations()
 
         destination_id = None
         if destinations:
@@ -372,12 +504,28 @@ async def oauth_callback(
 
         connection_id = None
         if destination_id:
-            connection = await airbyte_client.create_connection(
+            conn_request = ConnectionCreationRequest(
                 source_id=source.source_id,
                 destination_id=destination_id,
                 name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} sync",
             )
+            connection = await airbyte_client.create_connection(conn_request)
             connection_id = connection.connection_id
+
+        if not connection_id:
+            logger.warning(
+                "No destination available — connection not fully established",
+                extra={
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "platform": platform,
+                    "source_id": source.source_id,
+                },
+            )
+
+        # Build configuration for tenant registration
+        reg_config: dict = {"platform": platform, "auth_code_used": True}
+        if shop_domain:
+            reg_config["shop_domain"] = shop_domain
 
         # Register the connection with our tenant-scoped service
         service = AirbyteService(db_session, tenant_ctx.tenant_id)
@@ -387,7 +535,7 @@ async def oauth_callback(
             connection_type="source",
             airbyte_source_id=source.source_id,
             source_type=airbyte_source_type,
-            configuration={"platform": platform, "auth_code_used": True},
+            configuration=reg_config,
         )
 
         service.activate_connection(conn_info.id)
@@ -407,6 +555,21 @@ async def oauth_callback(
             message=f"Successfully connected {PLATFORM_DISPLAY_NAMES.get(platform, platform)}",
         )
 
+    except HTTPException:
+        raise
+    except DuplicateConnectionError as e:
+        logger.warning(
+            "OAuth callback rejected — duplicate connection",
+            extra={
+                "tenant_id": tenant_ctx.tenant_id,
+                "platform": platform,
+                "error": str(e),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
     except AirbyteError as e:
         logger.error(
             "OAuth callback failed - Airbyte error",
@@ -418,7 +581,7 @@ async def oauth_callback(
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to create source connection: {e}",
+            detail="Failed to create source connection via Airbyte",
         )
     except Exception as e:
         logger.error(
@@ -431,7 +594,7 @@ async def oauth_callback(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to complete authorization: {e}",
+            detail="Failed to complete authorization. Please try again.",
         )
 
 
@@ -479,7 +642,10 @@ async def test_connection(
     db_session=Depends(get_db_session),
 ):
     """
-    Test a data source connection by checking Airbyte source health.
+    Test a data source connection by running Airbyte's check_connection.
+
+    Uses the airbyte_source_id (not the connection ID) to validate that
+    the external platform credentials are still valid and reachable.
 
     SECURITY: Only tests connections belonging to the authenticated tenant.
     """
@@ -493,23 +659,37 @@ async def test_connection(
             detail=f"Source not found: {source_id}",
         )
 
+    # Resolve the Airbyte source ID for the check_connection call.
+    # The connection record stores the airbyte_source_id separately from
+    # the airbyte_connection_id (which is the pipeline ID).
+    raw_conn = service._repository.get_by_id(source_id)
+    airbyte_source_id = (
+        raw_conn.airbyte_source_id if raw_conn else None
+    ) or connection.airbyte_connection_id
+
     try:
         airbyte_client = get_airbyte_client()
-        source = await airbyte_client.get_source(connection.airbyte_connection_id)
+        result = await airbyte_client.check_source_connection(airbyte_source_id)
 
-        return TestConnectionResponse(
-            success=True,
-            message="Connection is healthy",
-            details={
-                "source_id": source.source_id,
-                "source_type": source.source_type,
-                "status": "active",
-            },
-        )
-    except AirbyteError as e:
+        check_status = result.get("status", "unknown")
+        if check_status == "succeeded":
+            return TestConnectionResponse(
+                success=True,
+                message="Connection is healthy",
+                details={
+                    "source_id": airbyte_source_id,
+                    "status": "active",
+                },
+            )
         return TestConnectionResponse(
             success=False,
-            message=f"Connection test failed: {e}",
+            message=result.get("message", "Connection check did not succeed"),
+            details={"status": check_status},
+        )
+    except AirbyteError:
+        return TestConnectionResponse(
+            success=False,
+            message="Connection test failed — unable to reach source",
         )
 
 
@@ -562,17 +742,34 @@ async def update_sync_config(
     "/sync-settings",
     response_model=GlobalSyncSettingsResponse,
 )
-async def get_global_sync_settings(request: Request):
+async def get_global_sync_settings(
+    request: Request,
+    db_session=Depends(get_db_session),
+):
     """
     Get global sync settings for the authenticated tenant.
 
     SECURITY: Requires valid tenant context.
     """
     tenant_ctx = get_tenant_context(request)
+    service = AirbyteService(db_session, tenant_ctx.tenant_id)
 
-    settings = _tenant_sync_settings.get(
-        tenant_ctx.tenant_id, DEFAULT_SYNC_SETTINGS.copy()
-    )
+    # Try Redis cache first
+    redis = _get_redis_client()
+    cache_key = f"{_SYNC_SETTINGS_REDIS_PREFIX}{tenant_ctx.tenant_id}"
+    if redis:
+        cached = redis.get(cache_key)
+        if cached:
+            try:
+                return GlobalSyncSettingsResponse(**json.loads(cached))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    settings = _get_sync_settings_from_db(service)
+
+    # Cache in Redis
+    if redis:
+        redis.set(cache_key, json.dumps(settings), _SYNC_SETTINGS_TTL_SECONDS)
 
     return GlobalSyncSettingsResponse(**settings)
 
@@ -584,6 +781,7 @@ async def get_global_sync_settings(request: Request):
 async def update_global_sync_settings(
     request: Request,
     body: UpdateGlobalSyncSettingsRequest,
+    db_session=Depends(get_db_session),
 ):
     """
     Update global sync settings for the authenticated tenant.
@@ -591,10 +789,9 @@ async def update_global_sync_settings(
     SECURITY: Requires valid tenant context.
     """
     tenant_ctx = get_tenant_context(request)
+    service = AirbyteService(db_session, tenant_ctx.tenant_id)
 
-    current = _tenant_sync_settings.get(
-        tenant_ctx.tenant_id, DEFAULT_SYNC_SETTINGS.copy()
-    )
+    current = _get_sync_settings_from_db(service)
 
     if body.default_frequency is not None:
         if body.default_frequency not in FREQUENCY_TO_MINUTES:
@@ -615,7 +812,13 @@ async def update_global_sync_settings(
             )
         current["max_concurrent_syncs"] = body.max_concurrent_syncs
 
-    _tenant_sync_settings[tenant_ctx.tenant_id] = current
+    _save_sync_settings_to_db(service, current)
+
+    # Invalidate Redis cache
+    redis = _get_redis_client()
+    if redis:
+        cache_key = f"{_SYNC_SETTINGS_REDIS_PREFIX}{tenant_ctx.tenant_id}"
+        redis.set(cache_key, json.dumps(current), _SYNC_SETTINGS_TTL_SECONDS)
 
     logger.info(
         "Global sync settings updated",

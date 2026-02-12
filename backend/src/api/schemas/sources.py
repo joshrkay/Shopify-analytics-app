@@ -144,6 +144,12 @@ class OAuthInitiateResponse(BaseModel):
     connection_id: Optional[str] = None
 
 
+class OAuthInitiateRequest(BaseModel):
+    """Request body for initiating OAuth flow."""
+
+    shop_domain: Optional[str] = None
+
+
 class OAuthCallbackRequest(BaseModel):
     """Request body for OAuth callback."""
 

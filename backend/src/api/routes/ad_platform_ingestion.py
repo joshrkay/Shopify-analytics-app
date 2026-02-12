@@ -249,11 +249,21 @@ async def list_available_accounts(
         )
 
     # List all ad accounts for the same platform
-    platform_enum = None
     try:
         platform_enum = AdPlatform(account.platform)
     except ValueError:
-        pass
+        logger.error(
+            "Invalid platform value found for connection",
+            extra={
+                "tenant_id": tenant_ctx.tenant_id,
+                "connection_id": connection_id,
+                "platform": account.platform,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error: invalid platform '{account.platform}' for connection",
+        )
 
     all_accounts = service.list_ad_accounts(platform=platform_enum)
 
@@ -309,11 +319,21 @@ async def update_selected_accounts(
         )
 
     # Get all accounts for this platform
-    platform_enum = None
     try:
         platform_enum = AdPlatform(account.platform)
     except ValueError:
-        pass
+        logger.error(
+            "Invalid platform value found for connection",
+            extra={
+                "tenant_id": tenant_ctx.tenant_id,
+                "connection_id": connection_id,
+                "platform": account.platform,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error: invalid platform '{account.platform}' for connection",
+        )
 
     all_accounts = service.list_ad_accounts(platform=platform_enum)
 
