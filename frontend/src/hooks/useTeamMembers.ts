@@ -70,7 +70,6 @@ export function useTeamMembers() {
     queryKey: TEAM_MEMBERS_QUERY_KEY,
     queryFn: getTeamMembers,
   });
-
   const [membersSnapshot, setMembersSnapshot] = useState<TeamMember[]>(() => getTeamMembersStoreSnapshot());
 
   useEffect(() => subscribeToTeamMembersStore(() => {
