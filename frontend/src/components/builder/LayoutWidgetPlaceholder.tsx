@@ -10,11 +10,11 @@
 import { useState } from 'react';
 import { BlockStack, InlineStack, Text, Button, Icon } from '@shopify/polaris';
 import {
-  ChartBarIcon,
+  ChartHorizontalIcon,
   ChartLineIcon,
-  ChartPieIcon,
-  TableIcon,
-  TrendingUpIcon,
+  ChartDonutIcon,
+  DataTableIcon,
+  ChartPopularIcon,
 } from '@shopify/polaris-icons';
 import type { Report } from '../../types/customDashboards';
 import { getWidgetSize } from '../../utils/layoutHelpers';
@@ -35,17 +35,17 @@ function getChartIcon(chartType: string) {
     case 'line':
       return ChartLineIcon;
     case 'bar':
-      return ChartBarIcon;
+      return ChartHorizontalIcon;
     case 'area':
       return ChartLineIcon; // Use line icon for area
     case 'pie':
-      return ChartPieIcon;
+      return ChartDonutIcon;
     case 'kpi':
-      return TrendingUpIcon;
+      return ChartPopularIcon;
     case 'table':
-      return TableIcon;
+      return DataTableIcon;
     default:
-      return ChartBarIcon;
+      return ChartHorizontalIcon;
   }
 }
 
