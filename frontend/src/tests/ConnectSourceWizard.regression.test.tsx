@@ -45,14 +45,6 @@ vi.mock('../hooks/useConnectSourceWizard', () => ({
   }),
 }));
 
-vi.mock('../hooks/useDataSources', () => ({
-  useSyncProgress: () => ({
-    progress: null,
-    isLoading: false,
-    error: null,
-  }),
-}));
-
 import { ConnectSourceWizard } from '../components/sources/ConnectSourceWizard';
 
 const mockTranslations = {
@@ -84,6 +76,7 @@ const baseState = {
   accounts: [],
   selectedAccountIds: [],
   syncConfig: { historicalRange: '90d' as const, frequency: 'hourly' as const, enabledMetrics: [] },
+  syncProgress: null,
   error: null,
   loading: false,
 };

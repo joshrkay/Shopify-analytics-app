@@ -3,20 +3,21 @@
  *
  * Step 5 of the connection wizard.
  * Shows real-time sync progress with a progress bar and stage indicators.
+ * Uses DetailedSyncProgress from the wizard hook for accurate percentages.
  *
  * Phase 3 — Subphase 3.5: Connection Wizard Steps 4-6
  */
 
 import { BlockStack, Text, ProgressBar, Spinner, Banner, InlineStack } from '@shopify/polaris';
-import type { DataSourceDefinition, SyncProgress } from '../../../types/sourceConnection';
+import type { DataSourceDefinition, DetailedSyncProgress } from '../../../types/sourceConnection';
 
 interface SyncProgressStepProps {
   platform: DataSourceDefinition;
-  progress: SyncProgress | null;
+  progress: DetailedSyncProgress | null;
   error: string | null;
 }
 
-function getSyncStages(progress: SyncProgress | null) {
+function getSyncStages(progress: DetailedSyncProgress | null) {
   if (!progress) {
     return [
       { label: 'Connecting to source', status: 'pending' as const },
@@ -74,16 +75,9 @@ function getStageIcon(status: 'completed' | 'in_progress' | 'pending' | 'failed'
   }
 }
 
-function derivePercent(progress: SyncProgress | null): number {
-  if (!progress) return 0;
-  if (progress.status === 'completed' || progress.lastSyncStatus === 'succeeded') return 100;
-  if (progress.status === 'running') return 50;
-  return 0;
-}
-
 export function SyncProgressStep({ platform, progress, error }: SyncProgressStepProps) {
   const stages = getSyncStages(progress);
-  const percent = derivePercent(progress);
+  const percent = progress?.percentComplete ?? 0;
 
   return (
     <BlockStack gap="500">

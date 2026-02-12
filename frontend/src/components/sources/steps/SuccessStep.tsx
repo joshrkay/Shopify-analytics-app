@@ -12,12 +12,11 @@ import type { DataSourceDefinition } from '../../../types/sourceConnection';
 
 interface SuccessStepProps {
   platform: DataSourceDefinition;
-  connectionId: string;
   onDone: () => void;
   onViewDashboard: () => void;
 }
 
-export function SuccessStep({ platform, connectionId: _connectionId, onDone, onViewDashboard }: SuccessStepProps) {
+export function SuccessStep({ platform, onDone, onViewDashboard }: SuccessStepProps) {
   return (
     <BlockStack gap="500">
       <Banner tone="success" title="Successfully Connected!">

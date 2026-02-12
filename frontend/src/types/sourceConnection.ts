@@ -165,6 +165,16 @@ export interface SyncProgress {
 }
 
 /**
+ * Detailed sync progress with percentage, stream, and message data.
+ * Returned by getSyncProgressDetailed for the wizard progress bar.
+ */
+export interface DetailedSyncProgress extends SyncProgress {
+  percentComplete: number;
+  currentStream: string | null;
+  message: string | null;
+}
+
+/**
  * Global sync settings for the tenant.
  */
 export interface GlobalSyncSettings {
@@ -243,6 +253,7 @@ export interface ConnectSourceWizardState {
   accounts: AccountOption[];
   selectedAccountIds: string[];
   syncConfig: WizardSyncConfig;
+  syncProgress: DetailedSyncProgress | null;
   error: string | null;
   loading: boolean;
 }

@@ -29,7 +29,6 @@ import {
   SyncProgressStep,
   SuccessStep,
 } from './steps';
-import { useSyncProgress } from '../../hooks/useDataSources';
 
 interface ConnectSourceWizardProps {
   open: boolean;
@@ -48,18 +47,12 @@ export function ConnectSourceWizard({
   const wizard = useConnectSourceWizard();
   const { state } = wizard;
 
-  // Use sync progress hook for the syncing step
-  const { progress: syncProgress } = useSyncProgress(
-    state.connectionId ?? '',
-    state.step === 'syncing' && !!state.connectionId,
-  );
-
   // Initialize wizard when modal opens with a platform
   useEffect(() => {
     if (open && platform) {
       wizard.initWithPlatform(platform);
     }
-  }, [open, platform]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, platform, wizard.initWithPlatform]);
 
   const handleClose = useCallback(() => {
     wizard.reset();
@@ -77,14 +70,13 @@ export function ConnectSourceWizard({
     if (state.connectionId && onSuccess) {
       onSuccess(state.connectionId);
     }
-    wizard.reset();
-    onClose();
+    handleClose();
     navigate('/');
-  }, [state.connectionId, onSuccess, wizard, onClose, navigate]);
+  }, [state.connectionId, onSuccess, handleClose, navigate]);
 
-  if (!platform && !state.platform) return null;
+  const activePlatform = state.platform ?? platform;
+  if (!activePlatform) return null;
 
-  const activePlatform = state.platform ?? platform!;
   const title = `Connect ${activePlatform.displayName}`;
 
   return (
@@ -151,7 +143,7 @@ export function ConnectSourceWizard({
           {state.step === 'syncing' && (
             <SyncProgressStep
               platform={activePlatform}
-              progress={syncProgress}
+              progress={state.syncProgress}
               error={state.error}
             />
           )}
@@ -159,7 +151,6 @@ export function ConnectSourceWizard({
           {state.step === 'success' && state.connectionId && (
             <SuccessStep
               platform={activePlatform}
-              connectionId={state.connectionId}
               onDone={handleDone}
               onViewDashboard={handleViewDashboard}
             />

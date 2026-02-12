@@ -26,6 +26,7 @@ const mockWizardState = {
   accounts: [],
   selectedAccountIds: [],
   syncConfig: { historicalRange: '90d' as const, frequency: 'hourly' as const, enabledMetrics: [] },
+  syncProgress: null,
   error: null as string | null,
   loading: false,
 };
@@ -53,14 +54,6 @@ vi.mock('../hooks/useConnectSourceWizard', () => ({
   useConnectSourceWizard: () => ({
     state: currentState,
     ...mockWizardActions,
-  }),
-}));
-
-vi.mock('../hooks/useDataSources', () => ({
-  useSyncProgress: () => ({
-    progress: null,
-    isLoading: false,
-    error: null,
   }),
 }));
 

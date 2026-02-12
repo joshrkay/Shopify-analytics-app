@@ -27,9 +27,7 @@ import {
   completeOAuth,
   updateSyncConfig,
   triggerSync,
-  getSyncProgress,
-} from '../services/dataSourcesApi';
-import {
+  getSyncProgressDetailed,
   getAvailableAccounts,
   updateSelectedAccounts,
 } from '../services/dataSourcesApi';
@@ -53,6 +51,7 @@ const INITIAL_STATE: ConnectSourceWizardState = {
   accounts: [],
   selectedAccountIds: [],
   syncConfig: DEFAULT_SYNC_CONFIG,
+  syncProgress: null,
   error: null,
   loading: false,
 };
@@ -124,7 +123,7 @@ export function useConnectSourceWizard(): UseConnectSourceWizardResult {
     };
   }, []);
 
-  // Auto-poll sync progress when on syncing step
+  // Auto-poll sync progress when on syncing step (single source of truth)
   useEffect(() => {
     if (state.step !== 'syncing' || !state.connectionId) {
       if (pollIntervalRef.current) {
@@ -136,13 +135,20 @@ export function useConnectSourceWizard(): UseConnectSourceWizardResult {
 
     const poll = async () => {
       try {
-        const progress = await getSyncProgress(stateRef.current.connectionId!);
+        const progress = await getSyncProgressDetailed(stateRef.current.connectionId!);
+
         if (progress.status === 'completed' || progress.lastSyncStatus === 'succeeded') {
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
           }
-          setState((prev) => ({ ...prev, step: 'success', loading: false, error: null }));
+          setState((prev) => ({
+            ...prev,
+            syncProgress: { ...progress, percentComplete: 100 },
+            step: 'success',
+            loading: false,
+            error: null,
+          }));
         } else if (progress.status === 'failed' || progress.lastSyncStatus === 'failed') {
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
@@ -150,9 +156,13 @@ export function useConnectSourceWizard(): UseConnectSourceWizardResult {
           }
           setState((prev) => ({
             ...prev,
+            syncProgress: progress,
             loading: false,
             error: 'Sync failed. Please try again or check your connection.',
           }));
+        } else {
+          // Update progress data for display (running, pending, etc.)
+          setState((prev) => ({ ...prev, syncProgress: progress }));
         }
       } catch {
         // Silently ignore poll errors; will retry on next interval
@@ -257,7 +267,8 @@ export function useConnectSourceWizard(): UseConnectSourceWizardResult {
             accounts,
             selectedAccountIds: accounts.filter((a) => a.isEnabled).map((a) => a.id),
           }));
-        } catch {
+        } catch (err) {
+          console.error('Failed to auto-load accounts:', err);
           // Accounts will be empty; user can still proceed
         }
       }

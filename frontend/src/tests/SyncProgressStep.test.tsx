@@ -13,7 +13,7 @@ import { AppProvider } from '@shopify/polaris';
 import '@shopify/polaris/build/esm/styles.css';
 
 import { SyncProgressStep } from '../components/sources/steps/SyncProgressStep';
-import type { DataSourceDefinition, SyncProgress } from '../types/sourceConnection';
+import type { DataSourceDefinition, DetailedSyncProgress } from '../types/sourceConnection';
 
 const mockTranslations = {
   Polaris: { Common: { ok: 'OK', cancel: 'Cancel' } },
@@ -33,13 +33,16 @@ const mockPlatform: DataSourceDefinition = {
   isEnabled: true,
 };
 
-const mockProgress: SyncProgress = {
+const mockProgress: DetailedSyncProgress = {
   connectionId: 'conn-1',
   status: 'running',
   lastSyncAt: null,
   lastSyncStatus: null,
   isEnabled: true,
   canSync: true,
+  percentComplete: 50,
+  currentStream: null,
+  message: null,
 };
 
 describe('SyncProgressStep', () => {

@@ -36,7 +36,6 @@ const mockPlatform: DataSourceDefinition = {
 
 const defaultProps = {
   platform: mockPlatform,
-  connectionId: 'conn-123',
   onDone: vi.fn(),
   onViewDashboard: vi.fn(),
 };

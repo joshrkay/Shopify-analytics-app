@@ -15,7 +15,7 @@ vi.mock('../services/dataSourcesApi', () => ({
   completeOAuth: vi.fn(),
   updateSyncConfig: vi.fn(),
   triggerSync: vi.fn(),
-  getSyncProgress: vi.fn(),
+  getSyncProgressDetailed: vi.fn(),
   getAvailableAccounts: vi.fn(),
   updateSelectedAccounts: vi.fn(),
   listSources: vi.fn(),

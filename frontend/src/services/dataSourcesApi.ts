@@ -14,6 +14,7 @@ import { API_BASE_URL, createHeadersAsync, handleResponse } from './apiUtils';
 import type {
   DataSourceConnection,
   SyncProgress,
+  DetailedSyncProgress,
   GlobalSyncSettings,
   ConnectedAccount,
   AccountOption,
@@ -347,11 +348,7 @@ function derivePercentComplete(status: string, raw?: number): number {
  * Get detailed sync progress for the wizard progress bar.
  * Falls back to deriving percentage from status if backend doesn't provide it.
  */
-export async function getSyncProgressDetailed(connectionId: string): Promise<SyncProgress & {
-  percentComplete: number;
-  currentStream: string | null;
-  message: string | null;
-}> {
+export async function getSyncProgressDetailed(connectionId: string): Promise<DetailedSyncProgress> {
   const headers = await createHeadersAsync();
   const response = await fetch(
     `${API_BASE_URL}/api/sync/state/${connectionId}`,
