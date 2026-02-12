@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   getNotificationPreferences,
   getPerformanceAlerts,
@@ -6,52 +6,31 @@ import {
   updatePerformanceAlert,
 } from '../services/notificationsApi';
 import type { NotificationPreferences, PerformanceAlert } from '../types/settingsTypes';
+import { useMutationLite, useQueryClientLite, useQueryLite } from './queryClientLite';
 
 const DEBOUNCE_REPLACED_ERROR = 'Debounced update replaced by a newer request.';
 const DEBOUNCE_CANCELLED_ERROR = 'Debounced update cancelled because the component unmounted.';
+const NOTIFICATION_QUERY_KEYS = {
+  preferences: ['settings', 'notifications', 'preferences'] as const,
+  alerts: ['settings', 'notifications', 'alerts'] as const,
+};
 
 export function useNotificationPreferences() {
-  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQueryLite({
+    queryKey: NOTIFICATION_QUERY_KEYS.preferences,
+    queryFn: getNotificationPreferences,
+  });
 
-  const isMountedRef = useRef(true);
-
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
-
-  const refetch = useCallback(async () => {
-    try {
-      if (isMountedRef.current) {
-        setIsLoading(true);
-        setError(null);
-      }
-
-      const nextPreferences = await getNotificationPreferences();
-
-      if (isMountedRef.current) {
-        setPreferences(nextPreferences);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load notification preferences');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { preferences, isLoading, error, refetch, setPreferences };
+  return {
+    preferences: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  };
 }
 
 export function useUpdateNotificationPreferences() {
+  const queryClient = useQueryClientLite();
   const timeoutIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRejectRef = useRef<((reason?: unknown) => void) | null>(null);
 
@@ -67,72 +46,65 @@ export function useUpdateNotificationPreferences() {
     }
   }, []);
 
-  return useCallback((prefs: Partial<NotificationPreferences>) =>
-    new Promise<NotificationPreferences>((resolve, reject) => {
-      if (timeoutIdRef.current) {
-        clearTimeout(timeoutIdRef.current);
-      }
-
-      if (pendingRejectRef.current) {
-        pendingRejectRef.current(new Error(DEBOUNCE_REPLACED_ERROR));
-      }
-
-      pendingRejectRef.current = reject;
-
-      timeoutIdRef.current = setTimeout(async () => {
-        try {
-          const updatedPreferences = await updateNotificationPreferences(prefs);
-          pendingRejectRef.current = null;
-          timeoutIdRef.current = null;
-          resolve(updatedPreferences);
-        } catch (err) {
-          pendingRejectRef.current = null;
-          timeoutIdRef.current = null;
-          reject(err);
+  const mutation = useMutationLite({
+    mutationFn: (prefs: Partial<NotificationPreferences>) =>
+      new Promise<NotificationPreferences>((resolve, reject) => {
+        if (timeoutIdRef.current) {
+          clearTimeout(timeoutIdRef.current);
         }
-      }, 500);
-    }), []);
+
+        if (pendingRejectRef.current) {
+          pendingRejectRef.current(new Error(DEBOUNCE_REPLACED_ERROR));
+        }
+
+        pendingRejectRef.current = reject;
+
+        timeoutIdRef.current = setTimeout(async () => {
+          try {
+            const updatedPreferences = await updateNotificationPreferences(prefs);
+            pendingRejectRef.current = null;
+            timeoutIdRef.current = null;
+            resolve(updatedPreferences);
+          } catch (err) {
+            pendingRejectRef.current = null;
+            timeoutIdRef.current = null;
+            reject(err);
+          }
+        }, 500);
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(NOTIFICATION_QUERY_KEYS.preferences);
+    },
+  });
+
+  return mutation;
 }
 
 export function usePerformanceAlerts() {
-  const [alerts, setAlerts] = useState<PerformanceAlert[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const isMountedRef = useRef(true);
+  const query = useQueryLite({
+    queryKey: NOTIFICATION_QUERY_KEYS.alerts,
+    queryFn: getPerformanceAlerts,
+  });
 
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
-
-  const refetch = useCallback(async () => {
-    if (isMountedRef.current) {
-      setIsLoading(true);
-      setError(null);
-    }
-
-    try {
-      const nextAlerts = await getPerformanceAlerts();
-      if (isMountedRef.current) {
-        setAlerts(nextAlerts);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load performance alerts');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { alerts, isLoading, error, refetch };
+  return {
+    alerts: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  };
 }
 
 export function useUpdatePerformanceAlert() {
-  return useCallback((alertId: string, alert: Partial<PerformanceAlert>) => updatePerformanceAlert(alertId, alert), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: ({ alertId, alert }: { alertId: string; alert: Partial<PerformanceAlert> }) =>
+      updatePerformanceAlert(alertId, alert),
+    onSuccess: () => {
+      queryClient.invalidateQueries(NOTIFICATION_QUERY_KEYS.alerts);
+      queryClient.invalidateQueries(NOTIFICATION_QUERY_KEYS.preferences);
+    },
+  });
 }
+
+export { NOTIFICATION_QUERY_KEYS };

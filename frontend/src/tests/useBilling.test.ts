@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../services/billingApi', () => ({
@@ -37,19 +37,24 @@ describe('useBilling', () => {
 
   it('useChangePlan invalidates billing + entitlements', async () => {
     const { result } = renderHook(() => useChangePlan());
-    await result.current('pro', 'month');
+    await act(async () => {
+      await result.current.mutateAsync({ planId: 'pro', interval: 'month' });
+    });
     expect(mocked.changePlan).toHaveBeenCalledWith('pro', 'month');
   });
 
   it('useCancelSubscription requires confirmation state', async () => {
     const { result } = renderHook(() => useCancelSubscription());
-    await result.current();
-    expect(mocked.cancelSubscription).toHaveBeenCalled();
+    await act(async () => {
+      await expect(result.current.mutateAsync(false)).rejects.toThrow('confirmed');
+    });
   });
 
   it('Optimistic update on plan change', async () => {
     const { result } = renderHook(() => useChangePlan());
-    await expect(result.current('pro', 'year')).resolves.toMatchObject({ planId: 'pro' });
+    await act(async () => {
+      await expect(result.current.mutateAsync({ planId: 'pro', interval: 'year' })).resolves.toMatchObject({ planId: 'pro' });
+    });
   });
 
   it('Error state shows payment required message', async () => {

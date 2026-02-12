@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getAIConfiguration,
   getAIUsageStats,
@@ -6,93 +5,68 @@ import {
   testConnection,
   updateFeatureFlags,
 } from '../services/llmConfigApi';
-import type { AIFeatureFlags, AIProvider, AIUsageStats, AIConfiguration } from '../types/settingsTypes';
+import type { AIFeatureFlags, AIProvider } from '../types/settingsTypes';
+import { useMutationLite, useQueryClientLite, useQueryLite } from './queryClientLite';
+
+const LLM_QUERY_KEYS = {
+  config: ['settings', 'ai', 'config'] as const,
+  usage: ['settings', 'ai', 'usage'] as const,
+};
 
 export function useLlmConfig() {
-  const [config, setConfig] = useState<AIConfiguration | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQueryLite({
+    queryKey: LLM_QUERY_KEYS.config,
+    queryFn: getAIConfiguration,
+  });
 
-  const isMountedRef = useRef(true);
-
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
-
-  const refetch = useCallback(async () => {
-    try {
-      if (isMountedRef.current) {
-        setIsLoading(true);
-        setError(null);
-      }
-      const nextConfig = await getAIConfiguration();
-      if (isMountedRef.current) {
-        setConfig(nextConfig);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load AI configuration');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { config, isLoading, error, refetch };
+  return {
+    config: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  };
 }
 
 export function useAIUsageStats() {
-  const [stats, setStats] = useState<AIUsageStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const isMountedRef = useRef(true);
+  const query = useQueryLite({
+    queryKey: LLM_QUERY_KEYS.usage,
+    queryFn: getAIUsageStats,
+  });
 
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
-
-  const refetch = useCallback(async () => {
-    if (isMountedRef.current) {
-      setIsLoading(true);
-      setError(null);
-    }
-    try {
-      const nextStats = await getAIUsageStats();
-      if (isMountedRef.current) {
-        setStats(nextStats);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load AI usage stats');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { stats, isLoading, error, refetch };
+  return {
+    stats: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  };
 }
 
 export function useSetApiKey() {
-  return useCallback((provider: AIProvider, key: string) => setApiKey(provider, key), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: ({ provider, key }: { provider: AIProvider; key: string }) => setApiKey(provider, key),
+    onSuccess: () => {
+      queryClient.invalidateQueries(LLM_QUERY_KEYS.config);
+    },
+  });
 }
 
 export function useTestConnection() {
-  return useCallback(() => testConnection(), []);
+  return useMutationLite({
+    mutationFn: () => testConnection(),
+  });
 }
 
 export function useUpdateFeatureFlags() {
-  return useCallback((flags: Partial<AIFeatureFlags>) => updateFeatureFlags(flags), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: (flags: Partial<AIFeatureFlags>) => updateFeatureFlags(flags),
+    onSuccess: () => {
+      queryClient.invalidateQueries(LLM_QUERY_KEYS.config);
+    },
+  });
 }
+
+export { LLM_QUERY_KEYS };

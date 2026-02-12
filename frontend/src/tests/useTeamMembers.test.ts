@@ -30,19 +30,25 @@ describe('useTeamMembers', () => {
 
   it('useInviteMember adds pending member optimistically', async () => {
     const { result } = renderHook(() => useInviteMember());
-    await result.current({ email: 'b@b.com', role: 'viewer' });
+    await act(async () => {
+      await result.current.mutateAsync({ email: 'b@b.com', role: 'viewer' });
+    });
     expect(mocked.inviteMember).toHaveBeenCalled();
   });
 
   it('useUpdateMemberRole optimistic role change', async () => {
     const { result } = renderHook(() => useUpdateMemberRole());
-    await result.current('1', 'editor');
+    await act(async () => {
+      await result.current.mutateAsync({ memberId: '1', role: 'editor' });
+    });
     expect(mocked.updateMemberRole).toHaveBeenCalledWith('1', 'editor');
   });
 
   it('useRemoveMember shows undo toast', async () => {
     const { result } = renderHook(() => useRemoveMember());
-    await result.current('1');
+    await act(async () => {
+      await result.current.mutateAsync('1');
+    });
     expect(mocked.removeMember).toHaveBeenCalledWith('1');
   });
 

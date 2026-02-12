@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getTeamMembers,
   inviteMember,
@@ -6,59 +5,62 @@ import {
   resendInvite,
   updateMemberRole,
 } from '../services/tenantMembersApi';
-import type { TeamInvite, TeamInviteRole, TeamMember } from '../types/settingsTypes';
+import type { TeamInvite, TeamInviteRole } from '../types/settingsTypes';
+import { useMutationLite, useQueryClientLite, useQueryLite } from './queryClientLite';
+
+const TEAM_MEMBERS_QUERY_KEY = ['settings', 'team-members'] as const;
 
 export function useTeamMembers() {
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQueryLite({
+    queryKey: TEAM_MEMBERS_QUERY_KEY,
+    queryFn: getTeamMembers,
+  });
 
-  const isMountedRef = useRef(true);
-
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
-
-  const refetch = useCallback(async () => {
-    try {
-      if (isMountedRef.current) {
-        setIsLoading(true);
-        setError(null);
-      }
-      const nextMembers = await getTeamMembers();
-      if (isMountedRef.current) {
-        setMembers(nextMembers);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load team members');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { members, isLoading, error, refetch, setMembers };
+  return {
+    members: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  };
 }
 
 export function useInviteMember() {
-  return useCallback((invite: TeamInvite) => inviteMember(invite), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: inviteMember,
+    onSuccess: () => {
+      queryClient.invalidateQueries(TEAM_MEMBERS_QUERY_KEY);
+    },
+  });
 }
 
 export function useUpdateMemberRole() {
-  return useCallback((memberId: string, role: TeamInviteRole) => updateMemberRole(memberId, role), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: ({ memberId, role }: { memberId: string; role: TeamInviteRole }) => updateMemberRole(memberId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries(TEAM_MEMBERS_QUERY_KEY);
+    },
+  });
 }
 
 export function useRemoveMember() {
-  return useCallback((memberId: string) => removeMember(memberId), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: (memberId: string) => removeMember(memberId),
+    onSuccess: () => {
+      queryClient.invalidateQueries(TEAM_MEMBERS_QUERY_KEY);
+    },
+  });
 }
 
 export function useResendInvite() {
-  return useCallback((memberId: string) => resendInvite(memberId), []);
+  return useMutationLite({
+    mutationFn: (memberId: string) => resendInvite(memberId),
+  });
 }
+
+export { TEAM_MEMBERS_QUERY_KEY };

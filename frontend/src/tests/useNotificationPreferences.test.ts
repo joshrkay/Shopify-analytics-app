@@ -25,16 +25,18 @@ describe('useUpdateNotificationPreferences edge cases', () => {
     vi.mocked(updateNotificationPreferences).mockResolvedValue({} as never);
     const { result } = renderHook(() => useUpdateNotificationPreferences());
 
-    const firstCall = result.current({ quietHours: { enabled: true } } as never).catch((error) => error);
-    const secondCall = result.current({ quietHours: { enabled: false } } as never);
+    let firstCall: Promise<unknown>;
+    let secondCall: Promise<unknown>;
 
     await act(async () => {
+      firstCall = result.current.mutateAsync({ quietHours: { enabled: true } } as never).catch((error) => error);
+      secondCall = result.current.mutateAsync({ quietHours: { enabled: false } } as never);
       vi.advanceTimersByTime(500);
       await secondCall;
     });
 
-    await expect(firstCall).resolves.toBeInstanceOf(Error);
-    await expect(firstCall).resolves.toMatchObject({ message: expect.stringContaining('Debounced update replaced') });
+    await expect(firstCall!).resolves.toBeInstanceOf(Error);
+    await expect(firstCall!).resolves.toMatchObject({ message: expect.stringContaining('Debounced update replaced') });
     expect(updateNotificationPreferences).toHaveBeenCalledTimes(1);
   });
 
@@ -42,11 +44,15 @@ describe('useUpdateNotificationPreferences edge cases', () => {
     vi.mocked(updateNotificationPreferences).mockResolvedValue({} as never);
     const { result, unmount } = renderHook(() => useUpdateNotificationPreferences());
 
-    const pendingCall = result.current({ quietHours: { enabled: true } } as never).catch((error) => error);
-    unmount();
+    let pendingCall: Promise<unknown>;
 
-    await expect(pendingCall).resolves.toBeInstanceOf(Error);
-    await expect(pendingCall).resolves.toMatchObject({ message: expect.stringContaining('component unmounted') });
+    await act(async () => {
+      pendingCall = result.current.mutateAsync({ quietHours: { enabled: true } } as never).catch((error) => error);
+      unmount();
+    });
+
+    await expect(pendingCall!).resolves.toBeInstanceOf(Error);
+    await expect(pendingCall!).resolves.toMatchObject({ message: expect.stringContaining('component unmounted') });
   });
 });
 

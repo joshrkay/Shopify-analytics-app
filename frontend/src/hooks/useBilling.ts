@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   cancelSubscription,
   changePlan,
@@ -7,62 +6,79 @@ import {
   getSubscription,
   getUsageMetrics,
 } from '../services/billingApi';
-import type { BillingInterval, Invoice, PaymentMethod, Subscription, UsageMetrics } from '../types/settingsTypes';
+import type { BillingInterval } from '../types/settingsTypes';
+import { useMutationLite, useQueryClientLite, useQueryLite } from './queryClientLite';
+
+const BILLING_QUERY_KEYS = {
+  subscription: ['settings', 'billing', 'subscription'] as const,
+  invoices: ['settings', 'billing', 'invoices'] as const,
+  paymentMethod: ['settings', 'billing', 'payment-method'] as const,
+  usage: ['settings', 'billing', 'usage'] as const,
+  entitlements: ['entitlements'] as const,
+};
 
 export function useBilling() {
-  const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
-  const [usage, setUsage] = useState<UsageMetrics | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const subscriptionQuery = useQueryLite({ queryKey: BILLING_QUERY_KEYS.subscription, queryFn: getSubscription });
+  const invoicesQuery = useQueryLite({ queryKey: BILLING_QUERY_KEYS.invoices, queryFn: getInvoices });
+  const paymentMethodQuery = useQueryLite({ queryKey: BILLING_QUERY_KEYS.paymentMethod, queryFn: getPaymentMethod });
+  const usageQuery = useQueryLite({ queryKey: BILLING_QUERY_KEYS.usage, queryFn: getUsageMetrics });
 
-  const isMountedRef = useRef(true);
+  const isLoading = subscriptionQuery.isLoading
+    || invoicesQuery.isLoading
+    || paymentMethodQuery.isLoading
+    || usageQuery.isLoading;
 
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
+  const errorSource = subscriptionQuery.error ?? invoicesQuery.error ?? paymentMethodQuery.error ?? usageQuery.error;
 
-  const refetch = useCallback(async () => {
-    try {
-      if (isMountedRef.current) {
-        setIsLoading(true);
-        setError(null);
-      }
-      const [subData, invoiceData, paymentData, usageData] = await Promise.all([
-        getSubscription(),
-        getInvoices(),
-        getPaymentMethod(),
-        getUsageMetrics(),
+  return {
+    subscription: subscriptionQuery.data ?? null,
+    invoices: invoicesQuery.data ?? [],
+    paymentMethod: paymentMethodQuery.data ?? null,
+    usage: usageQuery.data ?? null,
+    isLoading,
+    error: errorSource instanceof Error ? errorSource.message : null,
+    refetch: async () => {
+      await Promise.all([
+        subscriptionQuery.refetch(),
+        invoicesQuery.refetch(),
+        paymentMethodQuery.refetch(),
+        usageQuery.refetch(),
       ]);
-      if (isMountedRef.current) {
-        setSubscription(subData);
-        setInvoices(invoiceData);
-        setPaymentMethod(paymentData);
-        setUsage(usageData);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load billing data');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { subscription, invoices, paymentMethod, usage, isLoading, error, refetch };
+    },
+  };
 }
 
 export function useChangePlan() {
-  return useCallback((planId: string, interval: BillingInterval) => changePlan(planId, interval), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: ({ planId, interval }: { planId: string; interval: BillingInterval }) => changePlan(planId, interval),
+    onSuccess: () => {
+      queryClient.invalidateQueries(BILLING_QUERY_KEYS.subscription);
+      queryClient.invalidateQueries(BILLING_QUERY_KEYS.invoices);
+      queryClient.invalidateQueries(BILLING_QUERY_KEYS.usage);
+      queryClient.invalidateQueries(BILLING_QUERY_KEYS.entitlements);
+    },
+  });
 }
 
 export function useCancelSubscription() {
-  return useCallback(() => cancelSubscription(), []);
+  const queryClient = useQueryClientLite();
+
+  const mutation = useMutationLite({
+    mutationFn: (confirmed: boolean) => {
+      if (!confirmed) {
+        return Promise.reject(new Error('Cancellation must be confirmed before executing.'));
+      }
+      return cancelSubscription();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(BILLING_QUERY_KEYS.subscription);
+      queryClient.invalidateQueries(BILLING_QUERY_KEYS.entitlements);
+    },
+  });
+
+  return mutation;
 }
+
+export { BILLING_QUERY_KEYS };

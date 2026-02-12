@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getSyncConfiguration,
   updateDataProcessing,
@@ -10,61 +9,65 @@ import type {
   DataProcessingConfig,
   ErrorHandlingConfig,
   StorageConfig,
-  SyncConfiguration,
   SyncScheduleConfig,
 } from '../types/settingsTypes';
+import { useMutationLite, useQueryClientLite, useQueryLite } from './queryClientLite';
+
+const SYNC_QUERY_KEY = ['settings', 'sync', 'config'] as const;
 
 export function useSyncConfig() {
-  const [config, setConfig] = useState<SyncConfiguration | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQueryLite({ queryKey: SYNC_QUERY_KEY, queryFn: getSyncConfiguration });
 
-  const isMountedRef = useRef(true);
-
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
-
-  const refetch = useCallback(async () => {
-    try {
-      if (isMountedRef.current) {
-        setIsLoading(true);
-        setError(null);
-      }
-      const nextConfig = await getSyncConfiguration();
-      if (isMountedRef.current) {
-        setConfig(nextConfig);
-      }
-    } catch (err) {
-      if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load sync configuration');
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { config, isLoading, error, refetch };
+  return {
+    config: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error instanceof Error ? query.error.message : null,
+    refetch: query.refetch,
+  };
 }
 
 export function useUpdateSyncSchedule() {
-  return useCallback((schedule: SyncScheduleConfig) => updateSyncSchedule(schedule), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: (schedule: SyncScheduleConfig) => updateSyncSchedule(schedule),
+    onSuccess: () => {
+      queryClient.invalidateQueries(SYNC_QUERY_KEY);
+    },
+  });
 }
 
 export function useUpdateDataProcessing() {
-  return useCallback((config: DataProcessingConfig) => updateDataProcessing(config), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: (config: DataProcessingConfig) => updateDataProcessing(config),
+    onSuccess: () => {
+      queryClient.invalidateQueries(SYNC_QUERY_KEY);
+    },
+  });
 }
 
 export function useUpdateStorageConfig() {
-  return useCallback((config: Partial<StorageConfig>) => updateStorageConfig(config), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: (config: Partial<StorageConfig>) => updateStorageConfig(config),
+    onSuccess: () => {
+      queryClient.invalidateQueries(SYNC_QUERY_KEY);
+    },
+  });
 }
 
 export function useUpdateErrorHandling() {
-  return useCallback((config: ErrorHandlingConfig) => updateErrorHandling(config), []);
+  const queryClient = useQueryClientLite();
+
+  return useMutationLite({
+    mutationFn: (config: ErrorHandlingConfig) => updateErrorHandling(config),
+    onSuccess: () => {
+      queryClient.invalidateQueries(SYNC_QUERY_KEY);
+    },
+  });
 }
+
+export { SYNC_QUERY_KEY };
