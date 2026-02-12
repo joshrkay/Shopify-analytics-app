@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { BlockStack, InlineStack, Text, Button, Icon } from '@shopify/polaris';
 import {
-  ChartHorizontalIcon,
+  ChartVerticalIcon,
   ChartLineIcon,
   ChartDonutIcon,
   DataTableIcon,
@@ -35,7 +35,7 @@ function getChartIcon(chartType: string) {
     case 'line':
       return ChartLineIcon;
     case 'bar':
-      return ChartHorizontalIcon;
+      return ChartVerticalIcon;
     case 'area':
       return ChartLineIcon; // Use line icon for area
     case 'pie':
@@ -45,7 +45,7 @@ function getChartIcon(chartType: string) {
     case 'table':
       return DataTableIcon;
     default:
-      return ChartHorizontalIcon;
+      return ChartVerticalIcon;
   }
 }
 

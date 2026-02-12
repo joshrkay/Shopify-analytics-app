@@ -74,6 +74,12 @@ This application uses Render's Blueprint feature for one-click deployment of the
 
 The API service includes a health check endpoint at `/health` that Render monitors automatically.
 
+### Startup Migrations & Readiness
+
+- API container now runs required identity migrations at startup before launching Uvicorn (`python scripts/run_required_migrations.py`).
+- Use `/api/health/readiness` to verify required auth tables exist (`users`, `tenants`, `user_tenant_roles`).
+- If readiness returns `not_ready`, run DB migrations and redeploy.
+
 ### Branch-Based Deployments
 
 - **Production**: Deploys from `main` branch (auto-deploy enabled)

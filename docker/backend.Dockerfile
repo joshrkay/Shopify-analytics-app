@@ -53,4 +53,4 @@ ENV PYTHONPATH=/app/backend
 WORKDIR /app/backend
 
 # Render listens on $PORT
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "python scripts/run_required_migrations.py && uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]
