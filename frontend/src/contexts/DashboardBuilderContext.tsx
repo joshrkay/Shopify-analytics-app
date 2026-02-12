@@ -31,11 +31,16 @@ import type {
   UpdateReportRequest,
   GridPosition,
   ChartType,
+  BuilderWizardState,
+  BuilderStep,
+  WidgetCatalogItem,
 } from '../types/customDashboards';
+import { MIN_GRID_DIMENSIONS } from '../types/customDashboards';
 import {
   getDashboard,
   updateDashboard,
   publishDashboard as publishDashboardApi,
+  createDashboard,
 } from '../services/customDashboardsApi';
 import {
   createReport,
@@ -60,6 +65,7 @@ interface DashboardBuilderState {
   autoSaveFailures: number;
   selectedReportId: string | null;
   isReportConfigOpen: boolean;
+  wizardState: BuilderWizardState;
 }
 
 interface DashboardBuilderActions {
@@ -94,6 +100,19 @@ interface DashboardBuilderActions {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+
+  // Wizard actions
+  enterWizardMode: () => void;
+  exitWizardMode: () => void;
+  setBuilderStep: (step: BuilderStep) => void;
+  setSelectedCategory: (category?: ChartType) => void;
+  addCatalogWidget: (item: WidgetCatalogItem) => void;
+  removeWizardWidget: (reportId: string) => void;
+  setWizardDashboardName: (name: string) => void;
+  setWizardDashboardDescription: (description: string) => void;
+  resetWizard: () => void;
+  canProceedToCustomize: boolean;
+  canProceedToPreview: boolean;
 }
 
 type DashboardBuilderContextValue = DashboardBuilderState & DashboardBuilderActions;
@@ -123,6 +142,14 @@ const initialState: DashboardBuilderState = {
   autoSaveFailures: 0,
   selectedReportId: null,
   isReportConfigOpen: false,
+  wizardState: {
+    isWizardMode: false,
+    currentStep: 'select',
+    selectedCategory: undefined,
+    selectedWidgets: [],
+    dashboardName: '',
+    dashboardDescription: '',
+  },
 };
 
 // =============================================================================
@@ -276,6 +303,45 @@ export function DashboardBuilderProvider({
     setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
     try {
+      const { dashboard, wizardState } = state;
+
+      // WIZARD MODE: Create new dashboard with selected widgets
+      if (wizardState.isWizardMode && !dashboard) {
+        // 1. Create dashboard
+        const newDashboard = await createDashboard({
+          name: wizardState.dashboardName.trim(),
+          description: wizardState.dashboardDescription.trim() || undefined,
+        });
+
+        // 2. Create all reports in parallel
+        const reportPromises = wizardState.selectedWidgets.map((widget) =>
+          createReport(newDashboard.id, {
+            name: widget.name,
+            description: widget.description ?? undefined,
+            chart_type: widget.chart_type,
+            dataset_name: widget.dataset_name,
+            config_json: widget.config_json,
+            position_json: widget.position_json,
+          }),
+        );
+        await Promise.all(reportPromises);
+
+        // 3. Fetch complete dashboard with reports
+        const completeDashboard = await getDashboard(newDashboard.id);
+
+        // 4. Sync state and exit wizard
+        expectedUpdatedAtRef.current = completeDashboard.updated_at;
+        setState((prev) => ({
+          ...prev,
+          dashboard: completeDashboard,
+          wizardState: { ...initialState.wizardState }, // Reset wizard state
+          isDirty: false,
+          isSaving: false,
+        }));
+        return;
+      }
+
+      // EDIT MODE: Existing save logic
       const current = state.dashboard;
       if (!current) {
         throw new Error('No dashboard loaded');
@@ -298,7 +364,7 @@ export function DashboardBuilderProvider({
         saveErrorStatus: getErrorStatus(err),
       }));
     }
-  }, [state.dashboard, syncDashboard]);
+  }, [state.dashboard, state.wizardState, syncDashboard]);
 
   const publishDashboard = useCallback(async () => {
     setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
@@ -639,6 +705,149 @@ export function DashboardBuilderProvider({
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Wizard Actions
+  // ---------------------------------------------------------------------------
+
+  const enterWizardMode = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      dashboard: null,
+      wizardState: {
+        isWizardMode: true,
+        currentStep: 'select',
+        selectedCategory: undefined,
+        selectedWidgets: [],
+        dashboardName: '',
+        dashboardDescription: '',
+      },
+      isDirty: false,
+    }));
+    expectedUpdatedAtRef.current = null;
+    pendingPositionsRef.current = new Map();
+  }, []);
+
+  const exitWizardMode = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...initialState.wizardState,
+        isWizardMode: false,
+      },
+    }));
+  }, []);
+
+  const setBuilderStep = useCallback((step: BuilderStep) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        currentStep: step,
+      },
+    }));
+  }, []);
+
+  const setSelectedCategory = useCallback((category?: ChartType) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        selectedCategory: category,
+      },
+    }));
+  }, []);
+
+  const addCatalogWidget = useCallback((item: WidgetCatalogItem) => {
+    setState((prev) => {
+      // Calculate auto-position: place at bottom of grid
+      const maxY = prev.wizardState.selectedWidgets.reduce(
+        (max, w) => Math.max(max, w.position_json.y + w.position_json.h),
+        0,
+      );
+
+      // Use 2x minimum dimensions for default sizing
+      const minDims = MIN_GRID_DIMENSIONS[item.chart_type];
+      const width = minDims.w * 2;
+      const height = minDims.h * 2;
+
+      // Create Report object from catalog item
+      const newReport: Report = {
+        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        dashboard_id: '', // Will be set when dashboard is created
+        name: item.name,
+        description: item.description,
+        chart_type: item.chart_type,
+        dataset_name: item.required_dataset || '',
+        config_json: item.default_config,
+        position_json: {
+          x: 0,
+          y: maxY,
+          w: width,
+          h: height,
+        },
+        sort_order: prev.wizardState.selectedWidgets.length,
+        created_by: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        warnings: [],
+      };
+
+      return {
+        ...prev,
+        wizardState: {
+          ...prev.wizardState,
+          selectedWidgets: [...prev.wizardState.selectedWidgets, newReport],
+        },
+        isDirty: true,
+      };
+    });
+  }, []);
+
+  const removeWizardWidget = useCallback((reportId: string) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        selectedWidgets: prev.wizardState.selectedWidgets.filter(
+          (w) => w.id !== reportId,
+        ),
+      },
+      isDirty: true,
+    }));
+  }, []);
+
+  const setWizardDashboardName = useCallback((name: string) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        dashboardName: name,
+      },
+      isDirty: true,
+    }));
+  }, []);
+
+  const setWizardDashboardDescription = useCallback((description: string) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        dashboardDescription: description,
+      },
+      isDirty: true,
+    }));
+  }, []);
+
+  const resetWizard = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...initialState.wizardState,
+      },
+      isDirty: false,
+    }));
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Error Handling
   // ---------------------------------------------------------------------------
 
@@ -677,6 +886,10 @@ export function DashboardBuilderProvider({
   // Auto-save every 30 seconds (draft only)
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    // Disable auto-save in wizard mode (no dashboard exists yet)
+    if (state.wizardState.isWizardMode) {
+      return;
+    }
     if (!state.dashboard || state.dashboard.status !== 'draft' || !state.isDirty) {
       return;
     }
@@ -721,7 +934,7 @@ export function DashboardBuilderProvider({
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [state.dashboard, state.isDirty, state.isSaving, state.autoSaveFailures]);
+  }, [state.dashboard, state.isDirty, state.isSaving, state.autoSaveFailures, state.wizardState.isWizardMode]);
 
   const autoSaveMessage = useMemo(() => {
     if (state.autoSaveStatus === 'saving') return 'Saving...';
@@ -733,6 +946,18 @@ export function DashboardBuilderProvider({
     }
     return null;
   }, [state.autoSaveStatus, state.autoSaveFailures]);
+
+  // ---------------------------------------------------------------------------
+  // Wizard Derived Values
+  // ---------------------------------------------------------------------------
+
+  const canProceedToCustomize = useMemo(() => {
+    return state.wizardState.selectedWidgets.length > 0;
+  }, [state.wizardState.selectedWidgets.length]);
+
+  const canProceedToPreview = useMemo(() => {
+    return state.wizardState.selectedWidgets.length > 0;
+  }, [state.wizardState.selectedWidgets.length]);
 
   // ---------------------------------------------------------------------------
   // Context Value
@@ -758,6 +983,18 @@ export function DashboardBuilderProvider({
     redo,
     canUndo,
     canRedo,
+    // Wizard actions
+    enterWizardMode,
+    exitWizardMode,
+    setBuilderStep,
+    setSelectedCategory,
+    addCatalogWidget,
+    removeWizardWidget,
+    setWizardDashboardName,
+    setWizardDashboardDescription,
+    resetWizard,
+    canProceedToCustomize,
+    canProceedToPreview,
   };
 
   return (
