@@ -309,8 +309,8 @@ export function DashboardBuilderProvider({
       if (wizardState.isWizardMode && !dashboard) {
         // 1. Create dashboard
         const newDashboard = await createDashboard({
-          name: wizardState.dashboardName.trim(),
-          description: wizardState.dashboardDescription.trim() || undefined,
+          name: DOMPurify.sanitize(wizardState.dashboardName.trim()),
+          description: DOMPurify.sanitize(wizardState.dashboardDescription.trim()) || undefined,
         });
 
         // 2. Create all reports in parallel
