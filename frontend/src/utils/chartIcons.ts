@@ -10,10 +10,10 @@
 import {
   ChartVerticalIcon,
   ChartHorizontalIcon,
-  ChartMinorIcon,
-  CircleInformationIcon,
-  CircleTickIcon,
-  ListIcon,
+  ChartLineIcon,
+  ChartDonutIcon,
+  CheckCircleIcon,
+  ListBulletedIcon,
 } from '@shopify/polaris-icons';
 import type { ChartType } from '../types/customDashboards';
 
@@ -24,10 +24,10 @@ export function getChartIcon(chartType: ChartType) {
   const iconMap = {
     line: ChartVerticalIcon,
     bar: ChartHorizontalIcon,
-    area: ChartMinorIcon,
-    pie: CircleInformationIcon,
-    kpi: CircleTickIcon,
-    table: ListIcon,
+    area: ChartLineIcon,
+    pie: ChartDonutIcon,
+    kpi: CheckCircleIcon,
+    table: ListBulletedIcon,
   };
 
   return iconMap[chartType] || ChartVerticalIcon;
