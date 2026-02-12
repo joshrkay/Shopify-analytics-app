@@ -173,7 +173,7 @@ export async function previewReportData(
   };
 
   const response = await fetchWithTimeout(
-    `${API_BASE_URL}/api/v1/datasets/preview`,
+    `${API_BASE_URL}/api/datasets/preview`,
     {
       method: 'POST',
       headers,
