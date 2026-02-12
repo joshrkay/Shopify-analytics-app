@@ -433,3 +433,42 @@ export function getChartTypeLabel(type: ChartType): string {
   };
   return labels[type] || type;
 }
+
+// =============================================================================
+// Dashboard Builder Wizard Types
+// =============================================================================
+
+export type BuilderStep = 'select' | 'customize' | 'preview';
+
+/**
+ * Widget Catalog Item
+ *
+ * Individual report config extracted from ReportTemplate.reports_json.
+ * Used in wizard step 1 (widget gallery) to let users pick pre-configured reports.
+ */
+export interface WidgetCatalogItem {
+  id: string;                           // Unique ID: `${templateId}-${reportIndex}`
+  templateId: string;                   // Parent template ID
+  name: string;                         // Report name from template
+  description: string;                  // Report description
+  category: ChartType;                  // Use chart_type as category for filtering
+  chart_type: ChartType;                // Chart type (line, bar, kpi, etc.)
+  thumbnail_url?: string;               // Optional preview image from template
+  default_config: ChartConfig;          // Pre-configured metrics, dimensions, filters
+  required_dataset?: string;            // Dataset name from report config
+}
+
+/**
+ * Builder Wizard State
+ *
+ * Tracks the wizard flow state when creating a new dashboard via the guided wizard.
+ * The wizard has 3 steps: select widgets → customize layout → preview & save.
+ */
+export interface BuilderWizardState {
+  isWizardMode: boolean;                // True when in wizard creation flow
+  currentStep: BuilderStep;             // Current wizard step
+  selectedCategory?: ChartType;         // Filter for widget gallery
+  selectedWidgets: Report[];            // Temporary widgets (not persisted until save)
+  dashboardName: string;                // Name for new dashboard
+  dashboardDescription: string;         // Description for new dashboard
+}
