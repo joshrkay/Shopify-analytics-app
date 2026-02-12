@@ -218,12 +218,17 @@ class TestOAuthCallback:
             "platform": "meta_ads",
         }
 
-        # Mock Airbyte client
+        # Mock Airbyte client with destination + connection
         mock_client = AsyncMock()
         mock_source = MagicMock()
         mock_source.source_id = "airbyte-src-001"
         mock_client.create_source.return_value = mock_source
-        mock_client.list_destinations.return_value = []
+        mock_dest = MagicMock()
+        mock_dest.destination_id = "airbyte-dest-001"
+        mock_client.list_destinations.return_value = [mock_dest]
+        mock_connection = MagicMock()
+        mock_connection.connection_id = "airbyte-conn-001"
+        mock_client.create_connection.return_value = mock_connection
         mock_get_client.return_value = mock_client
 
         # Mock AirbyteService
@@ -244,8 +249,46 @@ class TestOAuthCallback:
         assert data["connection_id"] == "conn-001"
         assert "Meta Ads" in data["message"]
 
+        # Verify register_connection used the real connection ID, not source ID
+        reg_call = mock_service.register_connection.call_args
+        assert reg_call.kwargs.get("airbyte_connection_id") == "airbyte-conn-001"
+        assert reg_call.kwargs.get("airbyte_source_id") == "airbyte-src-001"
+
         # Verify state was consumed
         assert state not in _oauth_state_store_fallback
+
+    @patch("src.api.routes.sources.get_airbyte_client")
+    @patch("src.api.routes.sources.AirbyteService")
+    def test_callback_rejects_when_no_destination(
+        self, MockAirbyteService, mock_get_client, client
+    ):
+        """OAuth callback returns 502 when no Airbyte destination is configured."""
+        state = "test-state-no-dest"
+        _oauth_state_store_fallback[state] = {
+            "tenant_id": TENANT_ID,
+            "user_id": "user-001",
+            "platform": "meta_ads",
+        }
+
+        mock_client = AsyncMock()
+        mock_source = MagicMock()
+        mock_source.source_id = "airbyte-src-nodest"
+        mock_client.create_source.return_value = mock_source
+        mock_client.list_destinations.return_value = []
+        mock_get_client.return_value = mock_client
+
+        mock_service = MagicMock()
+        MockAirbyteService.return_value = mock_service
+
+        response = client.post(
+            "/api/sources/oauth/callback",
+            json={"code": "auth-code", "state": state},
+        )
+
+        assert response.status_code == 502
+        assert "no destination configured" in response.json()["detail"]
+        # register_connection should never be called when pipeline can't be set up
+        mock_service.register_connection.assert_not_called()
 
     @patch("src.api.routes.sources.get_airbyte_client")
     @patch("src.api.routes.sources.AirbyteService")
@@ -264,7 +307,12 @@ class TestOAuthCallback:
         mock_source = MagicMock()
         mock_source.source_id = "airbyte-src-002"
         mock_client.create_source.return_value = mock_source
-        mock_client.list_destinations.return_value = []
+        mock_dest = MagicMock()
+        mock_dest.destination_id = "airbyte-dest-002"
+        mock_client.list_destinations.return_value = [mock_dest]
+        mock_connection = MagicMock()
+        mock_connection.connection_id = "airbyte-conn-002"
+        mock_client.create_connection.return_value = mock_connection
         mock_get_client.return_value = mock_client
 
         mock_service = MagicMock()
@@ -302,7 +350,12 @@ class TestOAuthCallback:
         mock_source = MagicMock()
         mock_source.source_id = "airbyte-src-003"
         mock_client.create_source.return_value = mock_source
-        mock_client.list_destinations.return_value = []
+        mock_dest = MagicMock()
+        mock_dest.destination_id = "airbyte-dest-003"
+        mock_client.list_destinations.return_value = [mock_dest]
+        mock_connection = MagicMock()
+        mock_connection.connection_id = "airbyte-conn-003"
+        mock_client.create_connection.return_value = mock_connection
         mock_get_client.return_value = mock_client
 
         mock_service = MagicMock()

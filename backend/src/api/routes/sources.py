@@ -513,13 +513,21 @@ async def oauth_callback(
             connection_id = connection.connection_id
 
         if not connection_id:
-            logger.warning(
-                "No destination available — connection not fully established",
+            logger.error(
+                "No Airbyte destination available — cannot create connection pipeline. "
+                "The Airbyte workspace may not be fully configured.",
                 extra={
                     "tenant_id": tenant_ctx.tenant_id,
                     "platform": platform,
                     "source_id": source.source_id,
                 },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Data pipeline could not be established: no destination configured "
+                    "in the sync workspace. Please contact support."
+                ),
             )
 
         # Build configuration for tenant registration
@@ -527,10 +535,13 @@ async def oauth_callback(
         if shop_domain:
             reg_config["shop_domain"] = shop_domain
 
-        # Register the connection with our tenant-scoped service
+        # Register the connection with our tenant-scoped service.
+        # IMPORTANT: airbyte_connection_id must be the actual Airbyte
+        # pipeline/connection ID — never a source ID — because downstream
+        # sync operations call POST /connections/{id}/sync with this value.
         service = AirbyteService(db_session, tenant_ctx.tenant_id)
         conn_info = service.register_connection(
-            airbyte_connection_id=connection_id or source.source_id,
+            airbyte_connection_id=connection_id,
             connection_name=PLATFORM_DISPLAY_NAMES.get(platform, platform),
             connection_type="source",
             airbyte_source_id=source.source_id,
