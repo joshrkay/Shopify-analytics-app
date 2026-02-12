@@ -1,6 +1,12 @@
 import { API_BASE_URL, createHeadersAsync, handleResponse } from './apiUtils';
 import type { BillingInterval, Invoice, PaymentMethod, Subscription, UsageMetrics } from '../types/settingsTypes';
 
+function toTimestamp(dateValue: string): number {
+  const timestamp = new Date(dateValue).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+
 export async function getSubscription(): Promise<Subscription> {
   const headers = await createHeadersAsync();
   const response = await fetch(`${API_BASE_URL}/api/billing/subscription`, { method: 'GET', headers });
@@ -11,7 +17,7 @@ export async function getInvoices(): Promise<Invoice[]> {
   const headers = await createHeadersAsync();
   const response = await fetch(`${API_BASE_URL}/api/billing/invoices`, { method: 'GET', headers });
   const invoices = await handleResponse<Invoice[]>(response);
-  return invoices.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return invoices.slice().sort((a, b) => toTimestamp(b.date) - toTimestamp(a.date));
 }
 
 export async function getPaymentMethod(): Promise<PaymentMethod> {

@@ -43,6 +43,16 @@ describe('billingApi', () => {
     expect(result.map((i) => i.id)).toEqual(['i2', 'i1']);
   });
 
+  it('getInvoices keeps invalid dates at the end without throwing', async () => {
+    const payload = [
+      { id: 'valid', date: '2025-02-01', amount: '1', status: 'paid' },
+      { id: 'invalid', date: 'not-a-date', amount: '1', status: 'paid' },
+    ];
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue(payload) });
+    const result = await getInvoices();
+    expect(result.map((i) => i.id)).toEqual(['valid', 'invalid']);
+  });
+
   it('getUsageMetrics returns all metric fields', async () => {
     const payload = { dataSourcesUsed: 1, teamMembersUsed: 2, dashboardsUsed: 3, storageUsedGb: 4, storageLimitGb: 5, aiRequestsUsed: 6, aiRequestsLimit: 7 };
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue(payload) });

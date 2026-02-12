@@ -76,7 +76,7 @@ export async function restoreFromBackup(file: File): Promise<{ success: boolean 
     ? authHeaders.get('Authorization')
     : Array.isArray(authHeaders)
       ? authHeaders.find(([key]) => key.toLowerCase() === 'authorization')?.[1]
-      : authHeaders.Authorization;
+      : authHeaders.Authorization ?? authHeaders.authorization;
 
   const headers: HeadersInit = authorization ? { Authorization: authorization } : {};
   const response = await fetch(`${API_BASE_URL}/api/sync/backup/restore`, {

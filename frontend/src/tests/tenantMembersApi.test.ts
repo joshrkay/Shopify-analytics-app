@@ -30,6 +30,14 @@ describe('tenantMembersApi', () => {
     await expect(inviteMember({ email: 'bad-email', role: 'admin' })).rejects.toThrow('valid email');
   });
 
+  it('inviteMember trims email before sending payload', async () => {
+    await inviteMember({ email: '  member@example.com  ', role: 'viewer' });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/tenant-members/invite',
+      expect.objectContaining({ body: JSON.stringify({ email: 'member@example.com', role: 'viewer' }) }),
+    );
+  });
+
   it('updateMemberRole sends correct payload', async () => {
     await updateMemberRole('m1', 'editor');
     expect(global.fetch).toHaveBeenCalledWith('/api/tenant-members/m1/role', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ role: 'editor' }) }));

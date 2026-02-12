@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../services/tenantMembersApi', () => ({
@@ -49,7 +49,9 @@ describe('useTeamMembers', () => {
   it('Query invalidation after mutations', async () => {
     const { result } = renderHook(() => useTeamMembers());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    await result.current.refetch();
+    await act(async () => {
+      await result.current.refetch();
+    });
     expect(mocked.getTeamMembers).toHaveBeenCalledTimes(2);
   });
 });

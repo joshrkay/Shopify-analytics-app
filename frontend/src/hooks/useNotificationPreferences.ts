@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getNotificationPreferences,
   getPerformanceAlerts,
@@ -12,15 +12,32 @@ export function useNotificationPreferences() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
+
   const refetch = useCallback(async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      setPreferences(await getNotificationPreferences());
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+
+      const nextPreferences = await getNotificationPreferences();
+
+      if (isMountedRef.current) {
+        setPreferences(nextPreferences);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load notification preferences');
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load notification preferences');
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -34,14 +51,21 @@ export function useNotificationPreferences() {
 export function useUpdateNotificationPreferences() {
   return useMemo(() => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let pendingReject: ((reason?: unknown) => void) | undefined;
 
     return (prefs: Partial<NotificationPreferences>) =>
       new Promise<NotificationPreferences>((resolve, reject) => {
         if (timeoutId) clearTimeout(timeoutId);
+        if (pendingReject) pendingReject(new Error('Debounced update replaced by a newer request.'));
+
+        pendingReject = reject;
         timeoutId = setTimeout(async () => {
           try {
-            resolve(await updateNotificationPreferences(prefs));
+            const updatedPreferences = await updateNotificationPreferences(prefs);
+            pendingReject = undefined;
+            resolve(updatedPreferences);
           } catch (err) {
+            pendingReject = undefined;
             reject(err);
           }
         }, 500);
@@ -52,13 +76,25 @@ export function useUpdateNotificationPreferences() {
 export function usePerformanceAlerts() {
   const [alerts, setAlerts] = useState<PerformanceAlert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
 
   const refetch = useCallback(async () => {
-    setIsLoading(true);
+    if (isMountedRef.current) {
+      setIsLoading(true);
+    }
     try {
-      setAlerts(await getPerformanceAlerts());
+      const nextAlerts = await getPerformanceAlerts();
+      if (isMountedRef.current) {
+        setAlerts(nextAlerts);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 

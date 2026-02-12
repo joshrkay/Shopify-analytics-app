@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   cancelSubscription,
   changePlan,
@@ -17,24 +17,38 @@ export function useBilling() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
+
   const refetch = useCallback(async () => {
     try {
-      setIsLoading(true);
-      setError(null);
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
       const [subData, invoiceData, paymentData, usageData] = await Promise.all([
         getSubscription(),
         getInvoices(),
         getPaymentMethod(),
         getUsageMetrics(),
       ]);
-      setSubscription(subData);
-      setInvoices(invoiceData);
-      setPaymentMethod(paymentData);
-      setUsage(usageData);
+      if (isMountedRef.current) {
+        setSubscription(subData);
+        setInvoices(invoiceData);
+        setPaymentMethod(paymentData);
+        setUsage(usageData);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load billing data');
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load billing data');
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 

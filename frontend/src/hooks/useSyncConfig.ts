@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getSyncConfiguration,
   updateDataProcessing,
@@ -19,15 +19,30 @@ export function useSyncConfig() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
+
   const refetch = useCallback(async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      setConfig(await getSyncConfiguration());
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+      const nextConfig = await getSyncConfiguration();
+      if (isMountedRef.current) {
+        setConfig(nextConfig);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sync configuration');
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load sync configuration');
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 

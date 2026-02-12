@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getAIConfiguration,
   getAIUsageStats,
@@ -13,15 +13,30 @@ export function useLlmConfig() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
+
   const refetch = useCallback(async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      setConfig(await getAIConfiguration());
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+      const nextConfig = await getAIConfiguration();
+      if (isMountedRef.current) {
+        setConfig(nextConfig);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load AI configuration');
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load AI configuration');
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -35,13 +50,25 @@ export function useLlmConfig() {
 export function useAIUsageStats() {
   const [stats, setStats] = useState<AIUsageStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
 
   const refetch = useCallback(async () => {
-    setIsLoading(true);
+    if (isMountedRef.current) {
+      setIsLoading(true);
+    }
     try {
-      setStats(await getAIUsageStats());
+      const nextStats = await getAIUsageStats();
+      if (isMountedRef.current) {
+        setStats(nextStats);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 

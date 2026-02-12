@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getTeamMembers,
   inviteMember,
@@ -13,15 +13,30 @@ export function useTeamMembers() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
+
   const refetch = useCallback(async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      setMembers(await getTeamMembers());
+      if (isMountedRef.current) {
+        setIsLoading(true);
+        setError(null);
+      }
+      const nextMembers = await getTeamMembers();
+      if (isMountedRef.current) {
+        setMembers(nextMembers);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load team members');
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load team members');
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
