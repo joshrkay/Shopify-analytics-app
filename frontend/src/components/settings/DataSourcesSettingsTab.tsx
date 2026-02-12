@@ -84,6 +84,8 @@ export function DataSourcesSettingsTab({ onDisconnect, onTest }: DataSourcesSett
                   type="button"
                   onClick={() => setConfirmSourceId(source.id)}
                   className="px-3 py-1.5 border border-red-300 text-red-700 rounded text-sm"
+                  disabled={!onDisconnect}
+                  title={!onDisconnect ? 'Disconnect endpoint is not available yet' : undefined}
                 >
                   Disconnect
                 </button>
@@ -91,6 +93,8 @@ export function DataSourcesSettingsTab({ onDisconnect, onTest }: DataSourcesSett
                   type="button"
                   onClick={() => handleTest(source)}
                   className="px-3 py-1.5 border border-gray-300 rounded text-sm"
+                  disabled={!onTest}
+                  title={!onTest ? 'Test endpoint is not available yet' : undefined}
                 >
                   Test
                 </button>

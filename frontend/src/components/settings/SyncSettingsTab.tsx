@@ -31,7 +31,7 @@ function usagePercent(config: SyncConfiguration): number {
 }
 
 export function SyncSettingsTab() {
-  const { config, isLoading } = useSyncConfig();
+  const { config, isLoading, error } = useSyncConfig();
   const updateSchedule = useUpdateSyncSchedule();
   const updateDataProcessing = useUpdateDataProcessing();
   const updateStorageConfig = useUpdateStorageConfig();
@@ -63,6 +63,13 @@ export function SyncSettingsTab() {
   }, [isDirty]);
 
   if (isLoading || !form) {
+    if (!isLoading && error) {
+      return (
+        <div className="rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800" data-testid="sync-settings-unavailable">
+          Sync configuration endpoints are not available in this backend deployment yet.
+        </div>
+      );
+    }
     return <p className="text-gray-600">Loading sync settings...</p>;
   }
 

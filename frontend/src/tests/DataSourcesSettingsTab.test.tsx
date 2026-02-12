@@ -61,7 +61,7 @@ describe('DataSourcesSettingsTab', () => {
 
   it('Disconnect shows confirmation dialog', async () => {
     const user = userEvent.setup();
-    render(<MemoryRouter><DataSourcesSettingsTab /></MemoryRouter>);
+    render(<MemoryRouter><DataSourcesSettingsTab onDisconnect={vi.fn()} /></MemoryRouter>);
     await act(async () => {
       await user.click(screen.getAllByRole('button', { name: 'Disconnect' })[0]);
     });
@@ -101,5 +101,13 @@ describe('DataSourcesSettingsTab', () => {
     render(<MemoryRouter><DataSourcesSettingsTab /></MemoryRouter>);
     expect(screen.getByText('pending')).toBeInTheDocument();
     expect(screen.getByText('active')).toBeInTheDocument();
+  });
+
+  it('Disable test/disconnect actions when endpoints are unavailable', () => {
+    render(<MemoryRouter><DataSourcesSettingsTab /></MemoryRouter>);
+    const disconnectButtons = screen.getAllByRole('button', { name: 'Disconnect' });
+    const testButtons = screen.getAllByRole('button', { name: 'Test' });
+    expect(disconnectButtons[0]).toBeDisabled();
+    expect(testButtons[0]).toBeDisabled();
   });
 });
