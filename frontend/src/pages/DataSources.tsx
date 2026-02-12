@@ -1,16 +1,18 @@
 /**
  * Data Sources Page
  *
- * Displays all connected data sources (Shopify + ad platforms) in a unified list.
- * Each source shows: platform name, status badge, auth type, and last sync time.
+ * Displays connected data sources with ConnectedSourceCard components,
+ * available integrations grid with IntegrationCard components,
+ * and an enhanced empty state when no connections exist.
  *
- * Includes connection wizard for adding new data sources.
+ * Uses useDataSources hook for 30s-polled connection list and
+ * useDataSourceCatalog for available platforms.
  *
  * Story 2.1.1 — Unified Source domain model
- * Phase 3 — Subphase 3.5: Connection Wizard Integration
+ * Phase 3 — Subphase 3.3: Source Catalog Page
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Page,
   Layout,
@@ -20,128 +22,56 @@ import {
   SkeletonBodyText,
   BlockStack,
   InlineStack,
+  InlineGrid,
   Text,
-  Badge,
-  EmptyState,
   Box,
   Button,
-  Popover,
-  ActionList,
   Toast,
   Frame,
 } from '@shopify/polaris';
-import { RefreshIcon, MenuVerticalIcon } from '@shopify/polaris-icons';
+import { RefreshIcon } from '@shopify/polaris-icons';
 
-import { listSources } from '../services/sourcesApi';
-import { PLATFORM_DISPLAY_NAMES } from '../types/sources';
-import type { Source, SourceStatus } from '../types/sources';
+import type { Source } from '../types/sources';
 import { ConnectSourceModal } from '../components/sources/ConnectSourceModal';
 import { DisconnectConfirmationModal } from '../components/sources/DisconnectConfirmationModal';
 import { SyncConfigModal } from '../components/sources/SyncConfigModal';
+import { ConnectedSourceCard } from '../components/sources/ConnectedSourceCard';
+import { IntegrationCard } from '../components/sources/IntegrationCard';
+import { EmptySourcesState } from '../components/sources/EmptySourcesState';
 import { useDataHealth } from '../contexts/DataHealthContext';
 import { useSourceMutations } from '../hooks/useSourceConnection';
 import { useDataSources, useDataSourceCatalog } from '../hooks/useDataSources';
 import type { DataSourceDefinition, UpdateSyncConfigRequest } from '../types/sourceConnection';
 
-function getStatusBadge(status: SourceStatus) {
-  switch (status) {
-    case 'active':
-      return <Badge tone="success">Active</Badge>;
-    case 'pending':
-      return <Badge tone="attention">Pending</Badge>;
-    case 'failed':
-      return <Badge tone="critical">Failed</Badge>;
-    case 'inactive':
-      return <Badge>Inactive</Badge>;
-    default:
-      return <Badge>{status}</Badge>;
-  }
-}
-
-function formatLastSync(lastSyncAt: string | null): string {
-  if (!lastSyncAt) {
-    return 'Never synced';
-  }
-  const date = new Date(lastSyncAt);
-  return date.toLocaleString();
-}
-
-function formatAuthType(authType: string): string {
-  switch (authType) {
-    case 'oauth':
-      return 'OAuth';
-    case 'api_key':
-      return 'API Key';
-    default:
-      return authType;
-  }
-}
-
 export default function DataSources() {
-  const [sources, setSources] = useState<Source[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    connections: sources,
+    isLoading: loading,
+    error,
+    hasConnectedSources,
+    refetch,
+  } = useDataSources();
+  const { catalog } = useDataSourceCatalog();
+
   const [refreshing, setRefreshing] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [connectPlatform, setConnectPlatform] = useState<DataSourceDefinition | null>(null);
   const [selectedSource, setSelectedSource] = useState<Source | null>(null);
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [activePopover, setActivePopover] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const { refresh: refreshHealth } = useDataHealth();
   const { disconnecting, testingSourceId, configuring, disconnect, testConnection, updateSyncConfig } =
     useSourceMutations();
 
-  const loadSources = useCallback(async (showRefreshing = false) => {
-    if (showRefreshing) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setError(null);
-
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const data = await listSources();
-      setSources(data);
-    } catch (err) {
-      console.error('Failed to load data sources:', err);
-      setError('Failed to load data sources. Please try again.');
+      await refetch();
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const data = await listSources();
-        if (!cancelled) {
-          setSources(data);
-          setLoading(false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error('Failed to load data sources:', err);
-          setError('Failed to load data sources. Please try again.');
-          setLoading(false);
-        }
-      }
-    }
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleRefresh = () => {
-    loadSources(true);
-  };
+  }, [refetch]);
 
   const openConnectModal = useCallback((platform?: DataSourceDefinition) => {
     setConnectPlatform(platform ?? null);
@@ -161,31 +91,28 @@ export default function DataSources() {
 
   const handleTestConnection = useCallback(
     async (source: Source) => {
-      setActivePopover(null);
       try {
         const result = await testConnection(source.id);
         setToastMessage(
           result.success
             ? `Connection to ${source.displayName} is working`
-            : `Connection test failed: ${result.message}`
+            : `Connection test failed: ${result.message}`,
         );
-      } catch (err) {
+      } catch {
         setToastMessage(`Failed to test connection to ${source.displayName}`);
       }
     },
-    [testConnection]
+    [testConnection],
   );
 
   const handleConfigureSync = useCallback((source: Source) => {
     setSelectedSource(source);
     setShowConfigModal(true);
-    setActivePopover(null);
   }, []);
 
   const handleDisconnect = useCallback((source: Source) => {
     setSelectedSource(source);
     setShowDisconnectModal(true);
-    setActivePopover(null);
   }, []);
 
   const handleDisconnectConfirm = useCallback(
@@ -195,14 +122,13 @@ export default function DataSources() {
         setShowDisconnectModal(false);
         setSelectedSource(null);
         setToastMessage('Data source disconnected successfully');
-        // Refresh list
-        await loadSources(true);
+        await refetch();
         await refreshHealth();
-      } catch (err) {
+      } catch {
         setToastMessage('Failed to disconnect data source');
       }
     },
-    [disconnect, loadSources, refreshHealth]
+    [disconnect, refetch, refreshHealth],
   );
 
   const handleSyncConfigSave = useCallback(
@@ -212,13 +138,12 @@ export default function DataSources() {
         setShowConfigModal(false);
         setSelectedSource(null);
         setToastMessage('Sync configuration updated successfully');
-        // Refresh list
-        await loadSources(true);
-      } catch (err) {
+        await refetch();
+      } catch {
         setToastMessage('Failed to update sync configuration');
       }
     },
-    [updateSyncConfig, loadSources]
+    [updateSyncConfig, refetch],
   );
 
   const handleConnectFromCatalog = useCallback(() => {
@@ -258,7 +183,7 @@ export default function DataSources() {
               tone="critical"
               action={{ content: 'Retry', onAction: handleRefresh }}
             >
-              <p>{error}</p>
+              <p>Failed to load data sources. Please try again.</p>
             </Banner>
           </Layout.Section>
         </Layout>
@@ -266,7 +191,7 @@ export default function DataSources() {
     );
   }
 
-  if (sources.length === 0) {
+  if (!hasConnectedSources) {
     return (
       <Page
         title="Data Sources"
@@ -314,11 +239,13 @@ export default function DataSources() {
     >
       <Layout>
         <Layout.Section>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Connected Sources ({sources.length})
-              </Text>
+          <BlockStack gap="600">
+            {/* Connected Sources */}
+            <Card>
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Connected Sources ({sources.length})
+                </Text>
 
                 <BlockStack gap="300">
                   {sources.map((source) => (
@@ -367,8 +294,8 @@ export default function DataSources() {
                   ))}
                 </InlineGrid>
               </BlockStack>
-            </BlockStack>
-          </Card>
+            )}
+          </BlockStack>
         </Layout.Section>
       </Layout>
 
