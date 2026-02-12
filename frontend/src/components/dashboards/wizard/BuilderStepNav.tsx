@@ -24,12 +24,6 @@ const STEPS: Array<{ step: BuilderStep; label: string; number: number }> = [
   { step: 'preview', label: 'Preview & Save', number: 3 },
 ];
 
-const STEP_ORDER: Record<BuilderStep, number> = {
-  select: 0,
-  customize: 1,
-  preview: 2,
-};
-
 export function BuilderStepNav({
   currentStep,
   completedSteps,
@@ -44,14 +38,14 @@ export function BuilderStepNav({
     // Current or completed steps are always clickable
     if (step === currentStep || completedSteps.has(step)) return true;
 
-    // Can only proceed to customize if validation passes
+    // Can only proceed to customize if validation passes AND we're on select step
     if (step === 'customize') {
-      return canProceedToCustomize || STEP_ORDER[currentStep] >= STEP_ORDER.customize;
+      return canProceedToCustomize && currentStep === 'select';
     }
 
-    // Can only proceed to preview if validation passes
+    // Can only proceed to preview if validation passes AND we're on customize step AND customize is completed
     if (step === 'preview') {
-      return canProceedToPreview || STEP_ORDER[currentStep] >= STEP_ORDER.preview;
+      return canProceedToPreview && currentStep === 'customize' && completedSteps.has('customize');
     }
 
     return false;

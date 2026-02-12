@@ -781,7 +781,7 @@ export function DashboardBuilderProvider({
 
       // Create Report object from catalog item
       const newReport: Report = {
-        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `${item.id}::${Date.now()}`,
         dashboard_id: '', // Will be set when dashboard is created
         name: item.name,
         description: item.description,
@@ -1000,8 +1000,9 @@ export function DashboardBuilderProvider({
   }, [state.wizardState.selectedWidgets.length]);
 
   const canProceedToPreview = useMemo(() => {
-    return state.wizardState.selectedWidgets.length > 0;
-  }, [state.wizardState.selectedWidgets.length]);
+    return state.wizardState.dashboardName.trim().length > 0 &&
+           state.wizardState.selectedWidgets.length > 0;
+  }, [state.wizardState.dashboardName, state.wizardState.selectedWidgets.length]);
 
   const canSaveDashboard = useMemo(() => {
     if (!state.wizardState.isWizardMode) return true; // Edit mode always allows save

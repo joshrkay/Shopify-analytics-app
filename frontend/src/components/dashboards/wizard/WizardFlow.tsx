@@ -91,7 +91,7 @@ export function WizardFlow() {
 
   // Selected widget IDs for gallery
   const selectedWidgetIds = useMemo(() => {
-    return new Set(wizardState.selectedWidgets.map((w) => w.id.split('-report-')[0] + '-report-' + w.id.split('-report-')[1]));
+    return new Set(wizardState.selectedWidgets.map((w) => w.id.split('::')[0]));
   }, [wizardState.selectedWidgets]);
 
   // Navigation handlers
