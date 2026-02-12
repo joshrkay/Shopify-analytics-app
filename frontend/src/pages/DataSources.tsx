@@ -40,7 +40,8 @@ import { DisconnectConfirmationModal } from '../components/sources/DisconnectCon
 import { SyncConfigModal } from '../components/sources/SyncConfigModal';
 import { useDataHealth } from '../contexts/DataHealthContext';
 import { useSourceMutations } from '../hooks/useSourceConnection';
-import type { UpdateSyncConfigRequest } from '../types/sourceConnection';
+import { useDataSources, useDataSourceCatalog } from '../hooks/useDataSources';
+import type { DataSourceDefinition, UpdateSyncConfigRequest } from '../types/sourceConnection';
 
 function getStatusBadge(status: SourceStatus) {
   switch (status) {
@@ -82,13 +83,14 @@ export default function DataSources() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
+  const [connectPlatform, setConnectPlatform] = useState<DataSourceDefinition | null>(null);
   const [selectedSource, setSelectedSource] = useState<Source | null>(null);
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [activePopover, setActivePopover] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const { refresh: refreshHealth } = useDataHealth();
-  const { disconnecting, testing, configuring, disconnect, testConnection, updateSyncConfig } =
+  const { disconnecting, testingSourceId, configuring, disconnect, testConnection, updateSyncConfig } =
     useSourceMutations();
 
   const loadSources = useCallback(async (showRefreshing = false) => {
@@ -141,12 +143,21 @@ export default function DataSources() {
     loadSources(true);
   };
 
-  const handleConnectionSuccess = useCallback(async () => {
+  const openConnectModal = useCallback((platform?: DataSourceDefinition) => {
+    setConnectPlatform(platform ?? null);
+    setShowConnectModal(true);
+  }, []);
+
+  const closeConnectModal = useCallback(() => {
     setShowConnectModal(false);
-    // Refresh sources list and health monitoring
-    await loadSources(true);
+    setConnectPlatform(null);
+  }, []);
+
+  const handleConnectionSuccess = useCallback(async () => {
+    closeConnectModal();
+    await refetch();
     await refreshHealth();
-  }, [loadSources, refreshHealth]);
+  }, [closeConnectModal, refetch, refreshHealth]);
 
   const handleTestConnection = useCallback(
     async (source: Source) => {
@@ -210,6 +221,14 @@ export default function DataSources() {
     [updateSyncConfig, loadSources]
   );
 
+  const handleConnectFromCatalog = useCallback(() => {
+    openConnectModal();
+  }, [openConnectModal]);
+
+  // Derive set of connected platform IDs for IntegrationCard badges
+  const connectedPlatforms = new Set(sources.map((s) => s.platform));
+  const unconnectedCatalog = catalog.filter((p) => !connectedPlatforms.has(p.platform));
+
   if (loading) {
     return (
       <SkeletonPage primaryAction>
@@ -253,30 +272,24 @@ export default function DataSources() {
         title="Data Sources"
         primaryAction={{
           content: 'Connect Source',
-          onAction: () => setShowConnectModal(true),
+          onAction: () => openConnectModal(),
         }}
       >
         <Layout>
           <Layout.Section>
-            <Card>
-              <EmptyState
-                heading="No data sources connected"
-                action={{
-                  content: 'Connect Your First Source',
-                  onAction: () => setShowConnectModal(true),
-                }}
-                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-              >
-                <p>Connect your Shopify store or ad platforms to start syncing data.</p>
-              </EmptyState>
-            </Card>
+            <EmptySourcesState
+              catalog={catalog}
+              onConnect={(platform) => openConnectModal(platform)}
+              onBrowseAll={() => openConnectModal()}
+            />
           </Layout.Section>
         </Layout>
 
         <ConnectSourceModal
           open={showConnectModal}
-          onClose={() => setShowConnectModal(false)}
+          onClose={closeConnectModal}
           onSuccess={handleConnectionSuccess}
+          initialPlatform={connectPlatform}
         />
       </Page>
     );
@@ -287,8 +300,8 @@ export default function DataSources() {
       title="Data Sources"
       subtitle="Manage your connected data sources"
       primaryAction={{
-        content: 'Connect Source',
-        onAction: () => setShowConnectModal(true),
+        content: 'Add Source',
+        onAction: () => openConnectModal(),
       }}
       secondaryActions={[
         {
@@ -307,77 +320,52 @@ export default function DataSources() {
                 Connected Sources ({sources.length})
               </Text>
 
-              <BlockStack gap="300">
-                {sources.map((source) => (
-                  <Box
-                    key={source.id}
-                    background="bg-surface"
-                    borderColor="border"
-                    borderWidth="025"
-                    borderRadius="200"
-                    padding="300"
-                  >
-                    <InlineStack align="space-between" blockAlign="center" wrap={false}>
-                      <BlockStack gap="100">
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">
-                          {source.displayName}
-                        </Text>
-                        <InlineStack gap="200">
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {PLATFORM_DISPLAY_NAMES[source.platform] ?? source.platform}
-                          </Text>
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {formatAuthType(source.authType)}
-                          </Text>
-                        </InlineStack>
-                      </BlockStack>
+                <BlockStack gap="300">
+                  {sources.map((source) => (
+                    <ConnectedSourceCard
+                      key={source.id}
+                      source={source}
+                      onManage={handleConfigureSync}
+                      onDisconnect={handleDisconnect}
+                      onTestConnection={handleTestConnection}
+                      testing={testingSourceId === source.id}
+                    />
+                  ))}
+                </BlockStack>
 
-                      <InlineStack gap="300" blockAlign="center">
-                        <BlockStack gap="100" inlineAlign="end">
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            Last synced
-                          </Text>
-                          <Text as="span" variant="bodySm">
-                            {formatLastSync(source.lastSyncAt)}
-                          </Text>
-                        </BlockStack>
-                        {getStatusBadge(source.status)}
-                        <Popover
-                          active={activePopover === source.id}
-                          activator={
-                            <Button
-                              icon={MenuVerticalIcon}
-                              variant="plain"
-                              onClick={() =>
-                                setActivePopover(activePopover === source.id ? null : source.id)
-                              }
-                            />
-                          }
-                          onClose={() => setActivePopover(null)}
-                        >
-                          <ActionList
-                            items={[
-                              {
-                                content: 'Test Connection',
-                                onAction: () => handleTestConnection(source),
-                                disabled: testing,
-                              },
-                              {
-                                content: 'Configure Sync',
-                                onAction: () => handleConfigureSync(source),
-                              },
-                              {
-                                content: 'Disconnect',
-                                destructive: true,
-                                onAction: () => handleDisconnect(source),
-                              },
-                            ]}
-                          />
-                        </Popover>
-                      </InlineStack>
-                    </InlineStack>
-                  </Box>
-                ))}
+                {/* Dashed CTA to add new source */}
+                <Box
+                  background="bg-surface"
+                  borderColor="border-secondary"
+                  borderWidth="025"
+                  borderRadius="200"
+                  padding="400"
+                >
+                  <InlineStack align="center" blockAlign="center">
+                    <Button variant="plain" onClick={handleConnectFromCatalog}>
+                      + Add New Data Source
+                    </Button>
+                  </InlineStack>
+                </Box>
+              </BlockStack>
+            </Card>
+
+            {/* Available Integrations */}
+            {unconnectedCatalog.length > 0 && (
+              <BlockStack gap="400">
+                <Text as="h2" variant="headingMd">
+                  Available Integrations
+                </Text>
+                <InlineGrid columns={{ xs: 1, sm: 2, md: 3 }} gap="400">
+                  {unconnectedCatalog.map((platform) => (
+                    <IntegrationCard
+                      key={platform.id}
+                      platform={platform}
+                      isConnected={false}
+                      onConnect={() => openConnectModal(platform)}
+                    />
+                  ))}
+                </InlineGrid>
               </BlockStack>
             </BlockStack>
           </Card>
@@ -386,8 +374,9 @@ export default function DataSources() {
 
       <ConnectSourceModal
         open={showConnectModal}
-        onClose={() => setShowConnectModal(false)}
+        onClose={closeConnectModal}
         onSuccess={handleConnectionSuccess}
+        initialPlatform={connectPlatform}
       />
 
       <DisconnectConfirmationModal
