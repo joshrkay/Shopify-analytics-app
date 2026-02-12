@@ -24,7 +24,7 @@ This plan is now updated with your decisions so implementation can proceed in **
 
 - ✅ **Phase 1 (PR1): Type + mapping foundation** — implemented in code (type extensions + category mapping helpers + initial unit tests).
 - ✅ **Phase 2 (PR2): Catalog service + hook refactor** — implemented in code (service surface + hook query refactor + tests).
-- ✅ **Phase 3 (PR3): Context hardening + hydration rules** — implemented in code (step guards + duplicate handling + hydration fallback + tests).
+- ⏳ **Phase 3 (PR3): Context hardening + hydration rules** — pending.
 - ⏳ **Phase 4 (PR4): UI consolidation into `components/builder/*`** — pending.
 - ⏳ **Phase 5 (PR5): Live-first preview + save/template completion** — pending.
 

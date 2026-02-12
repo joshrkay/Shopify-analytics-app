@@ -197,16 +197,62 @@ describe('normalizeApiSource', () => {
 // Integration Tests: DataSources Page
 // =============================================================================
 
-// Mock the sourcesApi module
+// Mock the services — dataSourcesApi re-exports from sourcesApi, mock both
 vi.mock('../services/sourcesApi', () => ({
   listSources: vi.fn(),
+  getAvailableSources: vi.fn(),
+  initiateOAuth: vi.fn(),
+  completeOAuth: vi.fn(),
+  disconnectSource: vi.fn(),
+  testConnection: vi.fn(),
+  updateSyncConfig: vi.fn(),
+}));
+
+vi.mock('../services/dataSourcesApi', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    getConnections: vi.fn(),
+    getAvailableSources: vi.fn(),
+  };
+});
+
+vi.mock('../contexts/DataHealthContext', () => ({
+  useDataHealth: () => ({
+    refresh: vi.fn(),
+  }),
+}));
+
+vi.mock('../hooks/useSourceConnection', () => ({
+  useSourceMutations: () => ({
+    disconnecting: false,
+    testing: false,
+    configuring: false,
+    disconnect: vi.fn(),
+    testConnection: vi.fn().mockResolvedValue({ success: true, message: 'OK' }),
+    updateSyncConfig: vi.fn(),
+    clearError: vi.fn(),
+  }),
+}));
+
+vi.mock('../components/sources/ConnectSourceModal', () => ({
+  ConnectSourceModal: () => null,
+}));
+
+vi.mock('../components/sources/DisconnectConfirmationModal', () => ({
+  DisconnectConfirmationModal: () => null,
+}));
+
+vi.mock('../components/sources/SyncConfigModal', () => ({
+  SyncConfigModal: () => null,
 }));
 
 import DataSources from '../pages/DataSources';
-import { listSources } from '../services/sourcesApi';
+import { getConnections, getAvailableSources } from '../services/dataSourcesApi';
 import type { Source } from '../types/sources';
 
-const mockListSources = vi.mocked(listSources);
+const mockGetConnections = vi.mocked(getConnections);
+const mockGetAvailableSources = vi.mocked(getAvailableSources);
 
 const createMockSource = (overrides?: Partial<Source>): Source => ({
   id: 'src-001',
@@ -223,6 +269,7 @@ const createMockSource = (overrides?: Partial<Source>): Source => ({
 describe('DataSources Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetAvailableSources.mockResolvedValue([]);
   });
 
   it('renders mixed Shopify and ad platform sources', async () => {
@@ -243,7 +290,7 @@ describe('DataSources Page', () => {
       }),
     ];
 
-    mockListSources.mockResolvedValue(sources);
+    mockGetConnections.mockResolvedValue(sources);
 
     renderWithPolaris(<DataSources />);
 
@@ -262,7 +309,7 @@ describe('DataSources Page', () => {
       createMockSource({ id: 'src-2', status: 'failed', displayName: 'Failed Source' }),
     ];
 
-    mockListSources.mockResolvedValue(sources);
+    mockGetConnections.mockResolvedValue(sources);
 
     renderWithPolaris(<DataSources />);
 
@@ -270,21 +317,22 @@ describe('DataSources Page', () => {
       expect(screen.getByText('Active')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Failed')).toBeInTheDocument();
+    // ConnectedSourceCard uses "Error" for failed status
+    expect(screen.getByText('Error')).toBeInTheDocument();
   });
 
   it('shows empty state when no sources', async () => {
-    mockListSources.mockResolvedValue([]);
+    mockGetConnections.mockResolvedValue([]);
 
     renderWithPolaris(<DataSources />);
 
     await waitFor(() => {
-      expect(screen.getByText('No data sources connected')).toBeInTheDocument();
+      expect(screen.getByText('No data sources connected yet')).toBeInTheDocument();
     });
   });
 
   it('shows error banner on API failure', async () => {
-    mockListSources.mockRejectedValue(new Error('Network error'));
+    mockGetConnections.mockRejectedValue(new Error('Network error'));
 
     renderWithPolaris(<DataSources />);
 
@@ -293,7 +341,7 @@ describe('DataSources Page', () => {
     });
   });
 
-  it('displays auth type for each source', async () => {
+  it('displays source names correctly', async () => {
     const sources: Source[] = [
       createMockSource({
         id: 'src-oauth',
@@ -308,7 +356,7 @@ describe('DataSources Page', () => {
       }),
     ];
 
-    mockListSources.mockResolvedValue(sources);
+    mockGetConnections.mockResolvedValue(sources);
 
     renderWithPolaris(<DataSources />);
 
@@ -328,12 +376,12 @@ describe('DataSources Page', () => {
       }),
     ];
 
-    mockListSources.mockResolvedValue(sources);
+    mockGetConnections.mockResolvedValue(sources);
 
     renderWithPolaris(<DataSources />);
 
     await waitFor(() => {
-      expect(screen.getByText('Never synced')).toBeInTheDocument();
+      expect(screen.getByText(/Never synced/)).toBeInTheDocument();
     });
   });
 
@@ -344,7 +392,7 @@ describe('DataSources Page', () => {
       createMockSource({ id: 'src-3', displayName: 'Source 3' }),
     ];
 
-    mockListSources.mockResolvedValue(sources);
+    mockGetConnections.mockResolvedValue(sources);
 
     renderWithPolaris(<DataSources />);
 
