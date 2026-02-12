@@ -18,7 +18,6 @@ interface PreviewControlsProps {
   useLiveData: boolean;
   onUseLiveDataChange: (enabled: boolean) => void;
   onRefresh?: () => void;
-  isRefreshing?: boolean;
 }
 
 export function PreviewControls({
@@ -27,7 +26,6 @@ export function PreviewControls({
   useLiveData,
   onUseLiveDataChange,
   onRefresh,
-  isRefreshing = false,
 }: PreviewControlsProps) {
 
   const dateRangeOptions = [
@@ -69,7 +67,6 @@ export function PreviewControls({
         {useLiveData && onRefresh && (
           <Button
             onClick={onRefresh}
-            loading={isRefreshing}
             icon={RefreshIcon}
           >
             Refresh

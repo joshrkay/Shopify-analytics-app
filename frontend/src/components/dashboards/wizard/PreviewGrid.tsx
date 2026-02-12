@@ -24,9 +24,10 @@ const GRID_WIDTH = 1200;
 interface PreviewGridProps {
   useLiveData?: boolean; // NEW: Enable live data fetching
   dateRange?: string; // NEW: Date range for queries
+  refetchKey?: number; // NEW: Key that changes to trigger refetch
 }
 
-export function PreviewGrid({ useLiveData = false, dateRange = '30' }: PreviewGridProps) {
+export function PreviewGrid({ useLiveData = false, dateRange = '30', refetchKey = 0 }: PreviewGridProps) {
   const { wizardState } = useDashboardBuilder();
 
   // Build layout (read-only in preview)
@@ -78,6 +79,7 @@ export function PreviewGrid({ useLiveData = false, dateRange = '30' }: PreviewGr
               report={widget}
               useLiveData={useLiveData}
               dateRange={dateRange}
+              refetchKey={refetchKey}
             />
           </div>
         ))}

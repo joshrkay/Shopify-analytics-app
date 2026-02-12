@@ -31,6 +31,7 @@ export interface UseReportDataOptions {
   dateRange?: string; // Date range parameter (default: "30")
   filters?: ChartFilter[]; // Additional filters
   refetchInterval?: number; // Auto-refetch interval in ms (disabled by default)
+  refetchKey?: number; // Key that changes to trigger refetch
 }
 
 export interface UseReportDataResult {
@@ -100,6 +101,7 @@ export function useReportData(
     dateRange = '30',
     filters = [],
     refetchInterval,
+    refetchKey = 0,
   } = options;
 
   const [data, setData] = useState<ReportDataResponse | null>(null);
@@ -135,6 +137,10 @@ export function useReportData(
       abortControllerRef.current.abort();
     }
 
+    // Create new AbortController for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsLoading(true);
     setError(null);
     setIsFallback(false);
@@ -144,17 +150,22 @@ export function useReportData(
 
       // Use executeReport for saved reports, previewReportData for wizard mode
       if (report.id && !report.id.startsWith('temp-')) {
-        responseData = await executeReport(report.id, {
-          date_range: dateRange,
-          filters,
-          limit: 1000,
-        });
+        responseData = await executeReport(
+          report.id,
+          {
+            date_range: dateRange,
+            filters,
+            limit: 1000,
+          },
+          controller.signal,
+        );
       } else {
         // Wizard mode: use preview endpoint with config
         responseData = await previewReportData(
           report.dataset_name,
           report.config_json,
           dateRange,
+          controller.signal,
         );
       }
 
@@ -165,6 +176,11 @@ export function useReportData(
       setIsLoading(false);
       setIsFallback(false);
     } catch (err) {
+      // Ignore aborted requests (user navigated away or manually cancelled)
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+
       console.error('Failed to fetch report data:', err);
 
       // Handle different error types
@@ -255,6 +271,11 @@ export function useReportData(
       return;
     }
 
+    // Clear cache when refetchKey changes (manual refresh)
+    if (refetchKey > 0) {
+      cache.delete(getCacheKey(report.id, dateRange));
+    }
+
     // Debounce dateRange changes to avoid excessive API calls
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -273,7 +294,7 @@ export function useReportData(
         abortControllerRef.current.abort();
       }
     };
-  }, [report?.id, enabled, dateRange, fetchData]);
+  }, [report?.id, enabled, dateRange, refetchKey, fetchData]);
 
   /**
    * Effect: Set up refetch interval if specified.

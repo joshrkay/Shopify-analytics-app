@@ -43,6 +43,57 @@ export interface ReportDataResponse {
 }
 
 // =============================================================================
+// Helper Functions
+// =============================================================================
+
+/**
+ * Creates a fetch request with timeout handling and external abort signal support.
+ *
+ * @param url - The URL to fetch
+ * @param options - Fetch options (headers, body, etc.)
+ * @param timeoutMs - Timeout in milliseconds (default 10000)
+ * @param externalSignal - Optional external abort signal
+ * @returns Promise<Response>
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number = 10000,
+  externalSignal?: AbortSignal,
+): Promise<Response> {
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Listen to external signal for cancellation
+  if (externalSignal) {
+    externalSignal.addEventListener('abort', () => controller.abort());
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    return response;
+  } catch (err) {
+    clearTimeout(timeoutId);
+
+    // Handle timeout errors
+    if (err instanceof Error && err.name === 'AbortError') {
+      const timeoutError = new Error('Query timed out after 10 seconds') as any;
+      timeoutError.status = 408; // Request Timeout
+      timeoutError.detail = 'Query timed out after 10 seconds';
+      throw timeoutError;
+    }
+
+    throw err;
+  }
+}
+
+// =============================================================================
 // API Functions
 // =============================================================================
 
@@ -60,6 +111,7 @@ export interface ReportDataResponse {
 export async function executeReport(
   reportId: string,
   params: ReportExecuteParams = {},
+  externalSignal?: AbortSignal,
 ): Promise<ReportDataResponse> {
   const headers = await createHeadersAsync();
 
@@ -70,36 +122,18 @@ export async function executeReport(
     limit: params.limit || 1000,
   };
 
-  // Create AbortController for 10-second timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/api/v1/reports/${reportId}/execute`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    },
+    10000,
+    externalSignal,
+  );
 
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/v1/reports/${reportId}/execute`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      },
-    );
-
-    clearTimeout(timeoutId);
-    return handleResponse<ReportDataResponse>(response);
-  } catch (err) {
-    clearTimeout(timeoutId);
-
-    // Handle timeout errors
-    if (err instanceof Error && err.name === 'AbortError') {
-      const timeoutError = new Error('Query timed out after 10 seconds') as any;
-      timeoutError.status = 408; // Request Timeout
-      timeoutError.detail = 'Query timed out after 10 seconds';
-      throw timeoutError;
-    }
-
-    throw err;
-  }
+  return handleResponse<ReportDataResponse>(response);
 }
 
 /**
@@ -119,6 +153,7 @@ export async function previewReportData(
   datasetName: string,
   config: ChartConfig,
   dateRange: string = '30',
+  externalSignal?: AbortSignal,
 ): Promise<ReportDataResponse> {
   const headers = await createHeadersAsync();
 
@@ -137,44 +172,25 @@ export async function previewReportData(
     viz_type: 'line', // Default viz type for preview
   };
 
-  // Create AbortController for 10-second timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/api/v1/datasets/preview`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    },
+    10000,
+    externalSignal,
+  );
 
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/datasets/preview`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      },
-    );
+  // Parse full ChartPreviewResponse and extract needed fields
+  const fullResponse = await handleResponse<ChartPreviewResponse>(response);
 
-    clearTimeout(timeoutId);
-
-    // Parse full ChartPreviewResponse and extract needed fields
-    const fullResponse = await handleResponse<ChartPreviewResponse>(response);
-
-    return {
-      data: fullResponse.data,
-      columns: fullResponse.columns,
-      row_count: fullResponse.row_count,
-      truncated: fullResponse.truncated,
-      query_duration_ms: fullResponse.query_duration_ms,
-    };
-  } catch (err) {
-    clearTimeout(timeoutId);
-
-    // Handle timeout errors
-    if (err instanceof Error && err.name === 'AbortError') {
-      const timeoutError = new Error('Query timed out after 10 seconds') as any;
-      timeoutError.status = 408; // Request Timeout
-      timeoutError.detail = 'Query timed out after 10 seconds';
-      throw timeoutError;
-    }
-
-    throw err;
-  }
+  return {
+    data: fullResponse.data,
+    columns: fullResponse.columns,
+    row_count: fullResponse.row_count,
+    truncated: fullResponse.truncated,
+    query_duration_ms: fullResponse.query_duration_ms,
+  };
 }

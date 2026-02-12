@@ -22,14 +22,15 @@ interface PreviewReportCardProps {
   report: Report;
   useLiveData?: boolean; // NEW: Enable live data fetching
   dateRange?: string; // NEW: Date range for queries (default "30")
-  onRefresh?: () => void; // NEW: Callback for manual refresh
+  refetchKey?: number; // NEW: Key that triggers refetch when changed
 }
 
-export function PreviewReportCard({ report, useLiveData = false, dateRange = '30', onRefresh }: PreviewReportCardProps) {
+export function PreviewReportCard({ report, useLiveData = false, dateRange = '30', refetchKey = 0 }: PreviewReportCardProps) {
   // Fetch live data if enabled
   const { data: liveDataResponse, isLoading, error, isFallback } = useReportData(report, {
     enabled: useLiveData,
     dateRange,
+    refetchKey,
   });
 
   // Generate sample data as fallback
@@ -112,8 +113,8 @@ export function PreviewReportCard({ report, useLiveData = false, dateRange = '30
             )}
           </InlineStack>
 
-          {/* Fallback Banner */}
-          {isFallback && (
+          {/* Fallback Banner (only show if no error message) */}
+          {isFallback && !error && (
             <Banner tone="info">
               Showing sample data. Live data preview coming soon.
             </Banner>
