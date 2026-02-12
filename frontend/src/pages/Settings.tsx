@@ -14,6 +14,9 @@ import { useSearchParams } from 'react-router-dom';
 import { useAgency } from '../contexts/AgencyContext';
 import type { SettingsTab } from '../types/settingsTypes';
 import { SettingsTabButton } from '../components/settings/SettingsTabButton';
+import { DataSourcesSettingsTab } from '../components/settings/DataSourcesSettingsTab';
+import { SyncSettingsTab } from '../components/settings/SyncSettingsTab';
+import { TeamSettings } from '../components/settings/TeamSettings';
 
 const ROLE_RANK = {
   viewer: 0,
@@ -41,7 +44,7 @@ const SETTINGS_TABS: SettingsTabDefinition[] = [
   { id: 'ai', label: 'AI Insights', icon: Sparkles, requiredRole: 'admin' },
 ];
 
-function deriveUserRole(userRoles: string[]): RequiredRole {
+function deriveUserRole(userRoles: string[] = []): RequiredRole {
   if (userRoles.some((role) => role === 'owner' || role === 'super_admin' || role === 'agency_admin')) {
     return 'owner';
   }
@@ -58,6 +61,30 @@ function canAccessTab(userRole: RequiredRole, requiredRole: RequiredRole): boole
 }
 
 function renderTabContent(tab: SettingsTab) {
+  if (tab === 'sources') {
+    return (
+      <section data-testid="settings-panel-sources">
+        <DataSourcesSettingsTab />
+      </section>
+    );
+  }
+
+  if (tab === 'sync') {
+    return (
+      <section data-testid="settings-panel-sync">
+        <SyncSettingsTab />
+      </section>
+    );
+  }
+
+  if (tab === 'team') {
+    return (
+      <section data-testid="settings-panel-team">
+        <TeamSettings />
+      </section>
+    );
+  }
+
   return (
     <section data-testid={`settings-panel-${tab}`}>
       <h2 className="text-xl font-semibold mb-2">{SETTINGS_TABS.find((t) => t.id === tab)?.label}</h2>
@@ -83,9 +110,11 @@ export default function Settings() {
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === requestedTab)) {
-      setSearchParams({ tab: fallbackTab }, { replace: true });
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('tab', fallbackTab);
+      setSearchParams(nextParams, { replace: true });
     }
-  }, [fallbackTab, requestedTab, setSearchParams, visibleTabs]);
+  }, [fallbackTab, requestedTab, searchParams, setSearchParams, visibleTabs]);
 
   return (
     <div className="p-6" data-testid="settings-page">
@@ -98,7 +127,11 @@ export default function Settings() {
                 key={tab.id}
                 icon={tab.icon}
                 active={activeTab === tab.id}
-                onClick={() => setSearchParams({ tab: tab.id })}
+                onClick={() => {
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.set('tab', tab.id);
+                  setSearchParams(nextParams);
+                }}
               >
                 {tab.label}
               </SettingsTabButton>
