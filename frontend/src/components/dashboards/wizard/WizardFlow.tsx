@@ -42,6 +42,7 @@ export function WizardFlow() {
     setBuilderStep,
     setSelectedCategory,
     addCatalogWidget,
+    removeWizardWidget,
     setWizardDashboardName,
     setWizardDashboardDescription,
     setPreviewDateRange,
@@ -163,11 +164,14 @@ export function WizardFlow() {
         return (
           <InlineStack gap="400" align="start">
             {/* Category Sidebar */}
-            <Box minWidth="220px">
+            <Box minWidth="260px">
               <CategorySidebar
                 selectedCategory={wizardState.selectedCategory}
                 onSelectCategory={setSelectedCategory}
                 widgetCounts={widgetCounts}
+                selectedWidgets={wizardState.selectedWidgets}
+                onRemoveWidget={removeWizardWidget}
+                onContinueToLayout={handleNext}
               />
             </Box>
 
