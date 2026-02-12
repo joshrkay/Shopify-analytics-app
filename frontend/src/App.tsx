@@ -25,7 +25,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { RootErrorFallback } from './components/ErrorFallback';
 import { DataHealthProvider } from './contexts/DataHealthContext';
 import { AgencyProvider } from './contexts/AgencyContext';
-import { AppHeader } from './components/layout/AppHeader';
+import { Root } from './components/layout/Root';
 import { useAutoOrganization } from './hooks/useAutoOrganization';
 import { useClerkToken } from './hooks/useClerkToken';
 import { useEntitlements } from './hooks/useEntitlements';
@@ -41,10 +41,10 @@ import WhatsNew from './pages/WhatsNew';
 import { DashboardList } from './pages/DashboardList';
 import { DashboardView } from './pages/DashboardView';
 import { DashboardBuilder } from './pages/DashboardBuilder';
-import { RootLayout, SidebarProvider } from './components/layout';
 import DataSources from './pages/DataSources';
 import Settings from './pages/Settings';
 import { DashboardHome } from './pages/DashboardHome';
+import { Dashboard } from './pages/Dashboard';
 
 // =============================================================================
 // FeatureGateRoute — redirects to paywall if feature not entitled
@@ -117,12 +117,17 @@ function AppWithOrg() {
   return (
     <AgencyProvider>
       <DataHealthProvider>
-        <SidebarProvider>
-        <AppHeader />
-        <RootLayout>
-          <Routes>
-            <Route path="/admin/plans" element={<AdminPlans />} />
-            <Route path="/admin/diagnostics" element={<RootCausePanel />} />
+        <Routes>
+          {/* New Tailwind-based layout with sidebar + header */}
+          <Route element={<Root />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/builder" element={
+              <FeatureGateRoute feature="custom_reports" entitlements={entitlements}>
+                <DashboardList />
+              </FeatureGateRoute>
+            } />
+            <Route path="/sources" element={<DataSources />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="/home" element={<DashboardHome />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/paywall" element={<Paywall />} />
@@ -130,19 +135,12 @@ function AppWithOrg() {
             <Route path="/approvals" element={<ApprovalsInbox />} />
             <Route path="/whats-new" element={<WhatsNew />} />
             <Route path="/data-sources" element={<DataSources />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/admin/plans" element={<AdminPlans />} />
+            <Route path="/admin/diagnostics" element={<RootCausePanel />} />
 
             {/* Custom Dashboards — gated routes */}
             <Route
               path="/dashboards"
-              element={
-                <FeatureGateRoute feature="custom_reports" entitlements={entitlements}>
-                  <DashboardList />
-                </FeatureGateRoute>
-              }
-            />
-            <Route
-              path="/builder"
               element={
                 <FeatureGateRoute feature="custom_reports" entitlements={entitlements}>
                   <DashboardList />
@@ -159,14 +157,8 @@ function AppWithOrg() {
             />
             {/* View route is NOT gated — shared dashboards viewable on any plan */}
             <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
-
-            {/* Route aliases */}
-            <Route path="/sources" element={<DataSources />} />
-
-            <Route path="/" element={<Navigate to="/home" replace />} />
-          </Routes>
-        </RootLayout>
-        </SidebarProvider>
+          </Route>
+        </Routes>
       </DataHealthProvider>
     </AgencyProvider>
   );
