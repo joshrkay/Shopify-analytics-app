@@ -41,7 +41,7 @@ const SETTINGS_TABS: SettingsTabDefinition[] = [
   { id: 'ai', label: 'AI Insights', icon: Sparkles, requiredRole: 'admin' },
 ];
 
-function deriveUserRole(userRoles: string[]): RequiredRole {
+function deriveUserRole(userRoles: string[] = []): RequiredRole {
   if (userRoles.some((role) => role === 'owner' || role === 'super_admin' || role === 'agency_admin')) {
     return 'owner';
   }
@@ -83,9 +83,11 @@ export default function Settings() {
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.id === requestedTab)) {
-      setSearchParams({ tab: fallbackTab }, { replace: true });
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('tab', fallbackTab);
+      setSearchParams(nextParams, { replace: true });
     }
-  }, [fallbackTab, requestedTab, setSearchParams, visibleTabs]);
+  }, [fallbackTab, requestedTab, searchParams, setSearchParams, visibleTabs]);
 
   return (
     <div className="p-6" data-testid="settings-page">
@@ -98,7 +100,11 @@ export default function Settings() {
                 key={tab.id}
                 icon={tab.icon}
                 active={activeTab === tab.id}
-                onClick={() => setSearchParams({ tab: tab.id })}
+                onClick={() => {
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.set('tab', tab.id);
+                  setSearchParams(nextParams);
+                }}
               >
                 {tab.label}
               </SettingsTabButton>
