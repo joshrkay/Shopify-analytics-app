@@ -210,9 +210,7 @@ describe('DataSources Page — API→UI Wiring', () => {
     // The empty state shows "Connect Source" primary action or the empty state heading
     await waitFor(() => {
       expect(
-        screen.getByText('Connect Source') ||
-        screen.getByText('No data sources connected yet') ||
-        screen.getByText('Connect Your First Source'),
+        screen.getByText(/Connect Source|No data sources connected yet|Connect Your First Source/),
       ).toBeInTheDocument();
     });
   });
