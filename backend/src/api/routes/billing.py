@@ -373,7 +373,7 @@ async def get_entitlements(
         plan_name = subscription_info.plan_name if subscription_info else None
         
         # Build feature entitlements (check common features)
-        from src.services.billing_entitlements import BillingFeature
+        from src.services.billing_entitlements import BillingFeature, BILLING_TIER_FEATURES
         feature_keys = [
             BillingFeature.AGENCY_ACCESS,
             BillingFeature.ADVANCED_DASHBOARDS,
@@ -383,24 +383,43 @@ async def get_entitlements(
             BillingFeature.AI_ACTIONS,
             BillingFeature.CUSTOM_REPORTS,
         ]
-        
+
+        # When there is no Subscription record, fall back to the
+        # BILLING_TIER_FEATURES matrix keyed by tenant.billing_tier.
+        # This covers new/free tenants that have never subscribed.
+        tier_features = BILLING_TIER_FEATURES.get(tenant_ctx.billing_tier, {})
+
         features = {}
         for feature_key in feature_keys:
-            result = policy.check_feature_entitlement(
-                tenant_id=tenant_ctx.tenant_id,
-                feature=feature_key,
-                subscription=subscription,
-            )
-            features[feature_key] = FeatureEntitlementResponse(
-                feature=feature_key,
-                is_entitled=result.is_entitled,
-                billing_state=result.billing_state.value,
-                plan_id=result.plan_id,
-                plan_name=plan_name if result.plan_id == subscription_info.plan_id else None,
-                reason=result.reason,
-                required_plan=result.required_plan,
-                grace_period_ends_on=result.grace_period_ends_on.isoformat() if result.grace_period_ends_on else None,
-            )
+            if subscription:
+                result = policy.check_feature_entitlement(
+                    tenant_id=tenant_ctx.tenant_id,
+                    feature=feature_key,
+                    subscription=subscription,
+                )
+                features[feature_key] = FeatureEntitlementResponse(
+                    feature=feature_key,
+                    is_entitled=result.is_entitled,
+                    billing_state=result.billing_state.value,
+                    plan_id=result.plan_id,
+                    plan_name=plan_name if result.plan_id == subscription_info.plan_id else None,
+                    reason=result.reason,
+                    required_plan=result.required_plan,
+                    grace_period_ends_on=result.grace_period_ends_on.isoformat() if result.grace_period_ends_on else None,
+                )
+            else:
+                # No subscription — use billing tier matrix
+                is_entitled = bool(tier_features.get(feature_key, False))
+                features[feature_key] = FeatureEntitlementResponse(
+                    feature=feature_key,
+                    is_entitled=is_entitled,
+                    billing_state=billing_state.value,
+                    plan_id=subscription_info.plan_id,
+                    plan_name=plan_name,
+                    reason=None if is_entitled else f"Feature '{feature_key}' requires a paid plan",
+                    required_plan=policy._find_plan_with_feature(feature_key) if not is_entitled else None,
+                    grace_period_ends_on=None,
+                )
         
         return EntitlementsResponse(
             billing_state=billing_state.value,
