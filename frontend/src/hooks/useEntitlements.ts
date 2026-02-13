@@ -2,10 +2,10 @@
  * useEntitlements Hook
  *
  * Custom hook to fetch and manage entitlements state.
- * Fetches /api/billing/entitlements on load as per requirements.
+ * Fetches /api/billing/entitlements only after token is ready.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchEntitlements, type EntitlementsResponse } from '../services/entitlementsApi';
 
 interface UseEntitlementsResult {
@@ -16,24 +16,19 @@ interface UseEntitlementsResult {
 }
 
 /**
- * Hook to fetch entitlements on load.
- * 
- * Usage:
- * ```tsx
- * const { entitlements, loading, error } = useEntitlements();
- * 
- * if (loading) return <Spinner />;
- * if (error) return <ErrorBanner />;
- * 
- * return <FeatureGate feature="premium" entitlements={entitlements}>...</FeatureGate>;
- * ```
+ * Hook to fetch entitlements once auth token is ready.
  */
-export function useEntitlements(): UseEntitlementsResult {
+export function useEntitlements(isTokenReady = true): UseEntitlementsResult {
   const [entitlements, setEntitlements] = useState<EntitlementsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadEntitlements = async () => {
+  const loadEntitlements = useCallback(async () => {
+    if (!isTokenReady) {
+      setLoading(true);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -45,11 +40,11 @@ export function useEntitlements(): UseEntitlementsResult {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isTokenReady]);
 
   useEffect(() => {
     loadEntitlements();
-  }, []);
+  }, [loadEntitlements]);
 
   return {
     entitlements,
