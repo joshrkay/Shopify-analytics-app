@@ -745,6 +745,57 @@ class TenantContextMiddleware:
                 db_gen = get_db_session_sync()
                 db = next(db_gen)
 
+                # Lazy sync: ensure user, tenant, and membership exist in
+                # the local DB before TenantGuard checks authorization.
+                # If Clerk webhooks were missed (or this is the very first
+                # request), provision the records so enforce_authorization
+                # can find them.  This mirrors what the Clerk webhook
+                # handler does for organizationMembership.created.
+                from src.services.clerk_sync_service import ClerkSyncService
+                sync_svc = ClerkSyncService(db)
+
+                # 1. Ensure user record exists
+                sync_svc.get_or_create_user(
+                    clerk_user_id=str(user_id),
+                    email=payload.get("email"),
+                    first_name=payload.get("first_name"),
+                    last_name=payload.get("last_name"),
+                )
+
+                # 2. Ensure tenant record exists for the Clerk org
+                if org_id:
+                    tenant_obj = sync_svc.sync_tenant_from_org(
+                        clerk_org_id=str(org_id),
+                        name=payload.get("org_name") or payload.get("org_slug") or str(org_id),
+                        slug=payload.get("org_slug"),
+                        source="lazy_sync",
+                    )
+                    db.flush()
+
+                    # 3. Ensure user has a role for this tenant
+                    sync_svc.sync_membership(
+                        clerk_user_id=str(user_id),
+                        clerk_org_id=str(org_id),
+                        role=org_role or "org:member",
+                        source="lazy_sync",
+                    )
+
+                    # Resolve active_tenant_id to the internal Tenant.id.
+                    # _resolve_tenant_from_db returns the Clerk org_id when
+                    # the user didn't exist yet, but TenantGuard looks up
+                    # by Tenant.id (a UUID), not clerk_org_id.
+                    active_tenant_id = tenant_obj.id
+                    tenant_context = TenantContext(
+                        tenant_id=active_tenant_id,
+                        user_id=str(user_id),
+                        roles=roles if isinstance(roles, list) else [],
+                        org_id=str(org_id),
+                        allowed_tenants=allowed_tenants if allowed_tenants else None,
+                        billing_tier=billing_tier,
+                    )
+
+                db.commit()
+
                 guard = TenantGuard(db)
                 authz_result = guard.enforce_authorization(
                     clerk_user_id=str(user_id),
