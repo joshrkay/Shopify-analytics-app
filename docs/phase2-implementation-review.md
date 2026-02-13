@@ -660,3 +660,185 @@ Subphase 2.3 is complete when:
 3. Catalog widget conversion and layout placement are deterministic and tested.
 4. Dirty-state lifecycle is correct from edit through successful save.
 5. Undo/redo and existing builder/configurator flows remain regression-safe.
+
+## Subphase 2.4 gap-closure plan (Step 1 gallery + FE↔BE verification)
+
+This section expands **Subphase 2.4** into an execution plan focused on making Step 1 (`Select Reports`) verifiably connected from UI components through hooks/services to backend endpoints.
+
+### Objective
+
+Deliver a fully tested Step 1 experience where category filtering, widget selection, and toolbar actions are validated across the full frontend stack and tied to real backend API contracts (not mock-only behavior).
+
+---
+
+### Scope of FE ↔ BE connectivity in Subphase 2.4
+
+Step 1 touches backend connectivity through:
+
+1. **Widget catalog load**
+   - `WidgetGallery`/`CategorySidebar` should load categories + items from `useWidgetCatalog`.
+   - `useWidgetCatalog` must resolve through `getWidgetCatalog` → templates endpoint (`/api/v1/templates`).
+
+2. **Step 1 preview/navigation readiness**
+   - Selected widget state should be context-driven and accurately reflected in `SelectedWidgetsList` and “Continue to Layout”.
+
+3. **Toolbar backend actions (if enabled in Step 1)**
+   - Save/Duplicate actions should call dashboard mutation hooks and send payloads matching API contract.
+
+---
+
+### Confirmed 2.4 gaps to close
+
+1. **Component-level test matrix is incomplete**
+   - Requested coverage for `WidgetCatalogCard`, `CategorySidebar`, `SelectedWidgetsList`, `BuilderStepNav`, `BuilderToolbar`, and `WidgetGallery` integration is not yet complete.
+
+2. **Route-level FE ↔ BE verification is fragmented**
+   - Service/hook tests exist, but there is no single Step 1 integration contract asserting component render + endpoint usage + context state transitions in one flow.
+
+3. **Mutation linkage from toolbar requires explicit contract tests**
+   - Save/Duplicate CTA paths need assertions for request payload shape and endpoint invocation semantics.
+
+4. **Error/degraded-mode UX is under-specified**
+   - Need explicit behavior for catalog API failures (empty/error states + retry + no stale misleading UI).
+
+---
+
+### Target architecture for the “correct fix”
+
+Use a **layered verification model** so failures are diagnosable:
+
+1. **Component contracts** (UI behavior correctness)
+2. **Hook/service contracts** (data fetching + endpoint wiring)
+3. **Page-level integration** (Step 1 user flow across context + API)
+4. **Regression gates** (legacy builder views still work)
+
+---
+
+### Implementation plan (sequenced)
+
+#### Step 1 — Complete Step 1 component contracts
+
+Add/complete unit tests for:
+
+- `WidgetCatalogCard`
+  - render fields, selectable/added states, disabled re-add behavior.
+- `CategorySidebar`
+  - renders canonical categories, active styling, selection callback.
+- `SelectedWidgetsList`
+  - empty state vs selected list, remove action, continue CTA visibility.
+- `BuilderStepNav`
+  - active/completed/disabled visuals and guarded step transitions.
+- `BuilderToolbar`
+  - name edit propagation, widget count, save/duplicate/preview callbacks.
+
+Acceptance criteria:
+- All Step 1 UI contracts are independently tested and deterministic.
+
+#### Step 2 — Add Step 1 integration contract test
+
+Create a `WidgetGallery.integration` suite that verifies one cohesive flow:
+
+1. `WidgetGallery` mounts inside `DashboardBuilderContext`.
+2. Catalog loads from backend templates contract (through hook/service layer).
+3. Category filter updates visible widgets.
+4. Selecting a card updates selected list and context state.
+5. Removing from selected list resets card state.
+6. Continue CTA triggers transition to Step 2 only when selection exists.
+
+Acceptance criteria:
+- Test proves UI→hook→service→endpoint wiring and context sync in one path.
+
+#### Step 3 — Verify toolbar mutation contracts from Step 1
+
+Add integration tests for toolbar actions:
+
+- Save in create mode calls create mutation with expected payload.
+- Save in edit mode calls update mutation with expected payload.
+- Duplicate action calls duplicate mutation with expected ID/name strategy.
+- Loading/error states surface correctly in button UX.
+
+Acceptance criteria:
+- Toolbar CTA behavior is contract-tested against mutation hooks.
+
+#### Step 4 — Add degraded-mode and retry behavior tests
+
+Add tests for backend failure classes during catalog load:
+
+- 401/403: user-facing authorization error path.
+- 5xx/network failure: empty/error state with retry affordance.
+- Retry success path restores card grid and selection capability.
+
+Acceptance criteria:
+- Users are never shown stale success UI when catalog load fails.
+
+#### Step 5 — Route-level and regression verification
+
+Add/expand route integration tests for `/dashboards/wizard` Step 1:
+
+- page renders sidebar + gallery + selected panel + toolbar.
+- existing dashboard builder/list views still render (regression).
+
+Acceptance criteria:
+- Step 1 works at route level and does not regress legacy builder pages.
+
+---
+
+### FE ↔ BE verification checklist for Subphase 2.4
+
+Use this checklist before marking 2.4 complete:
+
+1. **Endpoint usage**
+   - Catalog requests resolve to `/api/v1/templates` through service layer.
+   - No Step 1 code path uses hardcoded widget arrays as authoritative source.
+
+2. **Payload contract**
+   - Toolbar save/duplicate requests use expected dashboard mutation payload shape.
+
+3. **State consistency**
+   - UI selected state, context selected state, and CTA enabled state are always synchronized.
+
+4. **Guard behavior**
+   - Step navigation to `customize` is blocked with zero widgets at context/reducer layer.
+
+5. **Failure semantics**
+   - Catalog API errors produce explicit UI state (error + retry), not silent empties.
+
+---
+
+### Recommended test matrix for 2.4 completion
+
+1. **Unit tests (Step 1 components)**
+   - Card/sidebar/selected list/step nav/toolbar contracts.
+
+2. **Integration tests (Step 1 assembly)**
+   - WidgetGallery full flow with context + backend fetch wiring.
+
+3. **Mutation contract tests**
+   - Save/Duplicate behavior from toolbar with create/edit mode branches.
+
+4. **Regression tests**
+   - Existing builder/list/dashboard pages unaffected.
+
+5. **Optional e2e smoke**
+   - `/dashboards/wizard` → select widgets → continue to Step 2.
+
+---
+
+### Low-risk PR slicing for 2.4
+
+1. **PR 1: Step 1 component test completion**
+2. **PR 2: WidgetGallery integration + backend wiring assertions**
+3. **PR 3: Toolbar mutation contracts + error/retry UX tests**
+4. **PR 4: route-level regression + cleanup**
+
+---
+
+### Definition of done for Subphase 2.4
+
+Subphase 2.4 is complete when:
+
+1. Step 1 UI components have comprehensive contract tests.
+2. Widget gallery is verified end-to-end through UI → hook → service → backend endpoint.
+3. Toolbar save/duplicate actions are payload-verified and regression-tested.
+4. Error/retry behavior is explicit and tested for backend failures.
+5. Route-level Step 1 flow works without regressing existing builder experiences.
