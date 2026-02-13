@@ -208,6 +208,12 @@ export async function getWidgetPreview(
     if (isApiError(err) && (err.status === 401 || err.status === 403)) {
       throw err;
     }
+    console.error('Failed to fetch widget preview from backend API', {
+      widgetId,
+      datasetName: resolvedDatasetName,
+      chartType,
+      error: err,
+    });
     return toFallbackPreviewData(widgetId, chartType, true, 'api_error');
   }
 }

@@ -147,6 +147,78 @@ describe('widget catalog backend wiring integration', () => {
     expect(preview.series?.[0]).toEqual({ label: '2025-01-01', value: 100 });
   });
 
+
+  it('falls back with api_error and logs diagnostic context on non-auth preview failures', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    global.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith('/api/v1/templates')) {
+        return {
+          ok: true,
+          json: async () => ({
+            templates: [
+              {
+                id: 'tpl-1',
+                name: 'Template',
+                description: 'desc',
+                category: 'sales',
+                thumbnail_url: null,
+                layout_json: {},
+                reports_json: [
+                  {
+                    name: 'Sales by day',
+                    description: 'desc',
+                    chart_type: 'bar',
+                    dataset_name: 'sales_daily',
+                    config_json: {
+                      metrics: [{ column: 'revenue', aggregation: 'SUM', label: 'Revenue' }],
+                      dimensions: ['date'],
+                      time_range: '30',
+                      time_grain: 'P1D',
+                      filters: [],
+                      display: { show_legend: true },
+                    },
+                  },
+                ],
+                required_datasets: ['sales_daily'],
+                min_billing_tier: 'starter',
+                sort_order: 1,
+                is_active: true,
+              },
+            ],
+            total: 1,
+          }),
+        } as Response;
+      }
+
+      if (url.endsWith('/api/datasets/preview')) {
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ detail: 'Server exploded' }),
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    }) as any;
+
+    const catalog = await getWidgetCatalog();
+    const preview = await getWidgetPreview(catalog[0].id);
+
+    expect(preview.isFallback).toBe(true);
+    expect(preview.fallbackReason).toBe('api_error');
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Failed to fetch widget preview from backend API',
+      expect.objectContaining({
+        widgetId: catalog[0].id,
+        datasetName: 'sales_daily',
+        chartType: 'bar',
+      }),
+    );
+  });
+
   it('propagates auth errors from preview endpoint instead of silently falling back', async () => {
     global.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);

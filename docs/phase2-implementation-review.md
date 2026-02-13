@@ -406,7 +406,66 @@ Acceptance criteria:
 4. **Optional backend contract tests**
    - JSON-schema/OpenAPI assertion for `/api/datasets/preview` request/response fields used by frontend.
 
+### FE ↔ BE linkage verification checklist (execution-ready)
+
+Use this checklist while implementing and in CI to verify the connection is truly live and not mock-only:
+
+1. **Endpoint consistency gates**
+   - Grep check for stale route usage (must be zero matches): `/api/v1/datasets/preview`.
+   - Positive checks for canonical route usage: `/api/datasets/preview` and `/api/v1/templates`.
+
+2. **Request payload integrity checks**
+   - Assert preview requests always include `dataset_name` (resolved from UI selection before API call).
+   - Assert `metrics` is non-empty for chart/table previews; otherwise return deterministic fallback reason `missing_metrics`.
+   - Assert request body shape matches `ChartPreviewRequest` across all call sites.
+
+3. **Response mapping integrity checks**
+   - KPI widgets: first numeric value extraction is deterministic (with explicit zero fallback).
+   - Chart widgets: dimension/value selection is deterministic when columns are sparse or reordered.
+   - Table widgets: rows are passed through without schema mutation.
+
+4. **Failure semantics checks**
+   - 401/403 must surface to caller (no silent fallback).
+   - 400/404/5xx must produce fallback preview with explicit `fallbackReason` and error logging context (widgetId, datasetName, chartType).
+   - Hook state must expose `error`, `isFallback`, and `fallbackReason` so UI can label sample-mode previews.
+
+5. **Test suite requirements (non-mocked confidence)**
+   - Service-level contract tests verify URL/method/body and mapping behavior for success + failure classes.
+   - Hook integration tests verify hook → service → fetch path for templates and preview endpoints.
+   - Regression tests confirm existing builder/report flows are unaffected.
+
 ---
+
+### Implementation sequencing to close remaining 2.2 gaps
+
+1. **P0 route/contract hardening**
+   - Centralize preview/templates route constants and enforce usage in all services.
+   - Add static contract test that fails if deprecated preview route string appears in source.
+
+2. **P0 visibility and diagnostics**
+   - Log non-auth preview failures with structured context in `widgetCatalogApi` before fallback conversion.
+   - Ensure UI badges/sample labels are driven by `isFallback` + `fallbackReason`.
+
+3. **P1 transformer robustness**
+   - Isolate request/response transformers as pure functions and expand edge-case fixtures (empty columns, multi-metric responses, non-numeric values).
+
+4. **P1 backend compatibility validation**
+   - Add backend-facing fixture tests mirroring current `/api/datasets/preview` behavior and expected frontend mapping outputs.
+
+5. **P2 observability improvements**
+   - Capture fallback-rate metric by reason (`missing_dataset`, `missing_metrics`, `api_error`) to detect backend regressions early.
+
+---
+
+
+### Execution update (implemented in this cycle)
+
+Completed to tighten FE ↔ BE coupling for Subphase 2.2:
+
+1. Added canonical API route constants (`API_ROUTES`) and migrated templates + datasets preview consumers to use shared constants.
+2. Added non-auth preview failure diagnostics (`console.error` with widget/dataset/chart context) before fallback conversion.
+3. Added contract tests to prevent regression to deprecated `/api/v1/datasets/preview` route usage.
+4. Extended backend integration tests to verify 5xx preview failures produce deterministic `api_error` fallback and emit diagnostics.
 
 ### Prioritized backlog (2.2-specific)
 
@@ -426,3 +485,178 @@ Subphase 2.2 is complete when:
 2. Request/response mappings are explicit, typed, and edge-case-tested.
 3. Fallback behavior is intentional, visible to users, and observable to developers.
 4. Test coverage includes successful, degraded, and failure paths without relying only on simplistic mocks.
+
+## Subphase 2.3 gap-closure plan (builder context + reducer alignment)
+
+This section expands **Subphase 2.3** into an implementation plan focused on fixing the architecture deviation and ensuring wizard state is integrated through the existing builder context patterns.
+
+### Objective
+
+Align wizard state management with the existing `DashboardBuilderContext` reducer/action architecture so Step 1→2→3 flow, dirty tracking, and save mutations are deterministic, testable, and regression-safe.
+
+---
+
+### Confirmed gaps to fix
+
+1. **Reducer pattern deviation**
+   - Current implementation exposes wizard behavior through stateful handlers, but the requested constraint is to extend the established reducer/action model.
+
+2. **State shape drift and split ownership**
+   - Wizard state fields are present, but ownership is partially fragmented across helper state and context values.
+   - This increases risk of state desync between step navigation, widget selection, and save payload.
+
+3. **Guard logic not centrally enforced**
+   - Step guards (`select` → `customize`/`preview`) should be reducer-enforced transitions, not just UI-level checks.
+
+4. **Coverage below requested 2.3 matrix**
+   - Existing tests validate core wizard behavior, but do not yet fully cover reducer transition invariants, integration with save mutations, and undo/redo interactions.
+
+---
+
+### Architecture target (what “correct fix” looks like)
+
+Use a **single source of truth in reducer state** with explicit wizard actions that participate in the same state transition model as existing builder actions.
+
+#### Reducer action set to implement/normalize
+
+- `SET_BUILDER_STEP`
+- `SET_SELECTED_CATEGORY`
+- `ADD_CATALOG_WIDGET`
+- `REMOVE_WIDGET`
+- `SET_DASHBOARD_NAME`
+- `RESET_WIZARD`
+- `MARK_DIRTY`
+- `MARK_CLEAN`
+
+Each action should:
+- be typed,
+- update state immutably,
+- preserve undo/redo semantics where applicable,
+- and maintain layout/widget invariants.
+
+---
+
+### Implementation plan (sequenced)
+
+#### Step 1 — Consolidate wizard state into reducer-owned state
+
+- Move/normalize wizard fields under reducer-managed state shape:
+  - `currentStep`
+  - `selectedCategory`
+  - `selectedCatalogItems` (or deterministic derivation from widgets)
+  - `dashboardName`
+  - `isDirty`
+- Remove parallel state ownership where reducer already has equivalent source data.
+
+Acceptance criteria:
+- Context value derives wizard state from reducer state only.
+- No duplicated step/category/name dirty flags outside reducer path.
+
+#### Step 2 — Enforce transition and guard rules in reducer
+
+- Implement guard behavior in reducer transitions:
+  - block `SET_BUILDER_STEP('customize' | 'preview')` when no selected widgets.
+  - keep current step unchanged on invalid transition.
+- Keep UI controls as convenience guards, but make reducer the authoritative gate.
+
+Acceptance criteria:
+- Invalid transition dispatches are safely ignored with deterministic state.
+- Navigation logic is consistent across all callers (buttons, toolbar, deep links).
+
+#### Step 3 — Normalize catalog-item → widget conversion path
+
+- Centralize conversion logic for `ADD_CATALOG_WIDGET` in one pure helper:
+  - unique widget id creation,
+  - default size/layout placement,
+  - optional duplicate behavior policy (allow multiple instances or dedupe by catalog id).
+- Ensure added widgets are fully compatible with existing configurator and save payload types.
+
+Acceptance criteria:
+- Added widgets are immediately renderable in Step 2 and Step 3.
+- Conversion is deterministic and unit-tested.
+
+#### Step 4 — Wire dirty-state lifecycle to mutation outcomes
+
+- Mark dirty on state-changing actions (name, add/remove, size/position/config edits).
+- Mark clean only after successful create/update mutation completion.
+- Ensure reset/create-new flows clear dirty and restore default wizard state.
+
+Acceptance criteria:
+- Unsaved-changes guard is triggered only when meaningful changes exist.
+- Successful save always resets `isDirty`.
+
+#### Step 5 — Validate undo/redo + wizard action interplay
+
+- Define which wizard actions participate in history:
+  - include: add/remove widget, resize/reposition/config changes.
+  - optional: step changes (typically excluded from undo history).
+- Verify wizard dispatches do not corrupt existing history stack semantics.
+
+Acceptance criteria:
+- Undo/redo remains stable after wizard actions.
+- No history stack corruption or lost widget state after step changes.
+
+#### Step 6 — Expand 2.3 test suite to contract level
+
+Add/expand tests to cover requested matrix with reducer-first assertions:
+
+1. **Reducer transition tests**
+   - all wizard actions and invalid-transition guard behavior.
+2. **Context integration tests**
+   - full flow: select → customize → preview → save.
+3. **Mutation linkage tests**
+   - create vs update mode, payload shape, dirty reset.
+4. **Regression tests**
+   - legacy builder tests, report configurator flow, undo/redo behavior.
+
+Acceptance criteria:
+- 2.3 contract tests pass with no skips.
+- Existing builder regression tests remain green.
+
+---
+
+### Test matrix for 2.3 completion
+
+1. **Unit (reducer + pure helpers)**
+   - transition correctness,
+   - guard enforcement,
+   - conversion/layout determinism,
+   - dirty toggling.
+
+2. **Context integration**
+   - wizard step transitions,
+   - state projection through context selectors,
+   - save mutation invocation and post-save cleanup.
+
+3. **Cross-feature regression**
+   - report configurator modal open/edit/save cycle,
+   - undo/redo stack behavior,
+   - legacy builder page behavior.
+
+4. **Optional smoke/e2e**
+   - route-level wizard happy path in create and edit mode.
+
+---
+
+### Recommended PR slicing (low-risk path)
+
+1. **PR 1: reducer action normalization**
+   - introduce/align wizard action types + reducer handling only.
+2. **PR 2: conversion and dirty lifecycle hardening**
+   - add pure helpers + mutation-coupled dirty reset.
+3. **PR 3: test matrix completion**
+   - reducer/context/integration/regression coverage additions.
+4. **PR 4: cleanup and deprecation removal**
+   - remove redundant state paths and dead wizard handlers.
+
+---
+
+### Definition of done for Subphase 2.3
+
+Subphase 2.3 is complete when:
+
+1. Wizard state transitions are reducer-owned and action-driven.
+2. Guard logic is enforced in reducer, not only in UI components.
+3. Catalog widget conversion and layout placement are deterministic and tested.
+4. Dirty-state lifecycle is correct from edit through successful save.
+5. Undo/redo and existing builder/configurator flows remain regression-safe.
