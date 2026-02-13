@@ -116,6 +116,7 @@ class EmbedUser:
         roles: list[str],
         allowed_tenants: list[str],
         billing_tier: str = "free",
+        internal_user_id: Optional[str] = None,
     ):
         self.id = user_id
         self.username = user_id
@@ -124,6 +125,7 @@ class EmbedUser:
         self.allowed_tenants = allowed_tenants if allowed_tenants else [tenant_id]
         self.billing_tier = billing_tier
         self.is_agency_user = len(self.allowed_tenants) > 1
+        self.internal_user_id = internal_user_id
 
         # Flask-Login interface
         self.is_authenticated = True
@@ -301,6 +303,7 @@ def authenticate_embed_request():
         roles=payload.get("roles", []),
         allowed_tenants=payload.get("allowed_tenants", []),
         billing_tier=payload.get("billing_tier", "free"),
+        internal_user_id=payload.get("internal_user_id"),
     )
 
     # Validate tenant_id is in allowed_tenants (runtime guard)
@@ -325,6 +328,8 @@ def authenticate_embed_request():
     g.tenant_id = user.tenant_id
     g.allowed_tenants = user.allowed_tenants
     g.rls_filter = payload.get("rls_filter")
+    g.analytics_user_id = payload.get("internal_user_id")
+    g.explore_guardrail_bypass = payload.get("explore_guardrail_bypass")
     if not g.rls_filter:
         g.rls_filter = "1=0"  # Safe default if claim is missing
 

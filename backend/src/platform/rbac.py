@@ -148,6 +148,10 @@ def has_role(tenant_context: TenantContext, role: Role) -> bool:
     return role.value in [r.lower() for r in tenant_context.roles]
 
 
+def has_any_role(tenant_context: TenantContext, roles: list[Role]) -> bool:
+    """Check if tenant context has any of the specified roles."""
+    role_values = {role.value for role in roles}
+    return any(r.lower() in role_values for r in tenant_context.roles)
 def _try_emit_rbac_denied(
     tenant_id: str,
     user_id: str,
@@ -391,6 +395,38 @@ def require_role(role: Role) -> Callable:
     return decorator
 
 
+def require_any_role(*roles: Role) -> Callable:
+    """
+    Decorator to require any of the specified roles.
+
+    Raises 403 if the user doesn't have at least one required role.
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            request = _get_request_from_args(args, kwargs)
+            tenant_context = get_tenant_context(request)
+            if not has_any_role(tenant_context, list(roles)):
+                logger.warning(
+                    "Role check failed (any)",
+                    extra={
+                        "tenant_id": tenant_context.tenant_id,
+                        "user_id": tenant_context.user_id,
+                        "required_roles": [role.value for role in roles],
+                        "user_roles": tenant_context.roles,
+                        "path": request.url.path,
+                        "method": request.method,
+                    }
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to perform this action"
+                )
+            return await func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
 def require_admin(func: Callable) -> Callable:
     """
     Shorthand decorator for admin-only endpoints.
@@ -398,6 +434,57 @@ def require_admin(func: Callable) -> Callable:
     Equivalent to @require_role(Role.ADMIN).
     """
     return require_role(Role.ADMIN)(func)
+
+
+# ---------------------------------------------------------------------------
+# Guardrail bypass approval helpers (Story 5.4)
+# ---------------------------------------------------------------------------
+
+GUARDRAIL_BYPASS_APPROVER_ROLES = frozenset([
+    Role.ANALYTICS_TECH_LEAD,
+    Role.SECURITY_ENGINEER,
+])
+
+
+def can_approve_guardrail_bypass(roles: list[str]) -> bool:
+    """
+    Check if any of the given roles can approve guardrail bypass requests.
+
+    Approvers: Analytics Tech Lead or Security Engineer.
+    """
+    for role_name in roles:
+        try:
+            role = Role(role_name.lower())
+            if role in GUARDRAIL_BYPASS_APPROVER_ROLES:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def require_guardrail_bypass_approver(func: Callable) -> Callable:
+    """Decorator to require guardrail bypass approver role."""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        request = _get_request_from_args(args, kwargs)
+        tenant_context = get_tenant_context(request)
+        if not can_approve_guardrail_bypass(tenant_context.roles):
+            logger.warning(
+                "Guardrail bypass approval denied",
+                extra={
+                    "tenant_id": tenant_context.tenant_id,
+                    "user_id": tenant_context.user_id,
+                    "user_roles": tenant_context.roles,
+                    "path": request.url.path,
+                    "method": request.method,
+                }
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Guardrail bypass approver access required"
+            )
+        return await func(*args, **kwargs)
+    return wrapper
 
 
 def check_permission_or_raise(

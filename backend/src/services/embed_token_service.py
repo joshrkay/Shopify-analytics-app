@@ -41,6 +41,8 @@ class EmbedTokenPayload(BaseModel):
     roles: list[str]
     allowed_tenants: list[str]
     dashboard_id: Optional[str] = None
+    internal_user_id: Optional[str] = None
+    explore_guardrail_bypass: Optional[dict] = None
     jti: Optional[str] = None
     access_surface: Optional[str] = None
     iss: str
@@ -109,6 +111,7 @@ class EmbedTokenService:
         tenant_context: TenantContext,
         dashboard_id: str,
         lifetime_minutes: Optional[int] = None,
+        extra_claims: Optional[dict] = None,
         access_surface: Literal["shopify_embed", "external_app"] = "shopify_embed",
     ) -> EmbedTokenResult:
         """
@@ -149,6 +152,10 @@ class EmbedTokenService:
             # RLS filter context
             "rls_filter": tenant_context.get_rls_clause(),
         }
+        if extra_claims:
+            for key, value in extra_claims.items():
+                if key not in payload:
+                    payload[key] = value
 
         token = jwt.encode(
             payload,
@@ -278,6 +285,7 @@ class EmbedTokenService:
         old_token: str,
         tenant_context: TenantContext,
         lifetime_minutes: Optional[int] = None,
+        extra_claims: Optional[dict] = None,
     ) -> EmbedTokenResult:
         """
         Refresh an embed token.
@@ -368,6 +376,7 @@ class EmbedTokenService:
             tenant_context=tenant_context,
             dashboard_id=dashboard_id,
             lifetime_minutes=lifetime_minutes,
+            extra_claims=extra_claims,
             access_surface=access_surface,
         )
 
