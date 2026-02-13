@@ -56,6 +56,19 @@ describe('SelectedWidgetsList', () => {
     expect(onRemoveWidget).toHaveBeenCalledWith('r-1');
   });
 
+
+  it('falls back to untitled widget label when name is missing', () => {
+    renderWithPolaris(
+      <SelectedWidgetsList
+        selectedWidgets={[{ id: 'r-2', name: '   ' } as any]}
+        onRemoveWidget={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Untitled widget')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove Untitled widget' })).toBeInTheDocument();
+  });
+
   it('shows continue button and callback', async () => {
     const user = userEvent.setup();
     const onContinueToLayout = vi.fn();

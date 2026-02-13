@@ -58,6 +58,21 @@ describe('WidgetGallery', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+
+  it('renders error without retry button when retry handler is not provided', () => {
+    renderWithPolaris(
+      <WidgetGallery
+        items={[]}
+        selectedIds={new Set()}
+        onAddWidget={vi.fn()}
+        error="Failed to load widget catalog"
+      />,
+    );
+
+    expect(screen.getByText('Failed to load widget catalog')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
   it('renders cards and add action', async () => {
     const user = userEvent.setup();
     const onAddWidget = vi.fn();

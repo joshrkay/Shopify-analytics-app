@@ -24,22 +24,26 @@ export function SelectedWidgetsList({
       </Text>
 
       <BlockStack gap="200">
-        {selectedWidgets.map((widget) => (
-          <InlineStack key={widget.id} align="space-between" blockAlign="center">
-            <Text as="span" variant="bodySm" truncate tone="subdued">
-              {widget.name}
-            </Text>
-            {onRemoveWidget && (
-              <Button
-                icon={XIcon}
-                size="slim"
-                variant="plain"
-                onClick={() => onRemoveWidget(widget.id)}
-                accessibilityLabel={`Remove ${widget.name}`}
-              />
-            )}
-          </InlineStack>
-        ))}
+        {selectedWidgets.map((widget, index) => {
+          const widgetName = widget.name?.trim() || 'Untitled widget';
+
+          return (
+            <InlineStack key={`${widget.id}-${index}`} align="space-between" blockAlign="center">
+              <Text as="span" variant="bodySm" truncate tone="subdued">
+                {widgetName}
+              </Text>
+              {onRemoveWidget && (
+                <Button
+                  icon={XIcon}
+                  size="slim"
+                  variant="plain"
+                  onClick={() => onRemoveWidget(widget.id)}
+                  accessibilityLabel={`Remove ${widgetName}`}
+                />
+              )}
+            </InlineStack>
+          );
+        })}
       </BlockStack>
 
       {onContinueToLayout && (
