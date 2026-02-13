@@ -395,7 +395,7 @@ async def get_entitlements(
                     feature=feature_key,
                     is_entitled=is_enabled,
                     billing_state=billing_state.value,
-                    plan_id=subscription_info.plan_id,
+                    plan_id=subscription_info.plan_id if subscription_info else None,
                     plan_name=plan_name,
                     reason=None if is_enabled else f"Feature '{feature_key}' not available on {tenant_ctx.billing_tier or 'free'} tier",
                     required_plan='growth' if not is_enabled and feature_key == BillingFeature.CUSTOM_REPORTS else None,
