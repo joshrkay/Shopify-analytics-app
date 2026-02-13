@@ -149,6 +149,10 @@ class EmbedTokenService:
             # RLS filter context
             "rls_filter": tenant_context.get_rls_clause(),
         }
+        if extra_claims:
+            for key, value in extra_claims.items():
+                if key not in payload:
+                    payload[key] = value
 
         token = jwt.encode(
             payload,
@@ -278,6 +282,7 @@ class EmbedTokenService:
         old_token: str,
         tenant_context: TenantContext,
         lifetime_minutes: Optional[int] = None,
+        extra_claims: Optional[dict] = None,
     ) -> EmbedTokenResult:
         """
         Refresh an embed token.
