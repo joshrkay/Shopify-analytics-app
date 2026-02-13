@@ -127,15 +127,40 @@ export function createHeaders(): HeadersInit {
 /**
  * Handle API response and throw on error.
  * Extracts error details from the response body.
+ * Detects HTML responses (common when the backend is unreachable
+ * and an SPA fallback serves index.html instead of JSON).
  */
 export async function handleResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const error = new Error(errorData.detail || `API error: ${response.status}`) as ApiError;
+    if (isJson) {
+      const errorData = await response.json().catch(() => ({}));
+      const error = new Error(errorData.detail || `API error: ${response.status}`) as ApiError;
+      error.status = response.status;
+      error.detail = errorData.detail;
+      throw error;
+    }
+    const error = new Error(
+      response.status === 502 || response.status === 504
+        ? 'Backend API is unreachable. Is the server running?'
+        : `API error: ${response.status}`
+    ) as ApiError;
     error.status = response.status;
-    error.detail = errorData.detail;
+    error.detail = error.message;
     throw error;
   }
+
+  if (!isJson) {
+    const error = new Error(
+      'Expected JSON from API but received HTML. The backend server may not be running, or VITE_API_URL may not be set.'
+    ) as ApiError;
+    error.status = response.status;
+    error.detail = error.message;
+    throw error;
+  }
+
   return response.json();
 }
 
