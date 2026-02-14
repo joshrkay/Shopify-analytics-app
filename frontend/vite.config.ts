@@ -17,6 +17,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    // Explicit targets to ensure Safari 14+ / Firefox 78+ compatibility.
+    // Vite 5 defaults are similar, but being explicit avoids silent regressions.
+    target: ['es2020', 'chrome87', 'firefox78', 'safari14', 'edge88'],
   },
   test: {
     globals: true,
