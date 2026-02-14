@@ -1778,7 +1778,7 @@ def emit_auth_login_success(
             user_id=user_id,
             access_surface=AccessSurface(access_surface),
             success=True,
-            metadata={
+            event_metadata={
                 "ip_address": ip_address,
                 "user_agent": user_agent,
             },
@@ -1814,7 +1814,7 @@ def emit_auth_login_failed(
             user_id=user_id,
             access_surface=AccessSurface(access_surface),
             success=False,
-            metadata={
+            event_metadata={
                 "reason": reason,
                 "ip_address": ip_address,
                 "user_agent": user_agent,
@@ -1851,7 +1851,7 @@ def emit_ga_jwt_issued(
             dashboard_id=dashboard_id,
             access_surface=AccessSurface(access_surface),
             success=True,
-            metadata={
+            event_metadata={
                 "lifetime_minutes": lifetime_minutes,
             },
             correlation_id=correlation_id or generate_correlation_id(),
@@ -1891,7 +1891,7 @@ def emit_ga_jwt_refresh(
             dashboard_id=dashboard_id,
             access_surface=AccessSurface(access_surface),
             success=success,
-            metadata=metadata,
+            event_metadata=metadata,
             correlation_id=correlation_id or generate_correlation_id(),
         )
         _write_ga_audit_event(db, event)
@@ -1922,7 +1922,7 @@ def emit_ga_jwt_revoked(
             user_id=user_id,
             access_surface=AccessSurface.EXTERNAL_APP,
             success=True,
-            metadata={
+            event_metadata={
                 "reason": reason,
                 "revoked_by": revoked_by,
             },
@@ -1957,7 +1957,7 @@ def emit_dashboard_viewed_ga(
             dashboard_id=dashboard_id,
             access_surface=AccessSurface(access_surface),
             success=True,
-            metadata={},
+            event_metadata={},
             correlation_id=correlation_id or generate_correlation_id(),
         )
         _write_ga_audit_event(db, event)
@@ -1990,7 +1990,7 @@ def emit_dashboard_load_failed_ga(
             dashboard_id=dashboard_id,
             access_surface=AccessSurface(access_surface),
             success=False,
-            metadata={
+            event_metadata={
                 "reason": reason,
             },
             correlation_id=correlation_id or generate_correlation_id(),
@@ -2025,7 +2025,7 @@ def emit_dashboard_access_denied_ga(
             dashboard_id=dashboard_id,
             access_surface=AccessSurface(access_surface),
             success=False,
-            metadata={
+            event_metadata={
                 "reason": reason,
             },
             correlation_id=correlation_id or generate_correlation_id(),
