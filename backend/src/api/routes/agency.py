@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from src.platform.tenant_context import TenantContext, get_tenant_context
 from src.platform.rbac import require_any_permission, has_permission
 from src.constants.permissions import Permission, Role, has_multi_tenant_access
+from src.api.dependencies.request_db import get_request_db_session
 from src.services.billing_entitlements import (
     BillingEntitlementsService,
     BillingFeature,
@@ -86,19 +87,6 @@ class UserContextResponse(BaseModel):
 
 
 # --- Helper Functions ---
-
-
-def _get_db_session(request: Request) -> Session:
-    """Get database session from request state."""
-    db = getattr(request.state, 'db', None)
-    if not db:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database session not available"
-        )
-    return db
-
-
 def _require_agency_user(tenant_context: TenantContext) -> None:
     """Validate that the user is an agency user."""
     if not tenant_context.is_agency_user:
@@ -225,7 +213,7 @@ async def list_assigned_stores(request: Request):
     tenant_context = get_tenant_context(request)
     _require_agency_user(tenant_context)
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request, require_state=True)
 
     # Get entitlements for max stores
     entitlements = BillingEntitlementsService(db, tenant_context.tenant_id)
@@ -275,7 +263,7 @@ async def switch_active_store(request: Request, body: SwitchStoreRequest):
     # Validate access to target tenant
     _validate_tenant_access(tenant_context, target_tenant_id)
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request, require_state=True)
 
     # Generate new JWT with updated tenant context
     new_token = _generate_jwt_token(
@@ -365,7 +353,7 @@ async def get_cross_store_summary(request: Request):
     tenant_context = get_tenant_context(request)
     _require_agency_user(tenant_context)
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request, require_state=True)
 
     # Query aggregated metrics across all allowed tenants
     from src.models.store import ShopifyStore

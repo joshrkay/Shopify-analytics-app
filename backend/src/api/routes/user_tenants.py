@@ -23,7 +23,7 @@ from fastapi import APIRouter, Request, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.platform.tenant_context import TenantContext, get_tenant_context
-from src.database.session import get_db_session_sync
+from src.api.dependencies.request_db import get_request_db_session
 from src.services.tenant_members_service import TenantMembersService
 from src.services.tenant_selection_service import (
     TenantSelectionService,
@@ -98,17 +98,6 @@ class SetActiveTenantResponse(BaseModel):
     )
 
 
-# --- Helper Functions ---
-
-
-def _get_db_session(request: Request):
-    """Get database session from request state or create new one."""
-    db = getattr(request.state, 'db', None)
-    if not db:
-        db = next(get_db_session_sync())
-    return db
-
-
 # --- API Endpoints ---
 
 
@@ -129,7 +118,7 @@ async def get_my_tenants(request: Request):
     """
     tenant_context = get_tenant_context(request)
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request)
     try:
         service = TenantMembersService(db)
         tenants = service.get_user_tenants(tenant_context.user_id)
@@ -201,7 +190,7 @@ async def check_my_tenant_access(request: Request, tenant_id: str):
     """
     tenant_context = get_tenant_context(request)
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request)
     try:
         service = TenantMembersService(db)
 
@@ -261,7 +250,7 @@ async def get_my_context(request: Request):
     """
     tenant_context = get_tenant_context(request)
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request)
     try:
         service = TenantMembersService(db)
         tenants = service.get_user_tenants(tenant_context.user_id)
@@ -333,7 +322,7 @@ async def set_active_tenant(request: Request, body: SetActiveTenantRequest):
         ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("User-Agent")
 
-    db = _get_db_session(request)
+    db = get_request_db_session(request)
     try:
         service = TenantSelectionService(db)
 
