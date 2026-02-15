@@ -14,6 +14,13 @@
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
+const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
+
+interface FetchRetryOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+}
+
 /**
  * API error with status and detail information.
  */
@@ -122,6 +129,61 @@ export function createHeaders(): HeadersInit {
     headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function getRetryDelayMs(response: Response | null, attempt: number, baseDelayMs: number): number {
+  const retryAfter = response?.headers.get('retry-after');
+  if (retryAfter) {
+    const parsedSeconds = Number.parseInt(retryAfter, 10);
+    if (!Number.isNaN(parsedSeconds) && parsedSeconds >= 0) {
+      return parsedSeconds * 1000;
+    }
+  }
+
+  return baseDelayMs * 2 ** attempt;
+}
+
+/**
+ * Fetch wrapper with retry support for transient gateway/availability failures.
+ *
+ * Retries are intentionally limited to idempotent GET requests.
+ */
+export async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  options: FetchRetryOptions = {},
+): Promise<Response> {
+  const method = (init.method || 'GET').toUpperCase();
+  if (method !== 'GET') {
+    return fetch(input, init);
+  }
+
+  const maxRetries = options.maxRetries ?? 2;
+  const baseDelayMs = options.baseDelayMs ?? 300;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      const response = await fetch(input, init);
+      if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === maxRetries) {
+        return response;
+      }
+
+      await sleep(getRetryDelayMs(response, attempt, baseDelayMs));
+    } catch (error) {
+      if (!(error instanceof TypeError) || attempt === maxRetries) {
+        throw error;
+      }
+      await sleep(baseDelayMs * 2 ** attempt);
+    }
+  }
+
+  return fetch(input, init);
 }
 
 /**
