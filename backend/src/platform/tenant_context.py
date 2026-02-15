@@ -439,8 +439,10 @@ class TenantContextMiddleware:
             if not user:
                 # Webhook events can lag behind first authenticated requests.
                 # Provision the same minimum records that membership webhook flow creates.
+                # skip_audit=True avoids write_audit_log_sync calling db.commit()
+                # on the shared session, which would prematurely commit partial state.
                 try:
-                    sync = ClerkSyncService(db)
+                    sync = ClerkSyncService(db, skip_audit=True)
                     sync.get_or_create_user(clerk_user_id=user_id)
                     sync.sync_tenant_from_org(
                         clerk_org_id=jwt_org_id,
@@ -490,6 +492,55 @@ class TenantContextMiddleware:
                         extra={"clerk_user_id": user_id},
                     )
                     return jwt_active_tenant_id, []
+
+            # Handle partial provisioning: User exists but Tenant/Role may not
+            # (e.g., previous lazy sync committed User via audit but failed on
+            # Tenant, or webhook created User but org webhook hasn't arrived).
+            if jwt_org_id:
+                org_tenant = db.query(Tenant).filter(
+                    Tenant.clerk_org_id == jwt_org_id,
+                    Tenant.status == TenantStatus.ACTIVE,
+                ).first()
+                if not org_tenant:
+                    try:
+                        sync = ClerkSyncService(db, skip_audit=True)
+                        sync.sync_tenant_from_org(
+                            clerk_org_id=jwt_org_id,
+                            name=f"Tenant {jwt_org_id[-8:]}",
+                            source="lazy_sync",
+                        )
+                        sync.sync_membership(
+                            clerk_user_id=user_id,
+                            clerk_org_id=jwt_org_id,
+                            role=jwt_org_role or "org:member",
+                            source="lazy_sync",
+                            assigned_by="system",
+                        )
+                        db.commit()
+                    except SAIntegrityError:
+                        db.rollback()
+                    except Exception:
+                        db.rollback()
+                elif not db.query(UserTenantRole).filter(
+                    UserTenantRole.user_id == user.id,
+                    UserTenantRole.tenant_id == org_tenant.id,
+                    UserTenantRole.is_active == True,
+                ).first():
+                    # Tenant exists but role doesn't — create membership
+                    try:
+                        sync = ClerkSyncService(db, skip_audit=True)
+                        sync.sync_membership(
+                            clerk_user_id=user_id,
+                            clerk_org_id=jwt_org_id,
+                            role=jwt_org_role or "org:member",
+                            source="lazy_sync",
+                            assigned_by="system",
+                        )
+                        db.commit()
+                    except SAIntegrityError:
+                        db.rollback()
+                    except Exception:
+                        db.rollback()
 
             # Get all active tenant roles for this user
             roles = db.query(UserTenantRole).filter(
