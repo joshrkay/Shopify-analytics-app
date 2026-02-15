@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 MIGRATIONS = [
     "001_create_identity_tables.sql",
     "002_add_super_admin.sql",
+    "audit_logs_schema.sql",
     "0055_rbac_roles.sql",
     "0056_agency_access.sql",
     "0057_access_revocation.sql",
