@@ -58,24 +58,28 @@ class ClerkSyncService:
     # Valid sources for user events
     _SOURCES_USER = frozenset({"webhook", "lazy_sync"})
     # Valid sources for role events
-    _SOURCES_ROLE = frozenset({"clerk_webhook", "agency_grant", "admin_grant"})
+    _SOURCES_ROLE = frozenset({"clerk_webhook", "agency_grant", "admin_grant", "lazy_sync"})
     # Valid sources for tenant events
-    _SOURCES_TENANT = frozenset({"clerk_webhook", "admin_action"})
+    _SOURCES_TENANT = frozenset({"clerk_webhook", "admin_action", "lazy_sync"})
     # Valid reasons for role revocation
     _REASONS_REVOKE = frozenset({"membership_deleted", "admin_action", "user_deleted"})
     # Valid reasons for tenant deactivation
     _REASONS_DEACTIVATE = frozenset({"org_deleted", "admin_action", "billing"})
 
-    def __init__(self, session: Session, correlation_id: Optional[str] = None):
+    def __init__(self, session: Session, correlation_id: Optional[str] = None, skip_audit: bool = False):
         """
         Initialize sync service with database session.
 
         Args:
             session: SQLAlchemy session for database operations
             correlation_id: Optional correlation ID for audit event tracing
+            skip_audit: If True, skip audit event emission. Used by lazy sync
+                to avoid premature commits from write_audit_log_sync which
+                calls db.commit() on the shared session.
         """
         self.session = session
         self.correlation_id = correlation_id or str(uuid.uuid4())
+        self._skip_audit = skip_audit
 
     # =========================================================================
     # User Sync Methods
@@ -150,7 +154,7 @@ class ClerkSyncService:
             )
 
         # Emit audit event for new users only
-        if is_new_user:
+        if is_new_user and not self._skip_audit:
             self._emit_user_first_seen(
                 clerk_user_id=clerk_user_id,
                 source=source,
@@ -414,7 +418,7 @@ class ClerkSyncService:
             )
 
         # Emit audit event for new tenants only
-        if is_new_tenant:
+        if is_new_tenant and not self._skip_audit:
             self._emit_tenant_created(
                 tenant_id=tenant.id,
                 clerk_org_id=clerk_org_id,
@@ -547,7 +551,7 @@ class ClerkSyncService:
             )
 
             # Emit role_assigned for reactivation
-            if was_reactivated:
+            if was_reactivated and not self._skip_audit:
                 self._emit_role_assigned(
                     clerk_user_id=clerk_user_id,
                     tenant_id=tenant.id,
@@ -576,7 +580,7 @@ class ClerkSyncService:
         )
 
         # Emit audit events for new membership
-        if is_new_membership:
+        if is_new_membership and not self._skip_audit:
             # Emit user_linked_to_tenant
             self._emit_user_linked_to_tenant(
                 clerk_user_id=clerk_user_id,
