@@ -78,6 +78,10 @@ const POLL_INTERVALS = {
   critical: 15000,  // 15 seconds
 };
 
+// Error backoff: stop polling after consecutive failures to avoid flooding a down backend
+const MAX_CONSECUTIVE_ERRORS = 5;
+const ERROR_BACKOFF_BASE_MS = 30000; // 30s base, doubles each error
+
 const initialState: DataHealthState = {
   health: null,
   activeIncidents: [],
@@ -108,6 +112,9 @@ export function DataHealthProvider({
   const [state, setState] = useState<DataHealthState>(initialState);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPendingRef = useRef(false);
+  const consecutiveErrorsRef = useRef(0);
+  // Ref breaks circular dependency: schedulePoll ↔ refresh ↔ schedulePoll
+  const schedulePollRef = useRef<() => void>(() => {});
 
   // Fetch health and incidents data
   const fetchData = useCallback(async () => {
@@ -122,6 +129,7 @@ export function DataHealthProvider({
         getMerchantDataHealth().catch(() => null),
       ]);
 
+      consecutiveErrorsRef.current = 0;
       setState({
         health: healthData,
         activeIncidents: incidentsData.incidents,
@@ -133,7 +141,15 @@ export function DataHealthProvider({
         merchantHealth: merchantHealthData,
       });
     } catch (err) {
-      console.error('Failed to fetch data health:', err);
+      consecutiveErrorsRef.current += 1;
+      const errorCount = consecutiveErrorsRef.current;
+      if (errorCount <= 3) {
+        console.error('Failed to fetch data health:', err);
+      } else if (errorCount === MAX_CONSECUTIVE_ERRORS) {
+        console.error(
+          `Data health polling paused after ${errorCount} consecutive failures. Use refresh() to retry.`
+        );
+      }
       setState((prev) => ({
         ...prev,
         loading: false,
@@ -144,10 +160,47 @@ export function DataHealthProvider({
     }
   }, []);
 
-  // Public refresh function
+  // Get poll interval based on current health status
+  const getPollInterval = useCallback((): number => {
+    const status = state.health?.overall_status;
+    return POLL_INTERVALS[status || 'healthy'];
+  }, [state.health?.overall_status]);
+
+  // Schedule next poll (with error backoff)
+  const schedulePoll = useCallback(() => {
+    if (disablePolling) return;
+
+    // Clear existing timeout
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+    }
+
+    // Stop polling after too many consecutive errors to avoid flooding a down backend
+    const errorCount = consecutiveErrorsRef.current;
+    if (errorCount >= MAX_CONSECUTIVE_ERRORS) {
+      return;
+    }
+
+    // Use exponential backoff when errors are occurring
+    const baseInterval = getPollInterval();
+    const interval = errorCount > 0
+      ? Math.min(ERROR_BACKOFF_BASE_MS * Math.pow(2, errorCount - 1), 300000)
+      : baseInterval;
+
+    pollTimeoutRef.current = setTimeout(() => {
+      fetchData().then(() => schedulePollRef.current());
+    }, interval);
+  }, [disablePolling, getPollInterval, fetchData]);
+
+  // Keep ref in sync so callbacks always use the latest schedulePoll
+  schedulePollRef.current = schedulePoll;
+
+  // Public refresh function (resets error backoff)
   const refresh = useCallback(async () => {
+    consecutiveErrorsRef.current = 0;
     setState((prev) => ({ ...prev, loading: true, error: null }));
     await fetchData();
+    schedulePollRef.current();
   }, [fetchData]);
 
   // Acknowledge incident
@@ -165,37 +218,16 @@ export function DataHealthProvider({
     }
   }, []);
 
-  // Get poll interval based on current health status
-  const getPollInterval = useCallback((): number => {
-    const status = state.health?.overall_status;
-    return POLL_INTERVALS[status || 'healthy'];
-  }, [state.health?.overall_status]);
-
-  // Schedule next poll
-  const schedulePoll = useCallback(() => {
-    if (disablePolling) return;
-
-    // Clear existing timeout
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
-    }
-
-    const interval = getPollInterval();
-    pollTimeoutRef.current = setTimeout(() => {
-      fetchData().then(schedulePoll);
-    }, interval);
-  }, [disablePolling, getPollInterval, fetchData]);
-
   // Initial fetch and polling setup
   useEffect(() => {
-    fetchData().then(schedulePoll);
+    fetchData().then(() => schedulePollRef.current());
 
     return () => {
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current);
       }
     };
-  }, [fetchData, schedulePoll]);
+  }, [fetchData]);
 
   // Pause polling when tab is hidden
   useEffect(() => {
@@ -210,7 +242,7 @@ export function DataHealthProvider({
         }
       } else {
         // Resume polling and fetch immediately
-        fetchData().then(schedulePoll);
+        fetchData().then(() => schedulePollRef.current());
       }
     };
 
@@ -218,7 +250,7 @@ export function DataHealthProvider({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [disablePolling, fetchData, schedulePoll]);
+  }, [disablePolling, fetchData]);
 
   // Computed values
   const hasStaleData = (state.health?.stale_count ?? 0) > 0;

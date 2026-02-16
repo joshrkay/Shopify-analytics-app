@@ -183,11 +183,18 @@ def _emit_tenant_violation_audit_log(
             )
         finally:
             db.close()
-    except ImportError:
-        # Audit module not available - log to fallback
-        logger.error(
-            "Audit module not available for tenant violation logging",
-            extra={"correlation_id": correlation_id}
+    except (ImportError, RuntimeError, Exception) as exc:
+        # DB unavailable or audit module missing — log but never crash.
+        # This is critical: this function is called INSIDE except handlers
+        # in the middleware. An unhandled exception here would mask the
+        # original 503 error and turn it into an unhandled 500.
+        logger.debug(
+            "Audit log skipped (DB or audit module unavailable)",
+            extra={
+                "correlation_id": correlation_id,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
         )
 
     return correlation_id
@@ -893,15 +900,21 @@ class TenantContextMiddleware:
                             )
                     finally:
                         _db.close()
-                except Exception:
+                except Exception as resolve_err:
                     logger.warning(
                         "Failed to resolve Clerk org_id to tenant_id",
-                        extra={"clerk_org_id": str(org_id)},
+                        extra={
+                            "clerk_org_id": str(org_id),
+                            "error_type": type(resolve_err).__name__,
+                        },
                         exc_info=True,
                     )
                     return JSONResponse(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        content={"detail": "Authorization service temporarily unavailable. Please retry."},
+                        content={
+                            "detail": "Authorization service temporarily unavailable. Please retry.",
+                            "error_type": type(resolve_err).__name__,
+                        },
                     )
 
             # CRITICAL: tenant_id = org_id (from JWT, never from request)
@@ -1015,6 +1028,7 @@ class TenantContextMiddleware:
                         "tenant_id": active_tenant_id,
                         "path": request.url.path,
                     },
+                    exc_info=True,
                 )
                 _emit_tenant_violation_audit_log(
                     request=request,
@@ -1023,9 +1037,17 @@ class TenantContextMiddleware:
                     user_id=str(user_id),
                     org_id=str(org_id),
                 )
+                # Include the exception class in the response so admins can
+                # diagnose whether this is a config issue (RuntimeError from
+                # missing DATABASE_URL), a connectivity issue (OperationalError),
+                # or a schema issue (ProgrammingError).
+                error_hint = type(db_error).__name__
                 return JSONResponse(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    content={"detail": "Authorization service temporarily unavailable. Please retry."},
+                    content={
+                        "detail": "Authorization service temporarily unavailable. Please retry.",
+                        "error_type": error_hint,
+                    },
                 )
             finally:
                 if db is not None:
