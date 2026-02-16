@@ -915,13 +915,15 @@ class TenantContextMiddleware:
             #
             # Clerk org_ids typically start with "org_".  If we detect that
             # pattern AND the value was NOT resolved to a DB tenant id, do a
-            # quick lookup to resolve it.  If that also fails, return a clear
-            # 403 instead of letting TenantGuard crash.
+            # quick lookup to resolve it.  If that also fails, attempt a
+            # second-chance provisioning before returning 403.
             # -----------------------------------------------------------------
             if active_tenant_id == str(org_id) and str(org_id).startswith("org_"):
-                # Still the raw Clerk org_id — attempt one more lookup
+                # Still the raw Clerk org_id — attempt one more lookup + provision
                 try:
                     from src.models.tenant import Tenant, TenantStatus
+                    from src.services.clerk_sync_service import ClerkSyncService
+                    from sqlalchemy.exc import IntegrityError as SAIntegrityError
                     _db = next(get_db_session_sync())
                     try:
                         _t = _db.query(Tenant).filter(
@@ -931,18 +933,93 @@ class TenantContextMiddleware:
                         if _t:
                             active_tenant_id = _t.id
                         else:
-                            logger.warning(
-                                "No tenant record for Clerk org — user may need to complete onboarding",
+                            # Tenant doesn't exist — second-chance provisioning.
+                            # The first lazy sync in _resolve_tenant_from_db may
+                            # have failed. Try once more with a fresh session.
+                            logger.info(
+                                "Tenant not found — attempting second-chance provisioning",
                                 extra={"clerk_org_id": str(org_id), "user_id": str(user_id)},
                             )
-                            return JSONResponse(
-                                status_code=status.HTTP_403_FORBIDDEN,
-                                content={
-                                    "detail": "Your organization has not been provisioned yet. "
-                                    "Please try again in a moment or contact support.",
-                                    "error_code": "TENANT_NOT_PROVISIONED",
-                                },
-                            )
+                            try:
+                                sync = ClerkSyncService(_db, skip_audit=True)
+                                sync.get_or_create_user(clerk_user_id=str(user_id))
+                                sync.sync_tenant_from_org(
+                                    clerk_org_id=str(org_id),
+                                    name=f"Tenant {str(org_id)[-8:]}",
+                                    source="lazy_sync",
+                                )
+                                sync.sync_membership(
+                                    clerk_user_id=str(user_id),
+                                    clerk_org_id=str(org_id),
+                                    role=org_role or "org:member",
+                                    source="lazy_sync",
+                                    assigned_by="system",
+                                )
+                                _db.commit()
+                                # Re-query to get the tenant id
+                                _t = _db.query(Tenant).filter(
+                                    Tenant.clerk_org_id == str(org_id),
+                                    Tenant.status == TenantStatus.ACTIVE,
+                                ).first()
+                                if _t:
+                                    active_tenant_id = _t.id
+                                    logger.info(
+                                        "Second-chance provisioning succeeded",
+                                        extra={
+                                            "clerk_org_id": str(org_id),
+                                            "tenant_id": _t.id,
+                                        },
+                                    )
+                                else:
+                                    logger.error(
+                                        "Tenant not found after second-chance provisioning commit",
+                                        extra={"clerk_org_id": str(org_id)},
+                                    )
+                                    return JSONResponse(
+                                        status_code=status.HTTP_403_FORBIDDEN,
+                                        content={
+                                            "detail": "Your organization has not been provisioned yet. "
+                                            "Please try again in a moment or contact support.",
+                                            "error_code": "TENANT_NOT_PROVISIONED",
+                                        },
+                                    )
+                            except SAIntegrityError:
+                                _db.rollback()
+                                # Concurrent create — re-query
+                                _t = _db.query(Tenant).filter(
+                                    Tenant.clerk_org_id == str(org_id),
+                                    Tenant.status == TenantStatus.ACTIVE,
+                                ).first()
+                                if _t:
+                                    active_tenant_id = _t.id
+                                else:
+                                    return JSONResponse(
+                                        status_code=status.HTTP_403_FORBIDDEN,
+                                        content={
+                                            "detail": "Your organization has not been provisioned yet. "
+                                            "Please try again in a moment or contact support.",
+                                            "error_code": "TENANT_NOT_PROVISIONED",
+                                        },
+                                    )
+                            except Exception as provision_err:
+                                _db.rollback()
+                                logger.error(
+                                    "Second-chance provisioning failed",
+                                    extra={
+                                        "clerk_org_id": str(org_id),
+                                        "error": str(provision_err),
+                                        "error_type": type(provision_err).__name__,
+                                    },
+                                    exc_info=True,
+                                )
+                                return JSONResponse(
+                                    status_code=status.HTTP_403_FORBIDDEN,
+                                    content={
+                                        "detail": "Your organization has not been provisioned yet. "
+                                        "Please try again in a moment or contact support.",
+                                        "error_code": "TENANT_NOT_PROVISIONED",
+                                    },
+                                )
                     finally:
                         _db.close()
                 except Exception as resolve_err:
