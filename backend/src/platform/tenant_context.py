@@ -676,6 +676,14 @@ class TenantContextMiddleware:
         except Exception as db_err:
             # DB tables may not exist (e.g. in-memory SQLite test env) or
             # other DB-level errors. Fall back to JWT-based tenant resolution.
+            # CRITICAL: rollback before closing so the connection is returned
+            # to the pool in a clean state. Without this, a DataError leaves
+            # the connection dirty and subsequent queries on pooled connections
+            # will also fail with DataError.
+            try:
+                db.rollback()
+            except Exception:
+                pass
             logger.warning(
                 "DB lookup failed in _resolve_tenant_from_db, falling back to JWT",
                 extra={"error": str(db_err), "error_type": type(db_err).__name__},
@@ -946,6 +954,17 @@ class TenantContextMiddleware:
                         },
                         exc_info=True,
                     )
+                    # DataError = type mismatch, not transient → 403 (stop retries)
+                    # Other errors (connection lost, etc.) → 503 (may be transient)
+                    if isinstance(resolve_err, DataError):
+                        return JSONResponse(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            content={
+                                "detail": "Your organization has not been fully provisioned yet. "
+                                "Please try again in a moment or contact support.",
+                                "error_code": "TENANT_NOT_PROVISIONED",
+                            },
+                        )
                     return JSONResponse(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                         content={
@@ -1108,14 +1127,16 @@ class TenantContextMiddleware:
                     },
                     exc_info=True,
                 )
+                # DataError is NOT transient — retrying will fail the same way.
+                # Return 403 so the frontend stops retrying.
                 return JSONResponse(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    status_code=status.HTTP_403_FORBIDDEN,
                     content={
                         "detail": (
-                            "Authorization failed due to a data format issue. "
-                            "Your account may still be provisioning — please retry in a moment."
+                            "Your organization has not been fully provisioned yet. "
+                            "Please try again in a moment or contact support."
                         ),
-                        "error_type": "DataError",
+                        "error_code": "TENANT_NOT_PROVISIONED",
                     },
                 )
             except (RuntimeError, ValueError, SQLAlchemyError) as db_error:

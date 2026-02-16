@@ -95,8 +95,8 @@ export function AgencyProvider({
 
   // Initialize user context and fetch stores (with retry for 5xx errors)
   const initialize = useCallback(async (retryCount = 0) => {
-    // Skip if circuit breaker is open (backend is down)
-    if (retryCount === 0 && isBackendDown()) {
+    // Skip if circuit breaker is open (backend is down) — check on EVERY attempt
+    if (isBackendDown()) {
       setState((prev) => ({
         ...prev,
         loading: false,

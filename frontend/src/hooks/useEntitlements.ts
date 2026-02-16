@@ -33,8 +33,8 @@ export function useEntitlements(isTokenReady = true): UseEntitlementsResult {
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadEntitlements = useCallback(async (retryCount = 0) => {
-    // Skip if circuit breaker is open
-    if (retryCount === 0 && isBackendDown()) {
+    // Skip if circuit breaker is open — check on EVERY attempt
+    if (isBackendDown()) {
       setLoading(false);
       setError('Backend unavailable — waiting for recovery');
       return;
