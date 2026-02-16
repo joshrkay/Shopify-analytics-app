@@ -535,8 +535,18 @@ class TenantContextMiddleware:
                         db.commit()
                     except SAIntegrityError:
                         db.rollback()
-                    except Exception:
+                    except Exception as partial_sync_err:
                         db.rollback()
+                        logger.warning(
+                            "Partial provisioning failed (tenant+role sync for existing user)",
+                            extra={
+                                "error": str(partial_sync_err),
+                                "error_type": type(partial_sync_err).__name__,
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                            exc_info=True,
+                        )
                 elif not db.query(UserTenantRole).filter(
                     UserTenantRole.user_id == user.id,
                     UserTenantRole.tenant_id == org_tenant.id,
@@ -555,8 +565,18 @@ class TenantContextMiddleware:
                         db.commit()
                     except SAIntegrityError:
                         db.rollback()
-                    except Exception:
+                    except Exception as role_sync_err:
                         db.rollback()
+                        logger.warning(
+                            "Partial provisioning failed (role-only sync for existing user+tenant)",
+                            extra={
+                                "error": str(role_sync_err),
+                                "error_type": type(role_sync_err).__name__,
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                            exc_info=True,
+                        )
 
             # Get all active tenant roles for this user
             roles = db.query(UserTenantRole).filter(
@@ -981,6 +1001,7 @@ class TenantContextMiddleware:
                                             "detail": "Your organization has not been provisioned yet. "
                                             "Please try again in a moment or contact support.",
                                             "error_code": "TENANT_NOT_PROVISIONED",
+                                            "retryable": True,
                                         },
                                     )
                             except SAIntegrityError:
@@ -999,6 +1020,7 @@ class TenantContextMiddleware:
                                             "detail": "Your organization has not been provisioned yet. "
                                             "Please try again in a moment or contact support.",
                                             "error_code": "TENANT_NOT_PROVISIONED",
+                                            "retryable": True,
                                         },
                                     )
                             except Exception as provision_err:
@@ -1018,6 +1040,7 @@ class TenantContextMiddleware:
                                         "detail": "Your organization has not been provisioned yet. "
                                         "Please try again in a moment or contact support.",
                                         "error_code": "TENANT_NOT_PROVISIONED",
+                                        "retryable": True,
                                     },
                                 )
                     finally:
@@ -1040,6 +1063,7 @@ class TenantContextMiddleware:
                                 "detail": "Your organization has not been fully provisioned yet. "
                                 "Please try again in a moment or contact support.",
                                 "error_code": "TENANT_NOT_PROVISIONED",
+                                "retryable": False,
                             },
                         )
                     return JSONResponse(
@@ -1090,6 +1114,7 @@ class TenantContextMiddleware:
                             "Please try again in a moment or contact support."
                         ),
                         "error_code": "TENANT_NOT_PROVISIONED",
+                        "retryable": True,
                     },
                 )
 
@@ -1214,6 +1239,7 @@ class TenantContextMiddleware:
                             "Please try again in a moment or contact support."
                         ),
                         "error_code": "TENANT_NOT_PROVISIONED",
+                        "retryable": False,
                     },
                 )
             except (RuntimeError, ValueError, SQLAlchemyError) as db_error:

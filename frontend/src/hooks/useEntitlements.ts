@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchEntitlements, type EntitlementsResponse } from '../services/entitlementsApi';
-import { isBackendDown, isApiError } from '../services/apiUtils';
+import { isBackendDown, isApiError, isProvisioningError } from '../services/apiUtils';
 
 interface UseEntitlementsResult {
   entitlements: EntitlementsResponse | null;
@@ -47,16 +47,21 @@ export function useEntitlements(isTokenReady = true): UseEntitlementsResult {
       setEntitlements(data);
     } catch (err) {
       const is5xx = isApiError(err) && err.status >= 500;
-      // Retry up to 2 times on server errors with exponential backoff
-      if (is5xx && retryCount < 2) {
-        const delay = Math.min(5000 * Math.pow(2, retryCount), 30000);
+      const isProvisioning = isProvisioningError(err);
+      // Retry on server errors (up to 2x) or provisioning errors (up to 4x)
+      const maxRetries = isProvisioning ? 4 : 2;
+      if ((is5xx || isProvisioning) && retryCount < maxRetries) {
+        const base = isProvisioning ? 3000 : 5000;
+        const delay = Math.min(base * Math.pow(2, retryCount), 30000);
         retryTimeoutRef.current = setTimeout(() => loadEntitlements(retryCount + 1), delay);
         return;
       }
       if (retryCount === 0) {
         console.error('Failed to fetch entitlements:', err);
       }
-      setError(err instanceof Error ? err.message : 'Failed to load entitlements');
+      setError(isProvisioning
+        ? 'Your organization is being set up. This usually takes a few seconds.'
+        : (err instanceof Error ? err.message : 'Failed to load entitlements'));
     } finally {
       setLoading(false);
     }

@@ -28,6 +28,8 @@ interface FetchRetryOptions {
 export interface ApiError extends Error {
   status: number;
   detail: string;
+  errorCode?: string;
+  retryable?: boolean;
 }
 
 /**
@@ -36,6 +38,19 @@ export interface ApiError extends Error {
  */
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof Error && 'status' in err && 'detail' in err;
+}
+
+/**
+ * Check if an API error is a retryable tenant provisioning error.
+ * The backend returns error_code "TENANT_NOT_PROVISIONED" when the org
+ * is still being set up (webhook lag, lazy sync in progress).
+ */
+export function isProvisioningError(err: unknown): boolean {
+  return (
+    isApiError(err) &&
+    err.status === 403 &&
+    err.errorCode === 'TENANT_NOT_PROVISIONED'
+  );
 }
 
 /**
@@ -271,10 +286,14 @@ export async function handleResponse<T>(response: Response): Promise<T> {
     }
 
     let errorDetail = `API error: ${response.status}`;
+    let errorCode: string | undefined;
+    let retryable: boolean | undefined;
 
     if (isJson) {
       const errorData = await response.json().catch(() => ({}));
       errorDetail = errorData.detail || errorDetail;
+      errorCode = errorData.error_code;
+      retryable = errorData.retryable;
       // For 503s, include the backend error type for diagnostics
       if (response.status === 503 && errorData.error_type) {
         errorDetail += ` (${errorData.error_type})`;
@@ -289,6 +308,8 @@ export async function handleResponse<T>(response: Response): Promise<T> {
     const error = new Error(errorDetail) as ApiError;
     error.status = response.status;
     error.detail = errorDetail;
+    error.errorCode = errorCode;
+    error.retryable = retryable;
     throw error;
   }
 
@@ -355,6 +376,9 @@ export function getErrorMessage(err: unknown, fallback: string): string {
     case 402:
       return err.detail || 'You\'ve reached your plan limit. Upgrade to continue.';
     case 403:
+      if (err.errorCode === 'TENANT_NOT_PROVISIONED') {
+        return 'Your organization is being set up. This usually takes a few seconds.';
+      }
       return err.detail || 'You don\'t have permission to perform this action.';
     case 404:
       return err.detail || 'The requested resource was not found.';
