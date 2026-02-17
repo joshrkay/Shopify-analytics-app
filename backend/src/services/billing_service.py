@@ -205,6 +205,9 @@ class BillingService:
         This creates a pending subscription and returns a URL
         where the merchant can approve the charge.
 
+        For free plans, no Shopify store record is required — the
+        subscription is activated directly without Shopify checkout.
+
         Args:
             plan_id: Plan ID to subscribe to
             return_url: URL to redirect after approval (optional)
@@ -215,12 +218,25 @@ class BillingService:
 
         Raises:
             PlanNotFoundError: If plan doesn't exist
-            StoreNotFoundError: If store not found for tenant
+            StoreNotFoundError: If store not found for tenant (paid plans only)
             SubscriptionError: If subscription creation fails
         """
-        # Get store and plan
-        store = self._get_store()
         plan = self._get_plan(plan_id)
+
+        # Determine billing interval based on plan
+        price_cents = plan.price_monthly_cents
+
+        if not price_cents:
+            # Free plan — no Shopify checkout needed.
+            # Try to find a store, but don't require one.
+            store = self.db.query(ShopifyStore).filter(
+                ShopifyStore.tenant_id == self.tenant_id,
+                ShopifyStore.status == "active"
+            ).first()
+            return await self._activate_free_plan(store, plan)
+
+        # Paid plans require a store (for access token)
+        store = self._get_store()
 
         # Check for existing active subscription
         existing_sub = self._get_active_subscription()
@@ -232,13 +248,7 @@ class BillingService:
                 "new_plan_id": plan_id
             })
 
-        # Determine billing interval based on plan
         interval = BillingInterval.EVERY_30_DAYS
-        price_cents = plan.price_monthly_cents
-
-        if not price_cents:
-            # Free plan - no checkout needed
-            return await self._activate_free_plan(store, plan)
 
         price_amount = price_cents / 100.0
 
@@ -322,8 +332,13 @@ class BillingService:
             })
             raise SubscriptionError(f"Failed to create checkout: {e}")
 
-    async def _activate_free_plan(self, store: ShopifyStore, plan: Plan) -> CheckoutResult:
-        """Activate a free plan without Shopify checkout."""
+    async def _activate_free_plan(self, store: Optional[ShopifyStore], plan: Plan) -> CheckoutResult:
+        """Activate a free plan without Shopify checkout.
+
+        Args:
+            store: ShopifyStore record, or None if tenant has no store yet.
+            plan: The free plan to activate.
+        """
         subscription = self._create_or_update_subscription(
             store=store,
             plan=plan,
@@ -333,7 +348,7 @@ class BillingService:
 
         self._log_billing_event(
             event_type=BillingEventType.SUBSCRIPTION_CREATED.value,
-            store_id=store.id,
+            store_id=store.id if store else None,
             subscription_id=subscription.id,
             to_plan_id=plan.id,
             amount_cents=0,
@@ -350,18 +365,34 @@ class BillingService:
 
     def _create_or_update_subscription(
         self,
-        store: ShopifyStore,
+        store: Optional[ShopifyStore],
         plan: Plan,
         status: SubscriptionStatus,
         shopify_subscription_id: Optional[str] = None,
         current_period_end: Optional[datetime] = None
     ) -> Subscription:
-        """Create or update subscription record."""
-        # Check for existing subscription
-        existing = self.db.query(Subscription).filter(
-            Subscription.tenant_id == self.tenant_id,
-            Subscription.store_id == store.id
-        ).first()
+        """Create or update subscription record.
+
+        Args:
+            store: ShopifyStore, or None for free plans without a store.
+            plan: Plan to subscribe to.
+            status: Initial subscription status.
+            shopify_subscription_id: Shopify subscription GID (paid plans).
+            current_period_end: Billing period end date.
+        """
+        store_id = store.id if store else None
+
+        # Check for existing subscription — match by store_id when available,
+        # otherwise by tenant_id alone (free plans without a store).
+        if store_id:
+            existing = self.db.query(Subscription).filter(
+                Subscription.tenant_id == self.tenant_id,
+                Subscription.store_id == store_id
+            ).first()
+        else:
+            existing = self.db.query(Subscription).filter(
+                Subscription.tenant_id == self.tenant_id
+            ).first()
 
         now = datetime.now(timezone.utc)
 
@@ -372,13 +403,16 @@ class BillingService:
             existing.shopify_subscription_id = shopify_subscription_id or existing.shopify_subscription_id
             existing.current_period_start = now
             existing.current_period_end = current_period_end
+            # If a store was later linked, update store_id
+            if store_id and not existing.store_id:
+                existing.store_id = store_id
             return existing
         else:
             # Create new
             subscription = Subscription(
                 id=str(uuid.uuid4()),
                 tenant_id=self.tenant_id,
-                store_id=store.id,
+                store_id=store_id,
                 plan_id=plan.id,
                 status=status.value,
                 shopify_subscription_id=shopify_subscription_id,
