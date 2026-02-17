@@ -6,6 +6,28 @@ function toTimestamp(dateValue: string): number {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
+export interface CheckoutRequest {
+  plan_id: string;
+  return_url?: string;
+  test_mode?: boolean;
+}
+
+export interface CheckoutResponse {
+  checkout_url: string;
+  subscription_id: string;
+  shopify_subscription_id?: string;
+  success: boolean;
+}
+
+export async function createCheckout(request: CheckoutRequest): Promise<CheckoutResponse> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(`${API_BASE_URL}/api/billing/checkout`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+  });
+  return handleResponse<CheckoutResponse>(response);
+}
 
 export async function getSubscription(): Promise<Subscription> {
   const headers = await createHeadersAsync();
