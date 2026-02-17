@@ -465,13 +465,29 @@ class TenantContextMiddleware:
                         name=f"Tenant {jwt_org_id[-8:]}",
                         source="lazy_sync",
                     )
-                    sync.sync_membership(
+                    # Explicit flush: with autoflush=False, sync_membership
+                    # queries User/Tenant by clerk_id (non-PK filter).  If
+                    # sync_tenant_from_org found an existing tenant it skips
+                    # its own flush, leaving the new User invisible to the
+                    # SELECT.  Flushing here guarantees both records are in
+                    # the DB before sync_membership looks them up.
+                    db.flush()
+                    membership = sync.sync_membership(
                         clerk_user_id=user_id,
                         clerk_org_id=jwt_org_id,
                         role=jwt_org_role or "org:member",
                         source="lazy_sync",
                         assigned_by="system",
                     )
+                    if membership is None:
+                        logger.warning(
+                            "sync_membership returned None during lazy sync "
+                            "(user or tenant not found after flush)",
+                            extra={
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                        )
                     db.commit()
                 except SAIntegrityError:
                     # A concurrent request or webhook already created the
@@ -525,6 +541,8 @@ class TenantContextMiddleware:
                             name=f"Tenant {jwt_org_id[-8:]}",
                             source="lazy_sync",
                         )
+                        # Flush to ensure new tenant is visible for sync_membership
+                        db.flush()
                         sync.sync_membership(
                             clerk_user_id=user_id,
                             clerk_org_id=jwt_org_id,
@@ -535,8 +553,18 @@ class TenantContextMiddleware:
                         db.commit()
                     except SAIntegrityError:
                         db.rollback()
-                    except Exception:
+                    except Exception as partial_sync_err:
                         db.rollback()
+                        logger.warning(
+                            "Partial provisioning failed (tenant+role sync for existing user)",
+                            extra={
+                                "error": str(partial_sync_err),
+                                "error_type": type(partial_sync_err).__name__,
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                            exc_info=True,
+                        )
                 elif not db.query(UserTenantRole).filter(
                     UserTenantRole.user_id == user.id,
                     UserTenantRole.tenant_id == org_tenant.id,
@@ -555,8 +583,18 @@ class TenantContextMiddleware:
                         db.commit()
                     except SAIntegrityError:
                         db.rollback()
-                    except Exception:
+                    except Exception as role_sync_err:
                         db.rollback()
+                        logger.warning(
+                            "Partial provisioning failed (role-only sync for existing user+tenant)",
+                            extra={
+                                "error": str(role_sync_err),
+                                "error_type": type(role_sync_err).__name__,
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                            exc_info=True,
+                        )
 
             # Get all active tenant roles for this user
             roles = db.query(UserTenantRole).filter(
@@ -948,6 +986,9 @@ class TenantContextMiddleware:
                                     name=f"Tenant {str(org_id)[-8:]}",
                                     source="lazy_sync",
                                 )
+                                # Flush user+tenant so sync_membership can find
+                                # them (session uses autoflush=False).
+                                _db.flush()
                                 sync.sync_membership(
                                     clerk_user_id=str(user_id),
                                     clerk_org_id=str(org_id),
@@ -981,6 +1022,7 @@ class TenantContextMiddleware:
                                             "detail": "Your organization has not been provisioned yet. "
                                             "Please try again in a moment or contact support.",
                                             "error_code": "TENANT_NOT_PROVISIONED",
+                                            "retryable": True,
                                         },
                                     )
                             except SAIntegrityError:
@@ -999,6 +1041,7 @@ class TenantContextMiddleware:
                                             "detail": "Your organization has not been provisioned yet. "
                                             "Please try again in a moment or contact support.",
                                             "error_code": "TENANT_NOT_PROVISIONED",
+                                            "retryable": True,
                                         },
                                     )
                             except Exception as provision_err:
@@ -1018,6 +1061,7 @@ class TenantContextMiddleware:
                                         "detail": "Your organization has not been provisioned yet. "
                                         "Please try again in a moment or contact support.",
                                         "error_code": "TENANT_NOT_PROVISIONED",
+                                        "retryable": True,
                                     },
                                 )
                     finally:
@@ -1040,6 +1084,7 @@ class TenantContextMiddleware:
                                 "detail": "Your organization has not been fully provisioned yet. "
                                 "Please try again in a moment or contact support.",
                                 "error_code": "TENANT_NOT_PROVISIONED",
+                                "retryable": False,
                             },
                         )
                     return JSONResponse(
@@ -1090,6 +1135,7 @@ class TenantContextMiddleware:
                             "Please try again in a moment or contact support."
                         ),
                         "error_code": "TENANT_NOT_PROVISIONED",
+                        "retryable": True,
                     },
                 )
 
@@ -1214,6 +1260,7 @@ class TenantContextMiddleware:
                             "Please try again in a moment or contact support."
                         ),
                         "error_code": "TENANT_NOT_PROVISIONED",
+                        "retryable": False,
                     },
                 )
             except (RuntimeError, ValueError, SQLAlchemyError) as db_error:

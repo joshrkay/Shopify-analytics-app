@@ -29,7 +29,7 @@ import {
   type ActiveIncidentBanner,
   type MerchantDataHealthResponse,
 } from '../services/syncHealthApi';
-import { isBackendDown, resetCircuitBreaker } from '../services/apiUtils';
+import { isBackendDown, resetCircuitBreaker, isProvisioningError } from '../services/apiUtils';
 import type { MerchantHealthState } from '../utils/data_health_copy';
 
 // =============================================================================
@@ -144,9 +144,13 @@ export function DataHealthProvider({
         merchantHealth: merchantHealthData,
       });
     } catch (err) {
+      const isProvisioning = isProvisioningError(err);
       consecutiveErrorsRef.current += 1;
       const errorCount = consecutiveErrorsRef.current;
-      if (errorCount <= 3) {
+      if (isProvisioning && errorCount <= 6) {
+        // Provisioning in progress — keep polling, don't log as error
+        console.info('Organization provisioning in progress, will retry...');
+      } else if (errorCount <= 3) {
         console.error('Failed to fetch data health:', err);
       } else if (errorCount === MAX_CONSECUTIVE_ERRORS) {
         console.error(
@@ -156,7 +160,9 @@ export function DataHealthProvider({
       setState((prev) => ({
         ...prev,
         loading: false,
-        error: err instanceof Error ? err.message : 'Failed to fetch health data',
+        error: isProvisioning
+          ? 'Your organization is being set up. This usually takes a few seconds.'
+          : (err instanceof Error ? err.message : 'Failed to fetch health data'),
       }));
     } finally {
       isPendingRef.current = false;
