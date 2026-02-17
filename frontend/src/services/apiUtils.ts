@@ -14,12 +14,22 @@
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
+const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
+
+interface FetchRetryOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+}
+
 /**
  * API error with status and detail information.
  */
 export interface ApiError extends Error {
   status: number;
   detail: string;
+  errorCode?: string;
+  retryable?: boolean;
 }
 
 /**
@@ -28,6 +38,21 @@ export interface ApiError extends Error {
  */
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof Error && 'status' in err && 'detail' in err;
+}
+
+/**
+ * Check if an API error is a retryable tenant provisioning error.
+ * The backend returns error_code "TENANT_NOT_PROVISIONED" when the org
+ * is still being set up (webhook lag, lazy sync in progress).
+ */
+export function isProvisioningError(err: unknown): boolean {
+  if (!isApiError(err) || err.status !== 403) return false;
+  // Primary: structured error_code from backend
+  if (err.errorCode === 'TENANT_NOT_PROVISIONED') return true;
+  // Fallback: detect by detail string (works even if backend hasn't
+  // deployed the error_code change yet)
+  const detail = (err.detail || err.message || '').toLowerCase();
+  return detail.includes('not been') && detail.includes('provisioned');
 }
 
 /**
@@ -124,6 +149,130 @@ export function createHeaders(): HeadersInit {
   return headers;
 }
 
+// =============================================================================
+// Fetch Retry Helper
+// =============================================================================
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function getRetryDelayMs(
+  response: Response | null,
+  attempt: number,
+  baseDelayMs: number,
+  maxDelayMs: number,
+): number {
+  const retryAfter = response?.headers.get('retry-after');
+  if (retryAfter) {
+    const parsedSeconds = Number.parseInt(retryAfter, 10);
+    if (!Number.isNaN(parsedSeconds) && parsedSeconds >= 0) {
+      return Math.min(parsedSeconds * 1000, maxDelayMs);
+    }
+
+    const parsedDate = Date.parse(retryAfter);
+    if (!Number.isNaN(parsedDate)) {
+      const msUntilRetry = parsedDate - Date.now();
+      if (msUntilRetry > 0) {
+        return Math.min(msUntilRetry, maxDelayMs);
+      }
+    }
+  }
+
+  return Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return false;
+  }
+  return error instanceof TypeError;
+}
+
+/**
+ * Fetch wrapper with retry support for transient gateway/availability failures.
+ *
+ * Retries are intentionally limited to idempotent GET requests.
+ */
+export async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  options: FetchRetryOptions = {},
+): Promise<Response> {
+  const method = (init.method || 'GET').toUpperCase();
+  if (method !== 'GET') {
+    return fetch(input, init);
+  }
+
+  const maxRetries = options.maxRetries ?? 2;
+  const baseDelayMs = options.baseDelayMs ?? 300;
+  const maxDelayMs = options.maxDelayMs ?? 5000;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      const response = await fetch(input, init);
+      if (!RETRYABLE_STATUS_CODES.has(response.status) || attempt === maxRetries) {
+        return response;
+      }
+
+      await sleep(getRetryDelayMs(response, attempt, baseDelayMs, maxDelayMs));
+    } catch (error) {
+      if (!isRetryableNetworkError(error) || attempt === maxRetries) {
+        throw error;
+      }
+      await sleep(Math.min(baseDelayMs * 2 ** attempt, maxDelayMs));
+    }
+  }
+
+  throw new Error('fetchWithRetry exhausted retries without returning a response.');
+}
+
+// =============================================================================
+// API Circuit Breaker
+// =============================================================================
+// Tracks consecutive 5xx errors across ALL API calls. When the backend is down,
+// this prevents every context/hook from independently flooding it with requests.
+
+let _consecutiveServerErrors = 0;
+let _lastServerErrorTs = 0;
+
+/** Number of consecutive 5xx responses before the circuit opens. */
+const CIRCUIT_OPEN_THRESHOLD = 3;
+/** How long (ms) the circuit stays open before allowing a probe request. */
+const CIRCUIT_OPEN_DURATION_MS = 30_000; // 30 seconds
+
+function _recordServerError(): void {
+  _consecutiveServerErrors++;
+  _lastServerErrorTs = Date.now();
+}
+
+function _recordSuccess(): void {
+  _consecutiveServerErrors = 0;
+}
+
+/**
+ * Returns true when the backend appears down (too many consecutive 5xx errors).
+ * After CIRCUIT_OPEN_DURATION_MS, the circuit enters half-open state to allow
+ * a single probe request through.
+ */
+export function isBackendDown(): boolean {
+  if (_consecutiveServerErrors < CIRCUIT_OPEN_THRESHOLD) return false;
+  const elapsed = Date.now() - _lastServerErrorTs;
+  if (elapsed > CIRCUIT_OPEN_DURATION_MS) {
+    // Half-open: allow one request through to probe backend health
+    _consecutiveServerErrors = CIRCUIT_OPEN_THRESHOLD - 1;
+    return false;
+  }
+  return true;
+}
+
+/** Reset circuit breaker (e.g., after manual refresh action). */
+export function resetCircuitBreaker(): void {
+  _consecutiveServerErrors = 0;
+}
+
 /**
  * Handle API response and throw on error.
  * Extracts error details from the response body.
@@ -133,7 +282,14 @@ export async function handleResponse<T>(response: Response): Promise<T> {
   const isJson = contentType.includes('application/json');
 
   if (!response.ok) {
+    // Track server errors for circuit breaker
+    if (response.status >= 500) {
+      _recordServerError();
+    }
+
     let errorDetail = `API error: ${response.status}`;
+    let errorCode: string | undefined;
+    let retryable: boolean | undefined;
 
     if (isJson) {
       const errorData = await response.json().catch(() => ({}));
@@ -152,8 +308,13 @@ export async function handleResponse<T>(response: Response): Promise<T> {
     const error = new Error(errorDetail) as ApiError;
     error.status = response.status;
     error.detail = errorDetail;
+    error.errorCode = errorCode;
+    error.retryable = retryable;
     throw error;
   }
+
+  // Successful response — reset circuit breaker
+  _recordSuccess();
 
   if (!isJson) {
     const raw = await response.text().catch(() => '');
@@ -215,6 +376,9 @@ export function getErrorMessage(err: unknown, fallback: string): string {
     case 402:
       return err.detail || 'You\'ve reached your plan limit. Upgrade to continue.';
     case 403:
+      if (err.errorCode === 'TENANT_NOT_PROVISIONED') {
+        return 'Your organization is being set up. This usually takes a few seconds.';
+      }
       return err.detail || 'You don\'t have permission to perform this action.';
     case 404:
       return err.detail || 'The requested resource was not found.';

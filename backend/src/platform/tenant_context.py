@@ -38,12 +38,21 @@ import jwt
 from jwt import PyJWKClient, PyJWKClientError
 from jwt.exceptions import InvalidTokenError, DecodeError
 import json
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, DataError
 
 from src.constants.permissions import has_multi_tenant_access, RoleCategory, get_primary_role_category
 from src.database.session import get_db_session_sync
 
 logger = logging.getLogger(__name__)
+
+
+def _is_uuid_format(value: str) -> bool:
+    """Check if a string looks like a UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."""
+    try:
+        uuid.UUID(value)
+        return True
+    except (ValueError, AttributeError):
+        return False
 
 # Lazy import for TenantGuard to avoid circular imports
 # Imported at module level so it can be mocked in tests
@@ -456,13 +465,29 @@ class TenantContextMiddleware:
                         name=f"Tenant {jwt_org_id[-8:]}",
                         source="lazy_sync",
                     )
-                    sync.sync_membership(
+                    # Explicit flush: with autoflush=False, sync_membership
+                    # queries User/Tenant by clerk_id (non-PK filter).  If
+                    # sync_tenant_from_org found an existing tenant it skips
+                    # its own flush, leaving the new User invisible to the
+                    # SELECT.  Flushing here guarantees both records are in
+                    # the DB before sync_membership looks them up.
+                    db.flush()
+                    membership = sync.sync_membership(
                         clerk_user_id=user_id,
                         clerk_org_id=jwt_org_id,
                         role=jwt_org_role or "org:member",
                         source="lazy_sync",
                         assigned_by="system",
                     )
+                    if membership is None:
+                        logger.warning(
+                            "sync_membership returned None during lazy sync "
+                            "(user or tenant not found after flush)",
+                            extra={
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                        )
                     db.commit()
                 except SAIntegrityError:
                     # A concurrent request or webhook already created the
@@ -516,6 +541,8 @@ class TenantContextMiddleware:
                             name=f"Tenant {jwt_org_id[-8:]}",
                             source="lazy_sync",
                         )
+                        # Flush to ensure new tenant is visible for sync_membership
+                        db.flush()
                         sync.sync_membership(
                             clerk_user_id=user_id,
                             clerk_org_id=jwt_org_id,
@@ -526,8 +553,18 @@ class TenantContextMiddleware:
                         db.commit()
                     except SAIntegrityError:
                         db.rollback()
-                    except Exception:
+                    except Exception as partial_sync_err:
                         db.rollback()
+                        logger.warning(
+                            "Partial provisioning failed (tenant+role sync for existing user)",
+                            extra={
+                                "error": str(partial_sync_err),
+                                "error_type": type(partial_sync_err).__name__,
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                            exc_info=True,
+                        )
                 elif not db.query(UserTenantRole).filter(
                     UserTenantRole.user_id == user.id,
                     UserTenantRole.tenant_id == org_tenant.id,
@@ -546,8 +583,18 @@ class TenantContextMiddleware:
                         db.commit()
                     except SAIntegrityError:
                         db.rollback()
-                    except Exception:
+                    except Exception as role_sync_err:
                         db.rollback()
+                        logger.warning(
+                            "Partial provisioning failed (role-only sync for existing user+tenant)",
+                            extra={
+                                "error": str(role_sync_err),
+                                "error_type": type(role_sync_err).__name__,
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                            exc_info=True,
+                        )
 
             # Get all active tenant roles for this user
             roles = db.query(UserTenantRole).filter(
@@ -567,12 +614,27 @@ class TenantContextMiddleware:
 
             # Normalize JWT tenant identifiers. JWT may provide Clerk org IDs,
             # while DB authorization expects internal Tenant.id values.
+            # IMPORTANT: Only compare against Tenant.id when the value looks
+            # like a UUID to avoid DataError from type-mismatch in PostgreSQL.
             normalized_jwt_tenants = set()
             for jwt_tid in jwt_allowed_tenants:
-                mapped_tenant = db.query(Tenant).filter(
-                    Tenant.status == TenantStatus.ACTIVE,
-                    (Tenant.id == jwt_tid) | (Tenant.clerk_org_id == jwt_tid),
-                ).first()
+                try:
+                    if _is_uuid_format(jwt_tid):
+                        mapped_tenant = db.query(Tenant).filter(
+                            Tenant.status == TenantStatus.ACTIVE,
+                            (Tenant.id == jwt_tid) | (Tenant.clerk_org_id == jwt_tid),
+                        ).first()
+                    else:
+                        mapped_tenant = db.query(Tenant).filter(
+                            Tenant.status == TenantStatus.ACTIVE,
+                            Tenant.clerk_org_id == jwt_tid,
+                        ).first()
+                except DataError:
+                    db.rollback()
+                    mapped_tenant = db.query(Tenant).filter(
+                        Tenant.status == TenantStatus.ACTIVE,
+                        Tenant.clerk_org_id == jwt_tid,
+                    ).first()
                 if mapped_tenant:
                     normalized_jwt_tenants.add(mapped_tenant.id)
 
@@ -581,10 +643,23 @@ class TenantContextMiddleware:
 
             # Normalize active tenant claim (internal id or Clerk org id).
             resolved_active_tenant_id = jwt_active_tenant_id
-            mapped_active = db.query(Tenant).filter(
-                Tenant.status == TenantStatus.ACTIVE,
-                (Tenant.id == jwt_active_tenant_id) | (Tenant.clerk_org_id == jwt_active_tenant_id),
-            ).first()
+            try:
+                if _is_uuid_format(jwt_active_tenant_id):
+                    mapped_active = db.query(Tenant).filter(
+                        Tenant.status == TenantStatus.ACTIVE,
+                        (Tenant.id == jwt_active_tenant_id) | (Tenant.clerk_org_id == jwt_active_tenant_id),
+                    ).first()
+                else:
+                    mapped_active = db.query(Tenant).filter(
+                        Tenant.status == TenantStatus.ACTIVE,
+                        Tenant.clerk_org_id == jwt_active_tenant_id,
+                    ).first()
+            except DataError:
+                db.rollback()
+                mapped_active = db.query(Tenant).filter(
+                    Tenant.status == TenantStatus.ACTIVE,
+                    Tenant.clerk_org_id == jwt_active_tenant_id,
+                ).first()
             if mapped_active:
                 resolved_active_tenant_id = mapped_active.id
 
@@ -639,6 +714,14 @@ class TenantContextMiddleware:
         except Exception as db_err:
             # DB tables may not exist (e.g. in-memory SQLite test env) or
             # other DB-level errors. Fall back to JWT-based tenant resolution.
+            # CRITICAL: rollback before closing so the connection is returned
+            # to the pool in a clean state. Without this, a DataError leaves
+            # the connection dirty and subsequent queries on pooled connections
+            # will also fail with DataError.
+            try:
+                db.rollback()
+            except Exception:
+                pass
             logger.warning(
                 "DB lookup failed in _resolve_tenant_from_db, falling back to JWT",
                 extra={"error": str(db_err), "error_type": type(db_err).__name__},
@@ -870,13 +953,15 @@ class TenantContextMiddleware:
             #
             # Clerk org_ids typically start with "org_".  If we detect that
             # pattern AND the value was NOT resolved to a DB tenant id, do a
-            # quick lookup to resolve it.  If that also fails, return a clear
-            # 403 instead of letting TenantGuard crash.
+            # quick lookup to resolve it.  If that also fails, attempt a
+            # second-chance provisioning before returning 403.
             # -----------------------------------------------------------------
             if active_tenant_id == str(org_id) and str(org_id).startswith("org_"):
-                # Still the raw Clerk org_id — attempt one more lookup
+                # Still the raw Clerk org_id — attempt one more lookup + provision
                 try:
                     from src.models.tenant import Tenant, TenantStatus
+                    from src.services.clerk_sync_service import ClerkSyncService
+                    from sqlalchemy.exc import IntegrityError as SAIntegrityError
                     _db = next(get_db_session_sync())
                     try:
                         _t = _db.query(Tenant).filter(
@@ -886,18 +971,99 @@ class TenantContextMiddleware:
                         if _t:
                             active_tenant_id = _t.id
                         else:
-                            logger.warning(
-                                "No tenant record for Clerk org — user may need to complete onboarding",
+                            # Tenant doesn't exist — second-chance provisioning.
+                            # The first lazy sync in _resolve_tenant_from_db may
+                            # have failed. Try once more with a fresh session.
+                            logger.info(
+                                "Tenant not found — attempting second-chance provisioning",
                                 extra={"clerk_org_id": str(org_id), "user_id": str(user_id)},
                             )
-                            return JSONResponse(
-                                status_code=status.HTTP_403_FORBIDDEN,
-                                content={
-                                    "detail": "Your organization has not been provisioned yet. "
-                                    "Please try again in a moment or contact support.",
-                                    "error_code": "TENANT_NOT_PROVISIONED",
-                                },
-                            )
+                            try:
+                                sync = ClerkSyncService(_db, skip_audit=True)
+                                sync.get_or_create_user(clerk_user_id=str(user_id))
+                                sync.sync_tenant_from_org(
+                                    clerk_org_id=str(org_id),
+                                    name=f"Tenant {str(org_id)[-8:]}",
+                                    source="lazy_sync",
+                                )
+                                # Flush user+tenant so sync_membership can find
+                                # them (session uses autoflush=False).
+                                _db.flush()
+                                sync.sync_membership(
+                                    clerk_user_id=str(user_id),
+                                    clerk_org_id=str(org_id),
+                                    role=org_role or "org:member",
+                                    source="lazy_sync",
+                                    assigned_by="system",
+                                )
+                                _db.commit()
+                                # Re-query to get the tenant id
+                                _t = _db.query(Tenant).filter(
+                                    Tenant.clerk_org_id == str(org_id),
+                                    Tenant.status == TenantStatus.ACTIVE,
+                                ).first()
+                                if _t:
+                                    active_tenant_id = _t.id
+                                    logger.info(
+                                        "Second-chance provisioning succeeded",
+                                        extra={
+                                            "clerk_org_id": str(org_id),
+                                            "tenant_id": _t.id,
+                                        },
+                                    )
+                                else:
+                                    logger.error(
+                                        "Tenant not found after second-chance provisioning commit",
+                                        extra={"clerk_org_id": str(org_id)},
+                                    )
+                                    return JSONResponse(
+                                        status_code=status.HTTP_403_FORBIDDEN,
+                                        content={
+                                            "detail": "Your organization has not been provisioned yet. "
+                                            "Please try again in a moment or contact support.",
+                                            "error_code": "TENANT_NOT_PROVISIONED",
+                                            "retryable": True,
+                                        },
+                                    )
+                            except SAIntegrityError:
+                                _db.rollback()
+                                # Concurrent create — re-query
+                                _t = _db.query(Tenant).filter(
+                                    Tenant.clerk_org_id == str(org_id),
+                                    Tenant.status == TenantStatus.ACTIVE,
+                                ).first()
+                                if _t:
+                                    active_tenant_id = _t.id
+                                else:
+                                    return JSONResponse(
+                                        status_code=status.HTTP_403_FORBIDDEN,
+                                        content={
+                                            "detail": "Your organization has not been provisioned yet. "
+                                            "Please try again in a moment or contact support.",
+                                            "error_code": "TENANT_NOT_PROVISIONED",
+                                            "retryable": True,
+                                        },
+                                    )
+                            except Exception as provision_err:
+                                _db.rollback()
+                                logger.error(
+                                    "Second-chance provisioning failed",
+                                    extra={
+                                        "clerk_org_id": str(org_id),
+                                        "error": str(provision_err),
+                                        "error_type": type(provision_err).__name__,
+                                    },
+                                    exc_info=True,
+                                )
+                                return JSONResponse(
+                                    status_code=status.HTTP_403_FORBIDDEN,
+                                    content={
+                                        "detail": "Your organization has not been provisioned yet. "
+                                        "Please try again in a moment or contact support.",
+                                        "error_code": "TENANT_NOT_PROVISIONED",
+                                        "retryable": True,
+                                    },
+                                )
                     finally:
                         _db.close()
                 except Exception as resolve_err:
@@ -909,6 +1075,18 @@ class TenantContextMiddleware:
                         },
                         exc_info=True,
                     )
+                    # DataError = type mismatch, not transient → 403 (stop retries)
+                    # Other errors (connection lost, etc.) → 503 (may be transient)
+                    if isinstance(resolve_err, DataError):
+                        return JSONResponse(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            content={
+                                "detail": "Your organization has not been fully provisioned yet. "
+                                "Please try again in a moment or contact support.",
+                                "error_code": "TENANT_NOT_PROVISIONED",
+                                "retryable": False,
+                            },
+                        )
                     return JSONResponse(
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                         content={
@@ -931,6 +1109,36 @@ class TenantContextMiddleware:
             # =================================================================
             # DB-AS-SOURCE-OF-TRUTH AUTHORIZATION ENFORCEMENT
             # =================================================================
+            # Final safety check: if active_tenant_id is still a raw Clerk
+            # org_id (starts with "org_"), TenantGuard queries will throw
+            # DataError when PostgreSQL tries to cast it to UUID.
+            # The org_ check at line ~913 handles the common case, but if
+            # that lookup also failed, catch it here as a last resort.
+            # Note: we only reject "org_" prefixed values — other non-UUID
+            # strings (e.g. test fixtures) are allowed through since they
+            # won't hit real PostgreSQL UUID columns in test environments.
+            if str(active_tenant_id).startswith("org_") and not _is_uuid_format(active_tenant_id):
+                logger.warning(
+                    "active_tenant_id is still a raw Clerk org_id after resolution — "
+                    "cannot proceed to TenantGuard",
+                    extra={
+                        "active_tenant_id": active_tenant_id,
+                        "org_id": str(org_id),
+                        "user_id": str(user_id),
+                    },
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={
+                        "detail": (
+                            "Your organization has not been fully provisioned yet. "
+                            "Please try again in a moment or contact support."
+                        ),
+                        "error_code": "TENANT_NOT_PROVISIONED",
+                        "retryable": True,
+                    },
+                )
+
             # Verify authorization against database on every request.
             # This ensures immediate enforcement for:
             # - Tenant access revoked mid-session
@@ -952,8 +1160,11 @@ class TenantContextMiddleware:
                 )
 
                 if not authz_result.is_authorized:
-                    # Emit audit event for the enforcement
-                    guard.emit_enforcement_audit_event(request, authz_result)
+                    # Emit audit event for the enforcement (never crash on audit failure)
+                    try:
+                        guard.emit_enforcement_audit_event(request, authz_result)
+                    except Exception:
+                        logger.debug("Audit event emit failed (non-fatal)", exc_info=True)
 
                     # Emit violation audit log
                     _emit_tenant_violation_audit_log(
@@ -988,9 +1199,12 @@ class TenantContextMiddleware:
                         billing_tier=authz_result.billing_tier or billing_tier,
                     )
 
-                # Emit audit event for role changes (if any)
+                # Emit audit event for role changes (if any, never crash on audit failure)
                 if authz_result.roles_changed and authz_result.audit_action:
-                    guard.emit_enforcement_audit_event(request, authz_result)
+                    try:
+                        guard.emit_enforcement_audit_event(request, authz_result)
+                    except Exception:
+                        logger.debug("Role-change audit event failed (non-fatal)", exc_info=True)
 
                 # Resolve data-driven permissions from DB (Story 5.5.1)
                 # This populates resolved_permissions on TenantContext so RBAC
@@ -1020,6 +1234,35 @@ class TenantContextMiddleware:
                         },
                         exc_info=True,
                     )
+            except DataError as data_error:
+                # DataError = type/value mismatch in a DB query (e.g., comparing
+                # a Clerk org_id string against a UUID-typed column).  Log the
+                # details so we can identify the exact column/value involved.
+                logger.error(
+                    "DataError during authorization — likely tenant_id type mismatch: %s",
+                    str(data_error),
+                    extra={
+                        "user_id": str(user_id),
+                        "tenant_id": active_tenant_id,
+                        "tenant_id_is_uuid": _is_uuid_format(active_tenant_id),
+                        "org_id": str(org_id),
+                        "path": request.url.path,
+                    },
+                    exc_info=True,
+                )
+                # DataError is NOT transient — retrying will fail the same way.
+                # Return 403 so the frontend stops retrying.
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={
+                        "detail": (
+                            "Your organization has not been fully provisioned yet. "
+                            "Please try again in a moment or contact support."
+                        ),
+                        "error_code": "TENANT_NOT_PROVISIONED",
+                        "retryable": False,
+                    },
+                )
             except (RuntimeError, ValueError, SQLAlchemyError) as db_error:
                 logger.error(
                     f"DB authorization enforcement failed (fail-closed): {type(db_error).__name__}: {str(db_error)}",

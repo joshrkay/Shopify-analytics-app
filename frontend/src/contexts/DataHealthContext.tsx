@@ -29,6 +29,7 @@ import {
   type ActiveIncidentBanner,
   type MerchantDataHealthResponse,
 } from '../services/syncHealthApi';
+import { isBackendDown, resetCircuitBreaker, isProvisioningError } from '../services/apiUtils';
 import type { MerchantHealthState } from '../utils/data_health_copy';
 
 // =============================================================================
@@ -118,6 +119,8 @@ export function DataHealthProvider({
   const fetchData = useCallback(async () => {
     // Prevent concurrent fetches
     if (isPendingRef.current) return;
+    // Skip if global circuit breaker says backend is down
+    if (isBackendDown()) return;
     isPendingRef.current = true;
 
     try {
@@ -151,7 +154,9 @@ export function DataHealthProvider({
       setState((prev) => ({
         ...prev,
         loading: false,
-        error: err instanceof Error ? err.message : 'Failed to fetch health data',
+        error: isProvisioning
+          ? 'Your organization is being set up. This usually takes a few seconds.'
+          : (err instanceof Error ? err.message : 'Failed to fetch health data'),
       }));
     } finally {
       isPendingRef.current = false;
@@ -215,14 +220,14 @@ export function DataHealthProvider({
 
   // Initial fetch and polling setup
   useEffect(() => {
-    fetchData().then(schedulePoll);
+    fetchData().then(() => schedulePollRef.current());
 
     return () => {
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current);
       }
     };
-  }, [fetchData, schedulePoll]);
+  }, [fetchData]);
 
   // Pause polling when tab is hidden
   useEffect(() => {
@@ -237,7 +242,7 @@ export function DataHealthProvider({
         }
       } else {
         // Resume polling and fetch immediately
-        fetchData().then(schedulePoll);
+        fetchData().then(() => schedulePollRef.current());
       }
     };
 
@@ -245,7 +250,7 @@ export function DataHealthProvider({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [disablePolling, fetchData, schedulePoll]);
+  }, [disablePolling, fetchData]);
 
   // Computed values
   const hasStaleData = (state.health?.stale_count ?? 0) > 0;

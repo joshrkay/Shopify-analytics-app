@@ -28,6 +28,7 @@ import {
   fetchUserContext,
 } from '../services/agencyApi';
 import { refreshTenantToken } from '../utils/auth';
+import { isBackendDown, isApiError, isProvisioningError } from '../services/apiUtils';
 
 interface AgencyState {
   // User information
@@ -92,8 +93,18 @@ export function AgencyProvider({
     allowedTenants: initialUserContext?.allowed_tenants || [],
   }));
 
-  // Initialize user context and fetch stores
-  const initialize = useCallback(async () => {
+  // Initialize user context and fetch stores (with retry for 5xx errors)
+  const initialize = useCallback(async (retryCount = 0) => {
+    // Skip if circuit breaker is open (backend is down) — check on EVERY attempt
+    if (isBackendDown()) {
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Backend unavailable — waiting for recovery',
+      }));
+      return;
+    }
+
     try {
       setState((prev) => ({ ...prev, loading: true, error: null }));
 
@@ -122,14 +133,27 @@ export function AgencyProvider({
         error: null,
       });
     } catch (err) {
-      console.error('Failed to initialize agency context:', err);
+      const is5xx = isApiError(err) && err.status >= 500;
+      const isProvisioning = isProvisioningError(err);
+      // Retry on server errors (up to 2x) or provisioning errors (up to 4x)
+      const maxRetries = isProvisioning ? 4 : 2;
+      if ((is5xx || isProvisioning) && retryCount < maxRetries) {
+        const base = isProvisioning ? 3000 : 5000;
+        const delay = Math.min(base * Math.pow(2, retryCount), 30000);
+        setTimeout(() => initialize(retryCount + 1), delay);
+        return;
+      }
+      if (retryCount === 0) {
+        console.error('Failed to initialize agency context:', err);
+      }
       setState((prev) => ({
         ...prev,
         loading: false,
-        error:
-          err instanceof Error
+        error: isProvisioning
+          ? 'Your organization is being set up. This usually takes a few seconds.'
+          : (err instanceof Error
             ? err.message
-            : 'Failed to initialize user context',
+            : 'Failed to initialize user context'),
       }));
     }
   }, []);

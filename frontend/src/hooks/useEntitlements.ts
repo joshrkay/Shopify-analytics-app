@@ -8,8 +8,9 @@
  * the Clerk token is cached, which would result in a 401.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchEntitlements, type EntitlementsResponse } from '../services/entitlementsApi';
+import { isBackendDown, isApiError, isProvisioningError } from '../services/apiUtils';
 
 interface UseEntitlementsResult {
   entitlements: EntitlementsResponse | null;
@@ -29,16 +30,38 @@ export function useEntitlements(isTokenReady = true): UseEntitlementsResult {
   const [entitlements, setEntitlements] = useState<EntitlementsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadEntitlements = useCallback(async () => {
+  const loadEntitlements = useCallback(async (retryCount = 0) => {
+    // Skip if circuit breaker is open — check on EVERY attempt
+    if (isBackendDown()) {
+      setLoading(false);
+      setError('Backend unavailable — waiting for recovery');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
       const data = await fetchEntitlements();
       setEntitlements(data);
     } catch (err) {
-      console.error('Failed to fetch entitlements:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load entitlements');
+      const is5xx = isApiError(err) && err.status >= 500;
+      const isProvisioning = isProvisioningError(err);
+      // Retry on server errors (up to 2x) or provisioning errors (up to 4x)
+      const maxRetries = isProvisioning ? 4 : 2;
+      if ((is5xx || isProvisioning) && retryCount < maxRetries) {
+        const base = isProvisioning ? 3000 : 5000;
+        const delay = Math.min(base * Math.pow(2, retryCount), 30000);
+        retryTimeoutRef.current = setTimeout(() => loadEntitlements(retryCount + 1), delay);
+        return;
+      }
+      if (retryCount === 0) {
+        console.error('Failed to fetch entitlements:', err);
+      }
+      setError(isProvisioning
+        ? 'Your organization is being set up. This usually takes a few seconds.'
+        : (err instanceof Error ? err.message : 'Failed to load entitlements'));
     } finally {
       setLoading(false);
     }
@@ -47,6 +70,9 @@ export function useEntitlements(isTokenReady = true): UseEntitlementsResult {
   useEffect(() => {
     if (!isTokenReady) return;
     loadEntitlements();
+    return () => {
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+    };
   }, [isTokenReady, loadEntitlements]);
 
   return {
