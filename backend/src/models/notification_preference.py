@@ -33,7 +33,7 @@ class NotificationPreference(Base, TimestampMixin, TenantScopedMixin):
     )
 
     user_id = Column(String(255), nullable=True, index=True)
-    event_type = Column(Enum(NotificationEventType), nullable=False)
+    event_type = Column(Enum(NotificationEventType, values_callable=lambda enum_cls: [e.value for e in enum_cls]), nullable=False)
 
     in_app_enabled = Column(Boolean, nullable=False, default=True)
     email_enabled = Column(Boolean, nullable=False, default=True)
