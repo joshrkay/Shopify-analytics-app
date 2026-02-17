@@ -213,6 +213,7 @@ export default function DataSources() {
         <ConnectSourceWizard
           open={showConnectModal}
           platform={connectPlatform}
+          catalog={catalog}
           onClose={closeConnectModal}
           onSuccess={handleConnectionSuccess}
         />
@@ -302,6 +303,7 @@ export default function DataSources() {
       <ConnectSourceWizard
         open={showConnectModal}
         platform={connectPlatform}
+        catalog={catalog}
         onClose={closeConnectModal}
         onSuccess={handleConnectionSuccess}
       />
