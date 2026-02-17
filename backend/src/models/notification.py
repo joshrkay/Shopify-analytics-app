@@ -96,8 +96,8 @@ class Notification(Base, TimestampMixin, TenantScopedMixin):
     )
 
     user_id = Column(String(255), nullable=True, index=True)
-    event_type = Column(Enum(NotificationEventType), nullable=False, index=True)
-    importance = Column(Enum(NotificationImportance), nullable=False)
+    event_type = Column(Enum(NotificationEventType, values_callable=lambda enum_cls: [e.value for e in enum_cls]), nullable=False, index=True)
+    importance = Column(Enum(NotificationImportance, values_callable=lambda enum_cls: [e.value for e in enum_cls]), nullable=False)
 
     title = Column(String(500), nullable=False)
     message = Column(Text, nullable=False)
@@ -108,7 +108,7 @@ class Notification(Base, TimestampMixin, TenantScopedMixin):
     idempotency_key = Column(String(255), nullable=False, unique=True)
 
     status = Column(
-        Enum(NotificationStatus),
+        Enum(NotificationStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=NotificationStatus.PENDING,
         index=True,
