@@ -69,7 +69,7 @@ class RecommendationJob(Base, TimestampMixin, TenantScopedMixin):
 
     # Cadence
     cadence = Column(
-        Enum(RecommendationJobCadence),
+        Enum(RecommendationJobCadence, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=RecommendationJobCadence.DAILY,
         comment="Job cadence: daily (standard) or hourly (enterprise)"
@@ -77,7 +77,7 @@ class RecommendationJob(Base, TimestampMixin, TenantScopedMixin):
 
     # Status tracking
     status = Column(
-        Enum(RecommendationJobStatus),
+        Enum(RecommendationJobStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=RecommendationJobStatus.QUEUED,
         index=True,
