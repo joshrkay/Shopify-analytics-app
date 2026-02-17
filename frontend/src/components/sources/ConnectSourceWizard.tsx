@@ -5,18 +5,18 @@
  * Uses separate step components and the useConnectSourceWizard hook.
  *
  * Steps:
- * 1. Intro — Source info, features, permissions
- * 2. OAuth — Authorization redirect/popup
- * 3. Accounts — Select ad accounts (ads platforms only)
- * 4. SyncConfig — Historical range, frequency
- * 5. Syncing — Real-time sync progress
- * 6. Success — Confirmation + next steps
+ *   1. Intro — Source info, features, permissions
+ *   2. OAuth — Authorization redirect/popup
+ *   3. Accounts — Select ad accounts (ads platforms only)
+ *   4. SyncConfig — Historical range, frequency
+ *   5. Syncing — Real-time sync progress
+ *   6. Success — Confirmation + next steps
  *
  * Phase 3 — Subphase 3.4/3.5: Connection Wizard
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Modal, BlockStack, Banner, Text, InlineStack, Button } from '@shopify/polaris';
+import { Modal, BlockStack, Banner, Text, InlineStack, InlineGrid, Button, Card, Box } from '@shopify/polaris';
 import { useNavigate } from 'react-router-dom';
 import type { DataSourceDefinition } from '../../types/sourceConnection';
 import { useConnectSourceWizard } from '../../hooks/useConnectSourceWizard';
@@ -33,16 +33,17 @@ import {
 interface ConnectSourceWizardProps {
   open: boolean;
   platform: DataSourceDefinition | null;
+  catalog?: DataSourceDefinition[];
   onClose: () => void;
   onSuccess?: (connectionId: string) => void;
 }
 
 /** Steps where closing should prompt for confirmation */
 const MID_FLOW_STEPS = new Set(['oauth', 'accounts', 'syncConfig', 'syncing']);
-
 export function ConnectSourceWizard({
   open,
   platform,
+  catalog = [],
   onClose,
   onSuccess,
 }: ConnectSourceWizardProps) {
@@ -95,18 +96,62 @@ export function ConnectSourceWizard({
     navigate('/sources');
   }, [state.connectionId, onSuccess, doClose, navigate]);
 
+  const handleSelectPlatform = useCallback((p: DataSourceDefinition) => {
+    wizard.initWithPlatform(p);
+  }, [wizard]);
+
   const activePlatform = state.platform ?? platform;
-  if (!activePlatform) return null;
+
+  // When no platform is selected, show a platform picker modal
+  if (!activePlatform) {
+    if (!open) return null;
+    return (
+      <Modal open={open} onClose={onClose} title="Connect a Data Source" size="large">
+        <Modal.Section>
+          <BlockStack gap="400">
+            <Text as="p" variant="bodyMd">
+              Select a platform to connect:
+            </Text>
+            {catalog.length === 0 ? (
+              <Banner tone="warning">
+                <p>No data source platforms available. Please try again later.</p>
+              </Banner>
+            ) : (
+              <InlineGrid columns={{ xs: 1, sm: 2, md: 3 }} gap="300">
+                {catalog.map((p) => (
+                  <Card key={p.id}>
+                    <BlockStack gap="200">
+                      <Text as="h3" variant="headingSm">
+                        {p.displayName}
+                      </Text>
+                      {p.description && (
+                        <Text as="p" variant="bodySm" tone="subdued">
+                          {p.description}
+                        </Text>
+                      )}
+                      <Box paddingBlockStart="100">
+                        <Button
+                          variant="primary"
+                          onClick={() => handleSelectPlatform(p)}
+                        >
+                          Connect
+                        </Button>
+                      </Box>
+                    </BlockStack>
+                  </Card>
+                ))}
+              </InlineGrid>
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+    );
+  }
 
   const title = `Connect ${activePlatform.displayName}`;
 
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      title={title}
-      size="large"
-    >
+    <Modal open={open} onClose={handleClose} title={title} size="large">
       <Modal.Section>
         <BlockStack gap="400">
           {showCloseConfirm && (
@@ -142,7 +187,6 @@ export function ConnectSourceWizard({
               onCancel={handleClose}
             />
           )}
-
           {state.step === 'oauth' && (
             <OAuthStep
               platform={activePlatform}
@@ -152,7 +196,6 @@ export function ConnectSourceWizard({
               onCancel={handleClose}
             />
           )}
-
           {state.step === 'accounts' && (
             <AccountSelectStep
               accounts={state.accounts}
@@ -166,7 +209,6 @@ export function ConnectSourceWizard({
               onBack={wizard.goBack}
             />
           )}
-
           {state.step === 'syncConfig' && (
             <SyncConfigStep
               platform={activePlatform}
@@ -177,7 +219,6 @@ export function ConnectSourceWizard({
               loading={state.loading}
             />
           )}
-
           {state.step === 'syncing' && (
             <SyncProgressStep
               platform={activePlatform}
@@ -186,7 +227,6 @@ export function ConnectSourceWizard({
               onNavigateDashboard={handleViewDashboard}
             />
           )}
-
           {state.step === 'success' && state.connectionId && (
             <SuccessStep
               platform={activePlatform}
