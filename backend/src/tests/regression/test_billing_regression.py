@@ -755,3 +755,121 @@ class TestEdgeCases:
             Subscription.id == result.subscription_id
         ).first()
         assert subscription.status == SubscriptionStatus.ACTIVE.value
+
+
+class TestFreeplanWithoutStore:
+    """Regression tests for free plan activation without a store record.
+
+    Regression: billing checkout returned "No active store found" when the
+    shopify_stores table was empty, blocking free plan activation entirely.
+    Fix: free plans no longer require a ShopifyStore record.
+    """
+
+    @pytest.mark.asyncio
+    async def test_free_plan_activates_without_store_record(
+        self,
+        db_session,
+        test_tenant_id,
+        test_plan_free,
+        get_billing_events,
+    ):
+        """
+        Regression: free plan checkout must succeed even when no ShopifyStore
+        record exists for the tenant (shopify_stores table is empty).
+        """
+        Subscription = get_subscription_model()
+        SubscriptionStatus = get_subscription_status()
+        BillingEventType = get_billing_event_type()
+
+        # Arrange: Verify there is NO store for this tenant
+        from src.models.store import ShopifyStore
+        store_count = db_session.query(ShopifyStore).filter(
+            ShopifyStore.tenant_id == test_tenant_id
+        ).count()
+        assert store_count == 0, "Tenant must have no store records for this test"
+
+        # Act: Create checkout for free plan — should NOT raise StoreNotFoundError
+        billing_service = get_billing_service(db_session, test_tenant_id)
+        result = await billing_service.create_checkout_url(
+            plan_id=test_plan_free.id,
+            test_mode=True
+        )
+
+        # Assert: Checkout succeeds
+        assert result.success is True
+        assert result.checkout_url == ""
+        assert result.subscription_id is not None
+
+        # Assert: Subscription created with ACTIVE status and store_id=None
+        subscription = db_session.query(Subscription).filter(
+            Subscription.id == result.subscription_id
+        ).first()
+        assert subscription is not None
+        assert subscription.status == SubscriptionStatus.ACTIVE.value
+        assert subscription.plan_id == test_plan_free.id
+        assert subscription.store_id is None
+        assert subscription.tenant_id == test_tenant_id
+
+        # Assert: Billing event logged with store_id=None
+        events = get_billing_events(
+            tenant_id=test_tenant_id,
+            event_type=BillingEventType.SUBSCRIPTION_CREATED.value
+        )
+        assert len(events) >= 1
+        assert events[0].store_id is None
+        assert events[0].extra_metadata.get("free_plan") is True
+
+    @pytest.mark.asyncio
+    async def test_paid_plan_still_requires_store(
+        self,
+        db_session,
+        test_tenant_id,
+        test_plan_growth,
+    ):
+        """
+        Paid plans must still raise StoreNotFoundError when no store exists.
+        """
+        from src.services.billing_service import StoreNotFoundError
+
+        # Arrange: Verify no store exists
+        from src.models.store import ShopifyStore
+        store_count = db_session.query(ShopifyStore).filter(
+            ShopifyStore.tenant_id == test_tenant_id
+        ).count()
+        assert store_count == 0
+
+        # Act & Assert: Paid plan checkout raises StoreNotFoundError
+        billing_service = get_billing_service(db_session, test_tenant_id)
+        with pytest.raises(StoreNotFoundError, match="No active store found"):
+            await billing_service.create_checkout_url(
+                plan_id=test_plan_growth.id,
+                test_mode=True
+            )
+
+    @pytest.mark.asyncio
+    async def test_free_plan_links_store_when_available(
+        self,
+        db_session,
+        test_tenant_id,
+        test_store,
+        test_plan_free,
+    ):
+        """
+        When a store exists, free plan activation should still link it.
+        """
+        Subscription = get_subscription_model()
+        SubscriptionStatus = get_subscription_status()
+
+        billing_service = get_billing_service(db_session, test_tenant_id)
+        result = await billing_service.create_checkout_url(
+            plan_id=test_plan_free.id,
+            test_mode=True
+        )
+
+        assert result.success is True
+
+        subscription = db_session.query(Subscription).filter(
+            Subscription.id == result.subscription_id
+        ).first()
+        assert subscription.store_id == test_store.id
+        assert subscription.status == SubscriptionStatus.ACTIVE.value
