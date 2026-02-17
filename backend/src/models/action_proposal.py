@@ -154,7 +154,7 @@ class ActionProposal(Base, TimestampMixin, TenantScopedMixin):
 
     # Action classification
     action_type = Column(
-        Enum(ActionType),
+        Enum(ActionType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         index=True,
         comment="Type of action being proposed"
@@ -162,7 +162,7 @@ class ActionProposal(Base, TimestampMixin, TenantScopedMixin):
 
     # Approval status
     status = Column(
-        Enum(ActionStatus),
+        Enum(ActionStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=ActionStatus.PROPOSED,
         index=True,
@@ -171,14 +171,14 @@ class ActionProposal(Base, TimestampMixin, TenantScopedMixin):
 
     # Target specification
     target_platform = Column(
-        Enum(TargetPlatform),
+        Enum(TargetPlatform, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         index=True,
         comment="Ad platform (meta, google, tiktok)"
     )
 
     target_entity_type = Column(
-        Enum(TargetEntityType),
+        Enum(TargetEntityType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         comment="Type of entity: campaign, ad_set, ad"
     )
@@ -223,7 +223,7 @@ class ActionProposal(Base, TimestampMixin, TenantScopedMixin):
     )
 
     risk_level = Column(
-        Enum(RiskLevel),
+        Enum(RiskLevel, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=RiskLevel.MEDIUM,
         index=True,
@@ -280,7 +280,6 @@ class ActionProposal(Base, TimestampMixin, TenantScopedMixin):
         index=True,
         comment="When proposal was generated"
     )
-
     job_id = Column(
         String(255),
         nullable=True,
