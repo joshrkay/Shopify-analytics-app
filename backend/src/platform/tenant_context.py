@@ -465,13 +465,29 @@ class TenantContextMiddleware:
                         name=f"Tenant {jwt_org_id[-8:]}",
                         source="lazy_sync",
                     )
-                    sync.sync_membership(
+                    # Explicit flush: with autoflush=False, sync_membership
+                    # queries User/Tenant by clerk_id (non-PK filter).  If
+                    # sync_tenant_from_org found an existing tenant it skips
+                    # its own flush, leaving the new User invisible to the
+                    # SELECT.  Flushing here guarantees both records are in
+                    # the DB before sync_membership looks them up.
+                    db.flush()
+                    membership = sync.sync_membership(
                         clerk_user_id=user_id,
                         clerk_org_id=jwt_org_id,
                         role=jwt_org_role or "org:member",
                         source="lazy_sync",
                         assigned_by="system",
                     )
+                    if membership is None:
+                        logger.warning(
+                            "sync_membership returned None during lazy sync "
+                            "(user or tenant not found after flush)",
+                            extra={
+                                "clerk_user_id": user_id,
+                                "clerk_org_id": jwt_org_id,
+                            },
+                        )
                     db.commit()
                 except SAIntegrityError:
                     # A concurrent request or webhook already created the
@@ -525,6 +541,8 @@ class TenantContextMiddleware:
                             name=f"Tenant {jwt_org_id[-8:]}",
                             source="lazy_sync",
                         )
+                        # Flush to ensure new tenant is visible for sync_membership
+                        db.flush()
                         sync.sync_membership(
                             clerk_user_id=user_id,
                             clerk_org_id=jwt_org_id,
@@ -968,6 +986,9 @@ class TenantContextMiddleware:
                                     name=f"Tenant {str(org_id)[-8:]}",
                                     source="lazy_sync",
                                 )
+                                # Flush user+tenant so sync_membership can find
+                                # them (session uses autoflush=False).
+                                _db.flush()
                                 sync.sync_membership(
                                     clerk_user_id=str(user_id),
                                     clerk_org_id=str(org_id),

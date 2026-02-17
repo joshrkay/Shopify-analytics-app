@@ -46,11 +46,13 @@ export function isApiError(err: unknown): err is ApiError {
  * is still being set up (webhook lag, lazy sync in progress).
  */
 export function isProvisioningError(err: unknown): boolean {
-  return (
-    isApiError(err) &&
-    err.status === 403 &&
-    err.errorCode === 'TENANT_NOT_PROVISIONED'
-  );
+  if (!isApiError(err) || err.status !== 403) return false;
+  // Primary: structured error_code from backend
+  if (err.errorCode === 'TENANT_NOT_PROVISIONED') return true;
+  // Fallback: detect by detail string (works even if backend hasn't
+  // deployed the error_code change yet)
+  const detail = (err.detail || err.message || '').toLowerCase();
+  return detail.includes('not been') && detail.includes('provisioned');
 }
 
 /**
