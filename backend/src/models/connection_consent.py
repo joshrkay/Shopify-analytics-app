@@ -117,7 +117,7 @@ class ConnectionConsent(Base, TimestampMixin, TenantScopedMixin):
     )
 
     status = Column(
-        Enum(ConsentStatus),
+        Enum(ConsentStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=ConsentStatus.PENDING,
         comment="Consent lifecycle: pending, approved, denied",
