@@ -92,7 +92,7 @@ class TenantAirbyteConnection(Base, TimestampMixin, TenantScopedMixin):
         comment="Human-readable connection name"
     )
     connection_type = Column(
-        Enum(ConnectionType),
+        Enum(ConnectionType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=ConnectionType.SOURCE,
         comment="Type of connection (source/destination)"
@@ -105,7 +105,7 @@ class TenantAirbyteConnection(Base, TimestampMixin, TenantScopedMixin):
 
     # Status and configuration
     status = Column(
-        Enum(ConnectionStatus),
+        Enum(ConnectionStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         default=ConnectionStatus.PENDING,
         nullable=False,
         index=True,
