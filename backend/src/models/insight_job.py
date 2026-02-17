@@ -76,7 +76,7 @@ class InsightJob(Base, TimestampMixin, TenantScopedMixin):
 
     # Cadence
     cadence = Column(
-        Enum(InsightJobCadence),
+        Enum(InsightJobCadence, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=InsightJobCadence.DAILY,
         comment="Job cadence: daily or hourly"
@@ -84,7 +84,7 @@ class InsightJob(Base, TimestampMixin, TenantScopedMixin):
 
     # Status tracking
     status = Column(
-        Enum(InsightJobStatus),
+        Enum(InsightJobStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         default=InsightJobStatus.QUEUED,
         nullable=False,
         index=True,
