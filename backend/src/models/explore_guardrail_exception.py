@@ -58,7 +58,7 @@ class ExploreGuardrailException(Base, TimestampMixin, TenantScopedMixin):
     reason = Column(Text, nullable=False)
 
     status = Column(
-        Enum(GuardrailExceptionStatus),
+        Enum(GuardrailExceptionStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=GuardrailExceptionStatus.REQUESTED,
         index=True,
