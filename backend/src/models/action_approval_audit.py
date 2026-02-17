@@ -85,7 +85,7 @@ class ActionApprovalAudit(Base, TenantScopedMixin):
 
     # Audit event type
     action = Column(
-        Enum(AuditAction),
+        Enum(AuditAction, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         index=True,
         comment="Type of audit event"
@@ -93,13 +93,13 @@ class ActionApprovalAudit(Base, TenantScopedMixin):
 
     # State transition
     previous_status = Column(
-        Enum(ActionStatus),
+        Enum(ActionStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=True,
         comment="Status before the action (null for CREATED)"
     )
 
     new_status = Column(
-        Enum(ActionStatus),
+        Enum(ActionStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         comment="Status after the action"
     )
