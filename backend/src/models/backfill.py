@@ -67,7 +67,7 @@ class BackfillExecution(Base, TimestampMixin, TenantScopedMixin):
     )
 
     status = Column(
-        Enum(BackfillStatus),
+        Enum(BackfillStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=BackfillStatus.PENDING,
         index=True,
