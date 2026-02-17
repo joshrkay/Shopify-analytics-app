@@ -123,14 +123,14 @@ class AIRecommendation(Base, TimestampMixin, TenantScopedMixin):
 
     # Recommendation classification
     recommendation_type = Column(
-        Enum(RecommendationType),
+        Enum(RecommendationType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         index=True,
         comment="Type of recommendation"
     )
 
     priority = Column(
-        Enum(RecommendationPriority),
+        Enum(RecommendationPriority, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=RecommendationPriority.MEDIUM,
         index=True,
@@ -153,14 +153,14 @@ class AIRecommendation(Base, TimestampMixin, TenantScopedMixin):
 
     # Qualitative impact and risk assessment
     estimated_impact = Column(
-        Enum(EstimatedImpact),
+        Enum(EstimatedImpact, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=EstimatedImpact.MODERATE,
         comment="Qualitative impact estimate (no specific numbers)"
     )
 
     risk_level = Column(
-        Enum(RiskLevel),
+        Enum(RiskLevel, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=RiskLevel.MEDIUM,
         index=True,
@@ -183,7 +183,7 @@ class AIRecommendation(Base, TimestampMixin, TenantScopedMixin):
     )
 
     affected_entity_type = Column(
-        Enum(AffectedEntityType),
+        Enum(AffectedEntityType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=True,
         comment="Type of entity: campaign, platform, or account"
     )
