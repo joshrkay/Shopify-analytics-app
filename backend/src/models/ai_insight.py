@@ -82,14 +82,14 @@ class AIInsight(Base, TimestampMixin, TenantScopedMixin):
 
     # Insight classification
     insight_type = Column(
-        Enum(InsightType),
+        Enum(InsightType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         index=True,
         comment="Type of insight detected"
     )
 
     severity = Column(
-        Enum(InsightSeverity),
+        Enum(InsightSeverity, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=InsightSeverity.INFO,
         index=True,
