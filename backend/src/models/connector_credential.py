@@ -127,7 +127,7 @@ class ConnectorCredential(Base, TimestampMixin, TenantScopedMixin):
     )
 
     status = Column(
-        Enum(CredentialStatus),
+        Enum(CredentialStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=CredentialStatus.ACTIVE,
         index=True,
