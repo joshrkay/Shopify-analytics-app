@@ -114,6 +114,7 @@ export function DataHealthProvider({
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPendingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
+  const schedulePollRef = useRef<() => void>(() => {});
 
   // Fetch health and incidents data
   const fetchData = useCallback(async () => {
@@ -154,7 +155,7 @@ export function DataHealthProvider({
       setState((prev) => ({
         ...prev,
         loading: false,
-        error: isProvisioning
+        error: isProvisioningError(err)
           ? 'Your organization is being set up. This usually takes a few seconds.'
           : (err instanceof Error ? err.message : 'Failed to fetch health data'),
       }));
@@ -168,8 +169,8 @@ export function DataHealthProvider({
     consecutiveErrorsRef.current = 0;
     setState((prev) => ({ ...prev, loading: true, error: null }));
     await fetchData();
-    schedulePoll();
-  }, [fetchData, schedulePoll]);
+    schedulePollRef.current();
+  }, [fetchData]);
 
   // Acknowledge incident
   const acknowledgeIncident = useCallback(async (incidentId: string) => {
@@ -217,6 +218,9 @@ export function DataHealthProvider({
       fetchData().then(schedulePoll);
     }, interval);
   }, [disablePolling, getPollInterval, fetchData]);
+
+  // Keep ref in sync so callbacks defined before schedulePoll can call it
+  schedulePollRef.current = schedulePoll;
 
   // Initial fetch and polling setup
   useEffect(() => {

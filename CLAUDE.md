@@ -159,6 +159,26 @@ JWT → TenantContextMiddleware.__call__()
 - react-grid-layout for dashboard grids, Recharts for charts
 - **Context Provider Rule**: Every React context hook (e.g., `useAgency`, `useDataHealth`) MUST have its corresponding Provider mounted in the component tree in `App.tsx` before any component that calls the hook. When adding a new context or a new consumer of an existing context, verify the Provider is present in `AppWithOrg()` (or higher). Tests that mock contexts will not catch a missing Provider — always check the real component tree in `App.tsx`.
 
+### useCallback Circular Dependencies (Temporal Dead Zone)
+
+When two `useCallback` hooks reference each other (e.g., `refresh` calls `schedulePoll`, and `schedulePoll` chains into `fetchData` which feeds `refresh`), you **cannot** list one in the other's dependency array if it is declared later in the file. JavaScript's Temporal Dead Zone (TDZ) means accessing a `const` before its declaration throws `ReferenceError` at runtime.
+
+**Pattern**: Use a `useRef` to hold the latest version of the function declared later, and call it via the ref:
+
+```tsx
+const schedulePollRef = useRef<() => void>(() => {});
+
+const refresh = useCallback(async () => {
+  await fetchData();
+  schedulePollRef.current();          // ← ref, not direct call
+}, [fetchData]);                       // ← no schedulePoll in deps
+
+const schedulePoll = useCallback(() => { /* ... */ }, [deps]);
+schedulePollRef.current = schedulePoll; // ← keep ref in sync
+```
+
+**Also watch for**: using bare variable names (e.g., `isProvisioning`) instead of calling the imported function (`isProvisioningError(err)`), and referencing refs (`schedulePollRef.current()`) that were never created with `useRef`. Always verify that every ref used in `useEffect`/`useCallback` bodies has a corresponding `useRef` declaration.
+
 ### Data Pipeline
 - dbt model layers: raw -> staging -> canonical -> attribution -> semantic -> metrics -> marts
 - Incremental materialization with configurable lookback windows per source
