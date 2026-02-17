@@ -47,6 +47,7 @@ import OAuthCallback from './pages/OAuthCallback';
 import Settings from './pages/Settings';
 import { DashboardHome } from './pages/DashboardHome';
 import { Dashboard } from './pages/Dashboard';
+import BillingCheckout from './pages/BillingCheckout';
 
 // =============================================================================
 // FeatureGateRoute — redirects to paywall if feature not entitled
@@ -161,6 +162,8 @@ function AppWithOrg() {
             <Route path="/home" element={<DashboardHome />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/paywall" element={<Paywall />} />
+            <Route path="/billing/checkout" element={<BillingCheckout />} />
+            <Route path="/billing/callback" element={<BillingCheckout />} />
             <Route path="/insights" element={<InsightsFeed />} />
             <Route path="/approvals" element={<ApprovalsInbox />} />
             <Route path="/whats-new" element={<WhatsNew />} />
