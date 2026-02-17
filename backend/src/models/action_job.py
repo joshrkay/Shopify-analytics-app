@@ -79,7 +79,7 @@ class ActionJob(Base, TimestampMixin, TenantScopedMixin):
 
     # Status tracking
     status = Column(
-        Enum(ActionJobStatus),
+        Enum(ActionJobStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         default=ActionJobStatus.QUEUED,
         nullable=False,
         index=True,
