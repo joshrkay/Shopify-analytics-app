@@ -140,7 +140,7 @@ class AIAction(Base, TimestampMixin, TenantScopedMixin):
 
     # Action specification
     action_type = Column(
-        Enum(ActionType),
+        Enum(ActionType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         index=True,
         comment="Type of action to execute"
@@ -161,7 +161,7 @@ class AIAction(Base, TimestampMixin, TenantScopedMixin):
     )
 
     target_entity_type = Column(
-        Enum(ActionTargetEntityType),
+        Enum(ActionTargetEntityType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         comment="Type of entity: campaign, ad_set, ad, etc."
     )
@@ -176,7 +176,7 @@ class AIAction(Base, TimestampMixin, TenantScopedMixin):
 
     # Status tracking
     status = Column(
-        Enum(ActionStatus),
+        Enum(ActionStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=ActionStatus.PENDING_APPROVAL,
         index=True,
