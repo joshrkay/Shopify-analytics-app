@@ -84,7 +84,7 @@ class HistoricalBackfillRequest(Base, TimestampMixin):
     )
 
     status = Column(
-        Enum(HistoricalBackfillStatus),
+        Enum(HistoricalBackfillStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         default=HistoricalBackfillStatus.PENDING,
         index=True,
