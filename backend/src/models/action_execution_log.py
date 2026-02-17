@@ -107,7 +107,7 @@ class ActionExecutionLog(Base, TenantScopedMixin):
 
     # Event details
     event_type = Column(
-        Enum(ActionLogEventType),
+        Enum(ActionLogEventType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
         index=True,
         comment="Type of event being logged"
