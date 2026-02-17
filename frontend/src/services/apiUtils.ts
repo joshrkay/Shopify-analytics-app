@@ -294,8 +294,6 @@ export async function handleResponse<T>(response: Response): Promise<T> {
     if (isJson) {
       const errorData = await response.json().catch(() => ({}));
       errorDetail = errorData.detail || errorDetail;
-      errorCode = errorData.error_code;
-      retryable = errorData.retryable;
       // For 503s, include the backend error type for diagnostics
       if (response.status === 503 && errorData.error_type) {
         errorDetail += ` (${errorData.error_type})`;

@@ -114,8 +114,6 @@ export function DataHealthProvider({
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPendingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
-  // Ref breaks circular dependency: schedulePoll ↔ refresh ↔ schedulePoll
-  const schedulePollRef = useRef<() => void>(() => {});
 
   // Fetch health and incidents data
   const fetchData = useCallback(async () => {
@@ -144,13 +142,9 @@ export function DataHealthProvider({
         merchantHealth: merchantHealthData,
       });
     } catch (err) {
-      const isProvisioning = isProvisioningError(err);
       consecutiveErrorsRef.current += 1;
       const errorCount = consecutiveErrorsRef.current;
-      if (isProvisioning && errorCount <= 6) {
-        // Provisioning in progress — keep polling, don't log as error
-        console.info('Organization provisioning in progress, will retry...');
-      } else if (errorCount <= 3) {
+      if (errorCount <= 3) {
         console.error('Failed to fetch data health:', err);
       } else if (errorCount === MAX_CONSECUTIVE_ERRORS) {
         console.error(
@@ -166,6 +160,29 @@ export function DataHealthProvider({
       }));
     } finally {
       isPendingRef.current = false;
+    }
+  }, []);
+
+  // Public refresh function (resets error backoff)
+  const refresh = useCallback(async () => {
+    consecutiveErrorsRef.current = 0;
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    await fetchData();
+    schedulePoll();
+  }, [fetchData, schedulePoll]);
+
+  // Acknowledge incident
+  const acknowledgeIncident = useCallback(async (incidentId: string) => {
+    try {
+      await acknowledgeIncidentApi(incidentId);
+      // Remove from local state immediately
+      setState((prev) => ({
+        ...prev,
+        activeIncidents: prev.activeIncidents.filter((i) => i.id !== incidentId),
+      }));
+    } catch (err) {
+      console.error('Failed to acknowledge incident:', err);
+      throw err;
     }
   }, []);
 
@@ -197,36 +214,9 @@ export function DataHealthProvider({
       : baseInterval;
 
     pollTimeoutRef.current = setTimeout(() => {
-      fetchData().then(() => schedulePollRef.current());
+      fetchData().then(schedulePoll);
     }, interval);
   }, [disablePolling, getPollInterval, fetchData]);
-
-  // Keep ref in sync so callbacks always use the latest schedulePoll
-  schedulePollRef.current = schedulePoll;
-
-  // Public refresh function (resets error backoff and circuit breaker)
-  const refresh = useCallback(async () => {
-    consecutiveErrorsRef.current = 0;
-    resetCircuitBreaker();
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    await fetchData();
-    schedulePollRef.current();
-  }, [fetchData]);
-
-  // Acknowledge incident
-  const acknowledgeIncident = useCallback(async (incidentId: string) => {
-    try {
-      await acknowledgeIncidentApi(incidentId);
-      // Remove from local state immediately
-      setState((prev) => ({
-        ...prev,
-        activeIncidents: prev.activeIncidents.filter((i) => i.id !== incidentId),
-      }));
-    } catch (err) {
-      console.error('Failed to acknowledge incident:', err);
-      throw err;
-    }
-  }, []);
 
   // Initial fetch and polling setup
   useEffect(() => {
