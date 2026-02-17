@@ -74,7 +74,7 @@ class BackfillJob(Base, TimestampMixin):
 
     # Status
     status = Column(
-        Enum(BackfillJobStatus), nullable=False,
+        Enum(BackfillJobStatus, values_callable=lambda enum_cls: [e.value for e in enum_cls]), nullable=False,
         default=BackfillJobStatus.QUEUED, index=True,
     )
 
