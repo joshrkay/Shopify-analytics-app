@@ -115,6 +115,7 @@ class UserTenantRole(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=True,
+        server_default="true",
         index=True,
         comment="Whether this role assignment is active"
     )
@@ -202,6 +203,7 @@ class UserTenantRole(Base, TimestampMixin):
             role=role,
             source="clerk_webhook",
             assigned_at=datetime.now(timezone.utc),
+            is_active=True,
         )
 
     @classmethod
@@ -231,4 +233,5 @@ class UserTenantRole(Base, TimestampMixin):
             assigned_by=granted_by,
             source="agency_grant",
             assigned_at=datetime.now(timezone.utc),
+            is_active=True,
         )
