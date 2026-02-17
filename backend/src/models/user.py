@@ -104,6 +104,7 @@ class User(Base, TimestampMixin):
         Boolean,
         nullable=False,
         default=True,
+        server_default="true",
         index=True,
         comment="Whether the user is active (false = soft deleted)"
     )
