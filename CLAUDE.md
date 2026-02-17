@@ -138,6 +138,10 @@ JWT → TenantContextMiddleware.__call__()
 
 6. **Two DB sessions per request** — `_resolve_tenant_from_db` opens and closes its own session. `__call__` opens a separate session for TenantGuard. Data committed in the first session IS visible to the second (PostgreSQL READ COMMITTED). But uncommitted/rolled-back data is NOT.
 
+7. **SQLAlchemy Enum `values_callable` is REQUIRED** — PostgreSQL native enum types use lowercase values (e.g., `'active'`, `'suspended'`), but SQLAlchemy's `Enum()` type sends the Python enum `.name` (uppercase `ACTIVE`) by default — NOT `.value` (lowercase `active`). This causes `InvalidTextRepresentation` errors on every INSERT/query involving enum columns, which silently rolls back the entire lazy-sync transaction and leaves all identity tables empty (producing persistent `TENANT_NOT_PROVISIONED` 403s). Every `Enum()` column definition MUST include `values_callable=lambda enum_cls: [e.value for e in enum_cls]` to ensure SQLAlchemy sends lowercase values matching the PostgreSQL enum type. See `backend/src/models/tenant.py` line 108-116 for the canonical example. **If you add new enum columns, always include `values_callable`.**
+
+8. **Clerk JWT v2 nests org claims under `o`** — The JWT payload uses `o.id` (not top-level `org_id`), `o.rol` (not `org_role`), and `o.per` (not `org_permissions`). The middleware handles both formats via fallback: `payload.get("org_id") or (payload.get("o") or {}).get("id")`. When testing JWT parsing, always test with the v2 nested structure.
+
 ### API Patterns
 - Async routes with `createHeadersAsync()` for Clerk token refresh
 - `handleResponse<T>()` for typed error handling on the frontend — checks `Content-Type` before parsing JSON and surfaces clear errors when HTML is returned (backend down, wrong URL, etc.)
@@ -158,26 +162,6 @@ JWT → TenantContextMiddleware.__call__()
 - React Context for builder session, agency, and data health state (no Redux)
 - react-grid-layout for dashboard grids, Recharts for charts
 - **Context Provider Rule**: Every React context hook (e.g., `useAgency`, `useDataHealth`) MUST have its corresponding Provider mounted in the component tree in `App.tsx` before any component that calls the hook. When adding a new context or a new consumer of an existing context, verify the Provider is present in `AppWithOrg()` (or higher). Tests that mock contexts will not catch a missing Provider — always check the real component tree in `App.tsx`.
-
-### useCallback Circular Dependencies (Temporal Dead Zone)
-
-When two `useCallback` hooks reference each other (e.g., `refresh` calls `schedulePoll`, and `schedulePoll` chains into `fetchData` which feeds `refresh`), you **cannot** list one in the other's dependency array if it is declared later in the file. JavaScript's Temporal Dead Zone (TDZ) means accessing a `const` before its declaration throws `ReferenceError` at runtime.
-
-**Pattern**: Use a `useRef` to hold the latest version of the function declared later, and call it via the ref:
-
-```tsx
-const schedulePollRef = useRef<() => void>(() => {});
-
-const refresh = useCallback(async () => {
-  await fetchData();
-  schedulePollRef.current();          // ← ref, not direct call
-}, [fetchData]);                       // ← no schedulePoll in deps
-
-const schedulePoll = useCallback(() => { /* ... */ }, [deps]);
-schedulePollRef.current = schedulePoll; // ← keep ref in sync
-```
-
-**Also watch for**: using bare variable names (e.g., `isProvisioning`) instead of calling the imported function (`isProvisioningError(err)`), and referencing refs (`schedulePollRef.current()`) that were never created with `useRef`. Always verify that every ref used in `useEffect`/`useCallback` bodies has a corresponding `useRef` declaration.
 
 ### Data Pipeline
 - dbt model layers: raw -> staging -> canonical -> attribution -> semantic -> metrics -> marts
@@ -317,6 +301,13 @@ You: "Audit the authentication middleware for vulnerabilities"
 Claude: [uses Trail of Bits skills — static analysis, variant analysis,
          differential review against known vulnerability patterns]
 ```
+
+## Deployment Notes (Render)
+
+- **Auto-deploy from `main`** — Every push to `main` triggers a Render auto-deploy (Docker build → migration runner → uvicorn start). Deploys take ~3 minutes.
+- **Container filesystem is ephemeral** — Changes made via Render shell (e.g., `sed` edits) are lost on the next deploy. All permanent fixes MUST be committed to GitHub.
+- **Migration runner** — `backend/scripts/run_required_migrations.py` runs before uvicorn on every deploy. It executes SQL files from the `MIGRATIONS` list in order. Add new migration files to this list.
+- **Database is persistent** — PostgreSQL on Render persists across deploys. Manual data fixes via Render shell (INSERT/UPDATE) survive redeploys, but code changes on the filesystem do not.
 
 ## Environment Variables
 
