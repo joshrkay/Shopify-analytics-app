@@ -105,8 +105,16 @@ class Tenant(Base, TimestampMixin):
     )
 
     # Status
+    # NOTE: values_callable ensures SQLAlchemy sends lowercase enum values
+    # ('active', 'suspended', 'deactivated') matching the PostgreSQL enum type,
+    # instead of the default Python enum .name ('ACTIVE', 'SUSPENDED', etc.).
     status = Column(
-        Enum(TenantStatus, name="tenant_status", create_constraint=True),
+        Enum(
+            TenantStatus,
+            name="tenant_status",
+            create_constraint=True,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         nullable=False,
         default=TenantStatus.ACTIVE,
         index=True,
