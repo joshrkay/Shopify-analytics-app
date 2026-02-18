@@ -206,6 +206,26 @@ class UpdateGlobalSyncSettingsRequest(BaseModel):
 
 
 # =============================================================================
+# API Key Connection Models
+# =============================================================================
+
+class ApiKeyConnectRequest(BaseModel):
+    """Request body for connecting a source via API key."""
+
+    api_key: str
+    display_name: Optional[str] = None
+
+
+class ApiKeyConnectResponse(BaseModel):
+    """Response from creating an API key source connection."""
+
+    success: bool
+    connection_id: str
+    message: str
+    error: Optional[str] = None
+
+
+# =============================================================================
 # Normalizer
 # =============================================================================
 

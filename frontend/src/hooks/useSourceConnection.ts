@@ -22,6 +22,7 @@ import type {
 import {
   getAvailableSources,
   initiateOAuth,
+  completeApiKeyConnect,
   disconnectSource as apiDisconnectSource,
   testConnection as apiTestConnection,
   updateSyncConfig as apiUpdateSyncConfig,
@@ -191,24 +192,53 @@ export function useConnectionWizard(): UseConnectionWizardResult {
   const testConnection = useCallback(async () => {
     setState((prev) => ({ ...prev, error: null, step: 'test' }));
 
-    // For API key auth, we would test here
-    // For OAuth, test happens in OAuthCallback page after redirect
-    // This is a placeholder for the API key flow
-    try {
-      // TODO: Implement API key connection test
+    if (!state.selectedPlatform) {
+      setState((prev) => ({ ...prev, error: 'No platform selected' }));
+      return;
+    }
+
+    // For API key auth: create the connection then test it
+    // For OAuth: test happens in OAuthCallback page after redirect
+    if (state.selectedPlatform.authType === 'api_key') {
+      const apiKey = state.configuration?.api_key as string | undefined;
+      if (!apiKey) {
+        setState((prev) => ({ ...prev, error: 'API key is required' }));
+        return;
+      }
+      try {
+        const connectResult = await completeApiKeyConnect(state.selectedPlatform.platform, {
+          api_key: apiKey,
+          display_name: state.selectedPlatform.displayName,
+        });
+        if (!connectResult.success) {
+          setState((prev) => ({
+            ...prev,
+            error: connectResult.error ?? 'Failed to connect source',
+          }));
+          return;
+        }
+        const testResult = await apiTestConnection(connectResult.connection_id);
+        setState((prev) => ({
+          ...prev,
+          testResult,
+          step: testResult.success ? 'complete' : 'test',
+        }));
+      } catch (err) {
+        console.error('Failed to connect/test API key source:', err);
+        setState((prev) => ({
+          ...prev,
+          error: getErrorMessage(err, 'Connection test failed'),
+        }));
+      }
+    } else {
+      // OAuth platforms: test step is handled post-callback, move to complete
       setState((prev) => ({
         ...prev,
-        testResult: { success: true, message: 'Connection successful' },
+        testResult: { success: true, message: 'OAuth connection established' },
         step: 'complete',
       }));
-    } catch (err) {
-      console.error('Failed to test connection:', err);
-      setState((prev) => ({
-        ...prev,
-        error: getErrorMessage(err, 'Connection test failed'),
-      }));
     }
-  }, []);
+  }, [state.selectedPlatform, state.configuration]);
 
   const setTestResult = useCallback((result: ConnectionTestResult) => {
     setState((prev) => ({

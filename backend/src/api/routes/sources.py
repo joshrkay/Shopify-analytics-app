@@ -51,6 +51,8 @@ from src.api.schemas.sources import (
     OAuthInitiateResponse,
     OAuthCallbackRequest,
     OAuthCallbackResponse,
+    ApiKeyConnectRequest,
+    ApiKeyConnectResponse,
     TestConnectionResponse,
     UpdateSyncConfigRequest,
     GlobalSyncSettingsResponse,
@@ -424,6 +426,143 @@ async def initiate_oauth(
         authorization_url=authorization_url,
         state=state,
     )
+
+
+@router.post(
+    "/{platform}/api-key/connect",
+    response_model=ApiKeyConnectResponse,
+)
+async def connect_api_key_source(
+    request: Request,
+    platform: str,
+    body: ApiKeyConnectRequest,
+    db_session=Depends(get_db_session),
+):
+    """
+    Create a data source connection using an API key.
+
+    For platforms that use API key authentication (Klaviyo, Attentive,
+    Postscript, SMSBump), this endpoint accepts the API key, creates the
+    Airbyte source and connection pipeline, and registers it with the
+    tenant-scoped service.
+
+    SECURITY: Requires valid tenant context. API key is passed directly
+    to Airbyte (not stored by this service — Airbyte manages the credential).
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    # Validate platform uses API key auth
+    auth_type = PLATFORM_AUTH_TYPE.get(platform)
+    if auth_type != "api_key":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Platform '{platform}' does not use API key auth. Auth type: {auth_type}",
+        )
+
+    # Resolve Airbyte source type
+    try:
+        platform_enum = AdPlatform(platform)
+        airbyte_source_type = AIRBYTE_SOURCE_TYPES.get(platform_enum)
+    except ValueError:
+        airbyte_source_type = None
+
+    if not airbyte_source_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No Airbyte source type configured for platform: {platform}",
+        )
+
+    # Build Airbyte source config based on platform
+    source_config: dict
+    if platform == "klaviyo":
+        source_config = {"api_key": body.api_key}
+    elif platform in ("attentive", "postscript", "smsbump"):
+        source_config = {"api_key": body.api_key}
+    else:
+        source_config = {"api_key": body.api_key}
+
+    display = body.display_name or PLATFORM_DISPLAY_NAMES.get(platform, platform)
+
+    try:
+        airbyte_client = get_airbyte_client()
+
+        source_request = SourceCreationRequest(
+            name=f"{display} - {tenant_ctx.tenant_id[:8]}",
+            source_type=airbyte_source_type,
+            configuration=source_config,
+        )
+        source = await airbyte_client.create_source(source_request)
+
+        destinations = await airbyte_client.list_destinations()
+        destination_id = destinations[0].destination_id if destinations else None
+
+        if not destination_id:
+            logger.error(
+                "No Airbyte destination available for API key connection",
+                extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Data pipeline could not be established: no destination configured "
+                    "in the sync workspace. Please contact support."
+                ),
+            )
+
+        conn_request = ConnectionCreationRequest(
+            source_id=source.source_id,
+            destination_id=destination_id,
+            name=f"{display} sync",
+        )
+        connection = await airbyte_client.create_connection(conn_request)
+
+        service = AirbyteService(db_session, tenant_ctx.tenant_id)
+        conn_info = service.register_connection(
+            airbyte_connection_id=connection.connection_id,
+            connection_name=display,
+            connection_type="source",
+            airbyte_source_id=source.source_id,
+            source_type=airbyte_source_type,
+            configuration={"platform": platform, "auth_type": "api_key"},
+        )
+        service.activate_connection(conn_info.id)
+
+        logger.info(
+            "API key source connected",
+            extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform, "connection_id": conn_info.id},
+        )
+
+        return ApiKeyConnectResponse(
+            success=True,
+            connection_id=conn_info.id,
+            message=f"Successfully connected {display}",
+        )
+
+    except HTTPException:
+        raise
+    except DuplicateConnectionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+    except AirbyteError as e:
+        logger.error(
+            "API key connect failed - Airbyte error",
+            extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to create source connection via Airbyte",
+        )
+    except Exception as e:
+        logger.error(
+            "API key connect failed",
+            extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to connect source. Please try again.",
+        )
 
 
 @router.post(

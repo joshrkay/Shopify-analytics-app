@@ -136,10 +136,8 @@ export function WizardFlow() {
   }, [exitWizardMode, navigate]);
 
   const handleSaveAsTemplate = useCallback(() => {
-    // TODO: Epic 6 - Backend integration for template saving
-    // For now, show a toast notification
-    console.info('Save as Template feature coming soon!');
-    alert('Save as Template feature coming soon! This will be available in a future release.');
+    // Epic 6 — template saving is not yet available
+    console.info('Save as Template: backend endpoint not yet available (Epic 6).');
   }, []);
 
   const handleAddWidget = useCallback(
