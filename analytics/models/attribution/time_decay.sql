@@ -74,15 +74,13 @@ campaigns_with_decay as (
         c.conversions as campaign_conversions,
 
         -- Days before order (0 = same day, 7 = 7 days before)
-        date_part(
-            'day',
-            date(o.order_created_at) - c.date
-        ) as days_before_order,
+        -- date - date returns integer in PostgreSQL
+        (date(o.order_created_at) - c.date) as days_before_order,
 
         -- Exponential decay weight: closer to order date = higher weight
         -- decay_rate = 0.5; campaign on day-0 gets weight 1.0
         -- campaign on day-7 gets weight exp(-0.5*7) ≈ 0.03
-        exp(-0.5 * date_part('day', date(o.order_created_at) - c.date)) as raw_decay_weight
+        exp(-0.5 * (date(o.order_created_at) - c.date)::numeric) as raw_decay_weight
 
     from last_click_base o
     inner join {{ ref('campaign_performance') }} c
