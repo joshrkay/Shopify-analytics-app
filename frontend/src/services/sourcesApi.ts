@@ -17,6 +17,8 @@ import type {
   OAuthInitiateResponse,
   OAuthCallbackParams,
   OAuthCompleteResponse,
+  ApiKeyConnectRequest,
+  ApiKeyConnectResponse,
   ConnectionTestResult,
   UpdateSyncConfigRequest,
 } from '../types/sourceConnection';
@@ -102,6 +104,32 @@ export async function completeOAuth(params: OAuthCallbackParams): Promise<OAuthC
     body: JSON.stringify(params),
   });
   return handleResponse<OAuthCompleteResponse>(response);
+}
+
+// =============================================================================
+// API Key Connection
+// =============================================================================
+
+/**
+ * Connect a data source using an API key.
+ *
+ * Used for platforms with api_key auth type (Klaviyo, Attentive, Postscript, SMSBump).
+ * Creates the Airbyte source and connection pipeline on the backend.
+ *
+ * @param platform - Platform identifier (e.g., 'klaviyo', 'attentive')
+ * @param request - API key and optional display name
+ */
+export async function completeApiKeyConnect(
+  platform: string,
+  request: ApiKeyConnectRequest
+): Promise<ApiKeyConnectResponse> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(`${API_BASE_URL}/api/sources/${platform}/api-key/connect`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+  });
+  return handleResponse<ApiKeyConnectResponse>(response);
 }
 
 // =============================================================================

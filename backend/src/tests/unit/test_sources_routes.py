@@ -31,6 +31,7 @@ from src.api.schemas.sources import (
     PLATFORM_DISPLAY_NAMES,
     PLATFORM_AUTH_TYPE,
     PLATFORM_CATEGORIES,
+    ApiKeyConnectRequest,
 )
 from src.database.session import get_db_session
 
@@ -660,6 +661,178 @@ class TestUpdateSyncSettings:
         )
 
         assert response.status_code == 400
+
+
+# =============================================================================
+# POST /api/sources/{platform}/api-key/connect
+# =============================================================================
+
+class TestApiKeyConnect:
+
+    @patch("src.api.routes.sources.get_airbyte_client")
+    @patch("src.api.routes.sources.AirbyteService")
+    def test_klaviyo_api_key_connect_success(
+        self, MockAirbyteService, mock_get_client, client
+    ):
+        """Klaviyo api-key connect creates Airbyte source + returns connection_id."""
+        mock_client = AsyncMock()
+        mock_source = MagicMock()
+        mock_source.source_id = "airbyte-src-klaviyo-001"
+        mock_client.create_source.return_value = mock_source
+        mock_dest = MagicMock()
+        mock_dest.destination_id = "airbyte-dest-001"
+        mock_client.list_destinations.return_value = [mock_dest]
+        mock_connection = MagicMock()
+        mock_connection.connection_id = "airbyte-conn-klaviyo-001"
+        mock_client.create_connection.return_value = mock_connection
+        mock_get_client.return_value = mock_client
+
+        mock_service = MagicMock()
+        mock_conn_info = MagicMock()
+        mock_conn_info.id = "conn-klaviyo-001"
+        mock_service.register_connection.return_value = mock_conn_info
+        MockAirbyteService.return_value = mock_service
+
+        response = client.post(
+            "/api/sources/klaviyo/api-key/connect",
+            json={"api_key": "klaviyo-pk-abc123"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["connection_id"] == "conn-klaviyo-001"
+        assert "Klaviyo" in data["message"]
+
+    @patch("src.api.routes.sources.get_airbyte_client")
+    @patch("src.api.routes.sources.AirbyteService")
+    def test_attentive_api_key_connect_success(
+        self, MockAirbyteService, mock_get_client, client
+    ):
+        """Attentive api-key connect returns connection_id."""
+        mock_client = AsyncMock()
+        mock_source = MagicMock()
+        mock_source.source_id = "airbyte-src-attentive-001"
+        mock_client.create_source.return_value = mock_source
+        mock_dest = MagicMock()
+        mock_dest.destination_id = "airbyte-dest-001"
+        mock_client.list_destinations.return_value = [mock_dest]
+        mock_connection = MagicMock()
+        mock_connection.connection_id = "airbyte-conn-attentive-001"
+        mock_client.create_connection.return_value = mock_connection
+        mock_get_client.return_value = mock_client
+
+        mock_service = MagicMock()
+        mock_conn_info = MagicMock()
+        mock_conn_info.id = "conn-attentive-001"
+        mock_service.register_connection.return_value = mock_conn_info
+        MockAirbyteService.return_value = mock_service
+
+        response = client.post(
+            "/api/sources/attentive/api-key/connect",
+            json={"api_key": "attentive-key-xyz"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    def test_api_key_connect_rejects_oauth_platform(self, client):
+        """Returns 400 if platform uses oauth, not api_key."""
+        response = client.post(
+            "/api/sources/meta_ads/api-key/connect",
+            json={"api_key": "some-key"},
+        )
+
+        assert response.status_code == 400
+        assert "does not use API key" in response.json()["detail"]
+
+    def test_api_key_connect_rejects_unknown_platform(self, client):
+        """Returns 400 if platform is unknown (no Airbyte source type)."""
+        response = client.post(
+            "/api/sources/unknown_platform/api-key/connect",
+            json={"api_key": "some-key"},
+        )
+
+        assert response.status_code == 400
+
+    @patch("src.api.routes.sources.get_airbyte_client")
+    @patch("src.api.routes.sources.AirbyteService")
+    def test_api_key_connect_502_when_no_destination(
+        self, MockAirbyteService, mock_get_client, client
+    ):
+        """Returns 502 when no Airbyte destination is configured."""
+        mock_client = AsyncMock()
+        mock_source = MagicMock()
+        mock_source.source_id = "src-001"
+        mock_client.create_source.return_value = mock_source
+        mock_client.list_destinations.return_value = []
+        mock_get_client.return_value = mock_client
+        MockAirbyteService.return_value = MagicMock()
+
+        response = client.post(
+            "/api/sources/klaviyo/api-key/connect",
+            json={"api_key": "klaviyo-key"},
+        )
+
+        assert response.status_code == 502
+        assert "no destination configured" in response.json()["detail"]
+
+    @patch("src.api.routes.sources.get_airbyte_client")
+    @patch("src.api.routes.sources.AirbyteService")
+    def test_api_key_connect_uses_display_name_when_provided(
+        self, MockAirbyteService, mock_get_client, client
+    ):
+        """Uses custom display_name in connection registration if provided."""
+        mock_client = AsyncMock()
+        mock_source = MagicMock()
+        mock_source.source_id = "src-disp-001"
+        mock_client.create_source.return_value = mock_source
+        mock_dest = MagicMock()
+        mock_dest.destination_id = "dest-001"
+        mock_client.list_destinations.return_value = [mock_dest]
+        mock_connection = MagicMock()
+        mock_connection.connection_id = "conn-disp-001"
+        mock_client.create_connection.return_value = mock_connection
+        mock_get_client.return_value = mock_client
+
+        mock_service = MagicMock()
+        mock_conn_info = MagicMock()
+        mock_conn_info.id = "conn-disp-001"
+        mock_service.register_connection.return_value = mock_conn_info
+        MockAirbyteService.return_value = mock_service
+
+        response = client.post(
+            "/api/sources/klaviyo/api-key/connect",
+            json={"api_key": "kp-key", "display_name": "My Klaviyo Account"},
+        )
+
+        assert response.status_code == 200
+        reg_call = mock_service.register_connection.call_args
+        assert reg_call.kwargs.get("connection_name") == "My Klaviyo Account"
+
+    @patch("src.api.routes.sources.get_airbyte_client")
+    @patch("src.api.routes.sources.AirbyteService")
+    def test_api_key_connect_sanitizes_errors(
+        self, MockAirbyteService, mock_get_client, client
+    ):
+        """Does not leak internal error details to client."""
+        mock_client = AsyncMock()
+        mock_client.create_source.side_effect = RuntimeError(
+            "Internal error: DB password=super_secret_password"
+        )
+        mock_get_client.return_value = mock_client
+        MockAirbyteService.return_value = MagicMock()
+
+        response = client.post(
+            "/api/sources/klaviyo/api-key/connect",
+            json={"api_key": "key"},
+        )
+
+        assert response.status_code == 500
+        detail = response.json()["detail"]
+        assert "super_secret_password" not in detail
+        assert "Please try again" in detail
 
 
 # =============================================================================
