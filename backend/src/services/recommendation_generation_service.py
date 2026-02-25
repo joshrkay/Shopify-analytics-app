@@ -337,6 +337,57 @@ class RecommendationGenerationService:
         content = "|".join(parts)
         return hashlib.sha256(content.encode()).hexdigest()
 
+    def _enhance_with_llm(
+        self,
+        detected: DetectedRecommendation,
+        recommendation_text: str,
+        rationale: str,
+    ) -> tuple[str, str]:
+        """
+        Optionally enhance recommendation text with LLM.
+
+        Returns the original deterministic text if LLM is not available,
+        not entitled, or fails for any reason.
+        """
+        try:
+            import asyncio
+            from src.services.llm_integration import enhance_with_llm
+
+            variables = {
+                "recommendation_type": detected.recommendation_type.value,
+                "insight_type": detected.source_insight_type.value,
+                "severity": detected.source_severity.value,
+                "direction": detected.direction,
+                "entity": detected.affected_entity or "account",
+                "confidence": detected.confidence_score,
+            }
+
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                return recommendation_text, rationale
+
+            enhanced_text = asyncio.run(enhance_with_llm(
+                db_session=self.db,
+                tenant_id=self.tenant_id,
+                template_key="recommendation_text",
+                variables=variables,
+                fallback_content=recommendation_text,
+            ))
+            enhanced_rationale = asyncio.run(enhance_with_llm(
+                db_session=self.db,
+                tenant_id=self.tenant_id,
+                template_key="recommendation_rationale",
+                variables=variables,
+                fallback_content=rationale,
+            ))
+            return enhanced_text, enhanced_rationale
+        except Exception:
+            return recommendation_text, rationale
+
     def _persist_recommendation(
         self,
         detected: DetectedRecommendation,
@@ -348,6 +399,11 @@ class RecommendationGenerationService:
         # Render recommendation text and rationale
         recommendation_text = render_recommendation_text(detected)
         rationale = render_rationale(detected)
+
+        # Optional LLM enhancement (graceful fallback to deterministic text)
+        recommendation_text, rationale = self._enhance_with_llm(
+            detected, recommendation_text, rationale
+        )
 
         # Validate language rules
         is_valid, error = validate_recommendation_language(recommendation_text)
