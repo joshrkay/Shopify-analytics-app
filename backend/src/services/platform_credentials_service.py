@@ -360,7 +360,7 @@ class PlatformCredentialsService:
             )
             return False
 
-    def revoke_credentials(
+    async def revoke_credentials(
         self,
         tenant_id: str,
         platform: Platform,
