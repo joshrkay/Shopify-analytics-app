@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
-from src.database.session import SessionLocal
+from src.database.session import get_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ class ChannelMetricsResponse(BaseModel):
 def _get_db_for_channels(request: Request):
     """Open a DB session after validating tenant context."""
     get_tenant_context(request)  # raises 401/403 if invalid
-    db = SessionLocal()
+    db = get_session_factory()()
     try:
         yield db
     finally:
