@@ -248,6 +248,46 @@ def _build_snapchat_oauth_url(state: str, **kwargs) -> str:
     )
 
 
+def _build_pinterest_oauth_url(state: str, **kwargs) -> str:
+    """Build Pinterest Ads OAuth authorization URL (stub — requires PINTEREST_CLIENT_ID)."""
+    client_id = os.environ.get("PINTEREST_CLIENT_ID", "")
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Pinterest Ads integration coming soon — credentials not yet configured",
+        )
+    scopes = "ads:read,catalogs:read"
+    return (
+        f"https://www.pinterest.com/oauth/"
+        f"?client_id={client_id}"
+        f"&redirect_uri={OAUTH_REDIRECT_URI}"
+        f"&state={state}"
+        f"&scope={scopes}"
+        f"&response_type=code"
+    )
+
+
+def _build_twitter_oauth_url(state: str, **kwargs) -> str:
+    """Build Twitter/X Ads OAuth authorization URL (stub — requires TWITTER_CLIENT_ID)."""
+    client_id = os.environ.get("TWITTER_CLIENT_ID", "")
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Twitter/X Ads integration coming soon — credentials not yet configured",
+        )
+    scopes = "tweet.read%20users.read%20offline.access"
+    return (
+        f"https://twitter.com/i/oauth2/authorize"
+        f"?client_id={client_id}"
+        f"&redirect_uri={OAUTH_REDIRECT_URI}"
+        f"&state={state}"
+        f"&scope={scopes}"
+        f"&response_type=code"
+        f"&code_challenge=challenge"
+        f"&code_challenge_method=plain"
+    )
+
+
 def _build_shopify_oauth_url(state: str, shop_domain: Optional[str] = None, **kwargs) -> str:
     """Build Shopify OAuth authorization URL.
 
@@ -278,6 +318,8 @@ OAUTH_URL_BUILDERS: dict[str, callable] = {
     "google_ads": _build_google_oauth_url,
     "tiktok_ads": _build_tiktok_oauth_url,
     "snapchat_ads": _build_snapchat_oauth_url,
+    "pinterest_ads": _build_pinterest_oauth_url,
+    "twitter_ads": _build_twitter_oauth_url,
     "shopify_email": _build_shopify_oauth_url,
 }
 
