@@ -50,6 +50,7 @@ import { Dashboard } from './pages/Dashboard';
 import BillingCheckout from './pages/BillingCheckout';
 import { Attribution } from './pages/Attribution';
 import { Orders } from './pages/Orders';
+import { Onboarding } from './pages/Onboarding';
 
 // =============================================================================
 // FeatureGateRoute — redirects to paywall if feature not entitled
@@ -148,6 +149,9 @@ function AppWithOrg() {
     <AgencyProvider>
       <DataHealthProvider>
         <Routes>
+          {/* Onboarding wizard — full-screen, no sidebar */}
+          <Route path="/onboarding" element={<Onboarding />} />
+
           {/* New Tailwind-based layout with sidebar + header */}
           <Route element={<Root />}>
             <Route path="/" element={<Dashboard />} />
