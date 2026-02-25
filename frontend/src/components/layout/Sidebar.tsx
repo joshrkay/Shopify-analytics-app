@@ -42,7 +42,9 @@ import './Sidebar.css';
 interface NavItem {
   label: string;
   path: string;
-  icon: IconSource;
+  icon?: IconSource;
+  /** Emoji icon shown in place of a Polaris icon (used for channel links) */
+  emoji?: string;
   matchPrefix?: boolean;
   feature?: string;
 }
@@ -61,6 +63,18 @@ const NAV_SECTIONS: NavSection[] = [
       { label: 'Orders', path: '/orders', icon: ListBulletedIcon },
       { label: 'Builder', path: '/dashboards', icon: ChartVerticalIcon, matchPrefix: true, feature: 'custom_reports' },
       { label: 'Insights', path: '/insights', icon: LightbulbIcon, feature: 'ai_insights' },
+    ],
+  },
+  {
+    title: 'Channels',
+    items: [
+      { label: 'Google Ads',     path: '/channels/google_ads',    emoji: '🔍', matchPrefix: true },
+      { label: 'Facebook Ads',   path: '/channels/meta_ads',      emoji: '📘', matchPrefix: true },
+      { label: 'Instagram Ads',  path: '/channels/instagram_ads', emoji: '📷', matchPrefix: true },
+      { label: 'TikTok Ads',     path: '/channels/tiktok_ads',    emoji: '🎵', matchPrefix: true },
+      { label: 'Snapchat Ads',   path: '/channels/snapchat_ads',  emoji: '👻', matchPrefix: true },
+      { label: 'Pinterest Ads',  path: '/channels/pinterest_ads', emoji: '📌', matchPrefix: true },
+      { label: 'Twitter Ads',    path: '/channels/twitter_ads',   emoji: '🐦', matchPrefix: true },
     ],
   },
   {
@@ -142,7 +156,11 @@ export function Sidebar() {
                 }
               }}
             >
-              <Icon source={item.icon} />
+              {item.emoji ? (
+                <span className="sidebar-nav-emoji" aria-hidden="true">{item.emoji}</span>
+              ) : item.icon ? (
+                <Icon source={item.icon} />
+              ) : null}
               <Text as="span" variant="bodyMd">
                 {item.label}
               </Text>
