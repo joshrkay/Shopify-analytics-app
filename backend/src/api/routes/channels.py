@@ -216,7 +216,7 @@ async def get_channel_metrics(
 
         clicks      = int(clicks_row.clicks)         if clicks_row else 0
         impressions = int(clicks_row.impressions)    if clicks_row else 0
-        ctr         = float(clicks_row.ctr)          if clicks_row else 0.0
+        ctr = clicks / impressions if impressions > 0 else 0.0
         conversions = int(clicks_row.conversions)    if clicks_row else 0
 
         conv_rate = conversions / clicks if clicks > 0 else 0.0
