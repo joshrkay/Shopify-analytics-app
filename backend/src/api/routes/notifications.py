@@ -26,6 +26,7 @@ from src.models.notification import (
     NotificationEventType,
     NotificationStatus,
 )
+from src.models.notification_preference import NotificationPreference
 from src.services.notification_service import NotificationService
 from src.api.schemas.notifications import (
     NotificationResponse,
@@ -33,6 +34,9 @@ from src.api.schemas.notifications import (
     UnreadCountResponse,
     MarkReadResponse,
     MarkAllReadResponse,
+    NotificationPreferenceItem,
+    NotificationPreferencesResponse,
+    NotificationPreferencesUpdateRequest,
 )
 
 
@@ -142,6 +146,133 @@ async def get_unread_count(
     count = service.get_unread_count(tenant_ctx.user_id)
 
     return UnreadCountResponse(count=count)
+
+
+@router.get(
+    "/preferences",
+    response_model=NotificationPreferencesResponse,
+)
+async def get_notification_preferences(
+    request: Request,
+    db_session=Depends(get_db_session),
+):
+    """
+    Get per-event-type notification preferences for the current user.
+
+    Returns a row for every event type in NotificationEventType.
+    If no row exists for an event type, defaults (in_app=True, email=True) are returned.
+
+    SECURITY: Scoped to authenticated user+tenant.
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    prefs = (
+        db_session.query(NotificationPreference)
+        .filter(
+            NotificationPreference.tenant_id == tenant_ctx.tenant_id,
+            NotificationPreference.user_id == tenant_ctx.user_id,
+        )
+        .all()
+    )
+
+    pref_map = {p.event_type: p for p in prefs}
+
+    result = []
+    for event_type in NotificationEventType:
+        pref = pref_map.get(event_type)
+        result.append(NotificationPreferenceItem(
+            event_type=event_type.value,
+            in_app_enabled=pref.in_app_enabled if pref else True,
+            email_enabled=pref.email_enabled if pref else True,
+        ))
+
+    return NotificationPreferencesResponse(preferences=result)
+
+
+@router.put(
+    "/preferences",
+    response_model=NotificationPreferencesResponse,
+)
+async def update_notification_preferences(
+    request: Request,
+    body: NotificationPreferencesUpdateRequest,
+    db_session=Depends(get_db_session),
+):
+    """
+    Upsert per-event-type notification preferences for the current user.
+
+    Creates or updates a row for each item in the request.
+    Unspecified event types retain their existing values.
+
+    SECURITY: Scoped to authenticated user+tenant.
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    for item in body.preferences:
+        try:
+            event_type = NotificationEventType(item.event_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid event type: {item.event_type}",
+            )
+
+        pref = (
+            db_session.query(NotificationPreference)
+            .filter(
+                NotificationPreference.tenant_id == tenant_ctx.tenant_id,
+                NotificationPreference.user_id == tenant_ctx.user_id,
+                NotificationPreference.event_type == event_type,
+            )
+            .first()
+        )
+
+        if pref:
+            pref.in_app_enabled = item.in_app_enabled
+            pref.email_enabled = item.email_enabled
+        else:
+            pref = NotificationPreference(
+                tenant_id=tenant_ctx.tenant_id,
+                user_id=tenant_ctx.user_id,
+                event_type=event_type,
+                in_app_enabled=item.in_app_enabled,
+                email_enabled=item.email_enabled,
+            )
+            db_session.add(pref)
+
+    db_session.commit()
+
+    logger.info(
+        "Notification preferences updated",
+        extra={
+            "tenant_id": tenant_ctx.tenant_id,
+            "user_id": tenant_ctx.user_id,
+            "updated_count": len(body.preferences),
+        },
+    )
+
+    # Return full updated preferences list
+    prefs = (
+        db_session.query(NotificationPreference)
+        .filter(
+            NotificationPreference.tenant_id == tenant_ctx.tenant_id,
+            NotificationPreference.user_id == tenant_ctx.user_id,
+        )
+        .all()
+    )
+
+    pref_map = {p.event_type: p for p in prefs}
+
+    result = []
+    for event_type in NotificationEventType:
+        pref = pref_map.get(event_type)
+        result.append(NotificationPreferenceItem(
+            event_type=event_type.value,
+            in_app_enabled=pref.in_app_enabled if pref else True,
+            email_enabled=pref.email_enabled if pref else True,
+        ))
+
+    return NotificationPreferencesResponse(preferences=result)
 
 
 @router.get(
