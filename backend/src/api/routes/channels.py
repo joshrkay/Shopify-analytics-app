@@ -158,8 +158,8 @@ async def get_channel_metrics(
             "platform":    platform,
         }).fetchone()
 
-        # ── Click-level metrics from raw fact table ────────────────────────
-        # fct_marketing_spend has daily rows; sum over the matching date range.
+        # ── Click-level metrics from canonical fact table ──────────────────
+        # analytics.marketing_spend has daily rows; sum over the matching date range.
         days_map = {
             "last_7_days":   7,
             "this_week":     7,
@@ -176,7 +176,7 @@ async def get_channel_metrics(
                 COALESCE(SUM(impressions), 0)  AS impressions,
                 COALESCE(AVG(ctr), 0)          AS ctr,
                 COALESCE(SUM(conversions), 0)  AS conversions
-            FROM analytics.fct_marketing_spend
+            FROM analytics.marketing_spend
             WHERE tenant_id       = :tenant_id
               AND source_platform = :platform
               AND date >= current_date - (:lookback_days * INTERVAL '1 day')
