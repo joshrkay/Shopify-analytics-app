@@ -129,3 +129,37 @@ export async function getChannelDrilldown(
   );
   return handleResponse<ChannelDrilldownResponse>(response);
 }
+
+// ---------------------------------------------------------------------------
+// GET /api/channels/{platform}/metrics — per-channel analytics page
+// ---------------------------------------------------------------------------
+
+export interface ChannelMetricsResponse {
+  platform: string;
+  display_name: string;
+  revenue: number;
+  spend: number;
+  roas: number;
+  orders: number;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  conversion_rate: number;
+  daily_trend: DailyTrendPoint[];
+}
+
+/**
+ * Full metrics for one ad platform (revenue, spend, ROAS, clicks, CTR, etc.)
+ * plus a daily revenue trend series. No entitlement gate — all plans.
+ */
+export async function getChannelMetrics(
+  platform: string,
+  timeframe: string,
+): Promise<ChannelMetricsResponse> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(
+    `${API_BASE_URL}/api/channels/${encodeURIComponent(platform)}/metrics?timeframe=${encodeURIComponent(timeframe)}`,
+    { method: 'GET', headers },
+  );
+  return handleResponse<ChannelMetricsResponse>(response);
+}
