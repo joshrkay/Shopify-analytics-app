@@ -429,9 +429,6 @@ class KpiSummaryResponse(BaseModel):
     total_ad_spend: KpiMetric
     average_roas: KpiMetric
     total_conversions: KpiMetric
-    total_clicks: KpiMetric
-    avg_ctr: KpiMetric
-    avg_conversion_rate: KpiMetric
     revenue_by_channel: List[ChannelBar]
     active_channels: int
 
@@ -455,45 +452,63 @@ async def get_kpi_summary(
     period_type = TIMEFRAME_TO_PERIOD.get(timeframe, "last_30_days")
 
     try:
-        # Marketing metrics (spend, ROAS, clicks, CTR, conversions, conv_rate)
+        # Marketing metrics (spend, ROAS, conversions) — from mart_marketing_metrics.
+        # Columns: spend, orders, gross_roas, prior_spend, prior_orders, prior_gross_roas.
+        # period_end subquery selects the most-recent materialized window (rolling windows
+        # refresh daily; calendar periods refresh at period boundaries).
         mkt_row = db_session.execute(text("""
             SELECT
-                COALESCE(SUM(total_spend), 0)           AS total_spend,
-                COALESCE(SUM(order_count), 0)            AS total_conversions,
-                COALESCE(SUM(total_clicks), 0)           AS total_clicks,
-                COALESCE(AVG(ctr), 0)                    AS avg_ctr,
-                COALESCE(AVG(conversion_rate), 0)        AS avg_conversion_rate,
-                COALESCE(AVG(gross_roas), 0)             AS avg_roas,
-                COALESCE(SUM(total_spend_prior), 0)      AS prior_spend,
-                COALESCE(SUM(order_count_prior), 0)      AS prior_conversions,
-                COALESCE(SUM(total_clicks_prior), 0)     AS prior_clicks,
-                COALESCE(AVG(ctr_prior), 0)              AS prior_ctr,
-                COALESCE(AVG(conversion_rate_prior), 0)  AS prior_conv_rate,
-                COALESCE(AVG(gross_roas_prior), 0)       AS prior_roas
+                COALESCE(SUM(spend), 0)           AS total_spend,
+                COALESCE(SUM(orders), 0)           AS total_conversions,
+                COALESCE(AVG(gross_roas), 0)       AS avg_roas,
+                COALESCE(SUM(prior_spend), 0)      AS prior_spend,
+                COALESCE(SUM(prior_orders), 0)     AS prior_conversions,
+                COALESCE(AVG(prior_gross_roas), 0) AS prior_roas
             FROM marts.mart_marketing_metrics
             WHERE tenant_id = :tenant_id
               AND period_type = :period_type
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_marketing_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
         """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchone()
 
-        # Revenue metrics
+        # Revenue metrics — gross_revenue and prior_gross_revenue from mart_revenue_metrics.
         rev_row = db_session.execute(text("""
             SELECT
-                COALESCE(SUM(total_gross_revenue), 0)       AS total_revenue,
-                COALESCE(SUM(total_gross_revenue_prior), 0) AS prior_revenue
+                COALESCE(SUM(gross_revenue), 0)       AS total_revenue,
+                COALESCE(SUM(prior_gross_revenue), 0) AS prior_revenue
             FROM marts.mart_revenue_metrics
             WHERE tenant_id = :tenant_id
               AND period_type = :period_type
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_revenue_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
         """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchone()
 
-        # Per-channel revenue + spend for grouped bar chart
+        # Per-channel revenue + spend for grouped bar chart.
         channel_rows = db_session.execute(text("""
             SELECT
-                COALESCE(platform, 'organic')         AS channel,
-                COALESCE(SUM(total_gross_revenue), 0) AS revenue,
-                COALESCE(SUM(total_spend), 0)          AS spend
+                COALESCE(platform, 'organic') AS channel,
+                COALESCE(SUM(gross_revenue), 0) AS revenue,
+                COALESCE(SUM(spend), 0)          AS spend
             FROM marts.mart_marketing_metrics
             WHERE tenant_id = :tenant_id
               AND period_type = :period_type
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_marketing_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
             GROUP BY platform
             ORDER BY revenue DESC
         """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchall()
@@ -511,12 +526,6 @@ async def get_kpi_summary(
         prior_roas = float(mkt_row.prior_roas) if mkt_row else 0.0
         convs = float(mkt_row.total_conversions) if mkt_row else 0.0
         prior_convs = float(mkt_row.prior_conversions) if mkt_row else 0.0
-        clicks = float(mkt_row.total_clicks) if mkt_row else 0.0
-        prior_clicks = float(mkt_row.prior_clicks) if mkt_row else 0.0
-        ctr = float(mkt_row.avg_ctr) if mkt_row else 0.0
-        prior_ctr = float(mkt_row.prior_ctr) if mkt_row else 0.0
-        conv_rate = float(mkt_row.avg_conversion_rate) if mkt_row else 0.0
-        prior_conv_rate = float(mkt_row.prior_conv_rate) if mkt_row else 0.0
 
         channels = [
             ChannelBar(channel=r.channel, revenue=float(r.revenue), spend=float(r.spend))
@@ -529,9 +538,6 @@ async def get_kpi_summary(
             total_ad_spend=KpiMetric(value=spend, change_pct=_pct(spend, prior_spend)),
             average_roas=KpiMetric(value=roas, change_pct=_pct(roas, prior_roas)),
             total_conversions=KpiMetric(value=convs, change_pct=_pct(convs, prior_convs)),
-            total_clicks=KpiMetric(value=clicks, change_pct=_pct(clicks, prior_clicks)),
-            avg_ctr=KpiMetric(value=ctr, change_pct=_pct(ctr, prior_ctr)),
-            avg_conversion_rate=KpiMetric(value=conv_rate, change_pct=_pct(conv_rate, prior_conv_rate)),
             revenue_by_channel=channels,
             active_channels=active_channels,
         )
@@ -627,28 +633,35 @@ async def get_channel_breakdown(
     tenant_ctx = get_tenant_context(request)
     period_type = TIMEFRAME_TO_PERIOD.get(timeframe, "last_30_days")
 
-    metric_col_map = {
-        "revenue": "SUM(total_gross_revenue)",
-        "spend": "SUM(total_spend)",
-        "roas": "AVG(gross_roas)",
-        "conversions": "SUM(order_count)",
-    }
-    if metric not in metric_col_map:
+    if metric not in ("revenue", "spend", "roas", "conversions"):
         raise HTTPException(status_code=400, detail=f"Invalid metric: {metric}")
 
-    agg_expr = metric_col_map[metric]
-
     try:
-        rows = db_session.execute(text(f"""
+        # CASE WHEN with bind parameter avoids f-string SQL while keeping a single query.
+        # All THEN branches are aggregates or a constant (0), which is valid in PostgreSQL.
+        rows = db_session.execute(text("""
             SELECT
                 COALESCE(platform, 'organic') AS channel,
-                COALESCE({agg_expr}, 0)        AS metric_value
+                CASE
+                    WHEN :metric = 'revenue'     THEN COALESCE(SUM(gross_revenue), 0)
+                    WHEN :metric = 'spend'       THEN COALESCE(SUM(spend), 0)
+                    WHEN :metric = 'roas'        THEN COALESCE(AVG(gross_roas), 0)
+                    WHEN :metric = 'conversions' THEN COALESCE(SUM(orders), 0)
+                    ELSE 0
+                END AS metric_value
             FROM marts.mart_marketing_metrics
             WHERE tenant_id = :tenant_id
               AND period_type = :period_type
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_marketing_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
             GROUP BY platform
             ORDER BY metric_value DESC
-        """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchall()
+        """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type, "metric": metric}).fetchall()
 
         total = sum(float(r.metric_value) for r in rows) if rows else 0.0
         active = len([r for r in rows if float(r.metric_value) > 0])
@@ -700,42 +713,52 @@ async def get_channel_drilldown(
     display_name = CHANNEL_DISPLAY_NAMES.get(channel, channel.replace("_", " ").title())
 
     try:
-        # Aggregate totals for this channel
+        # Aggregate totals for this channel — correct column names: gross_revenue, orders.
         totals = db_session.execute(text("""
             SELECT
-                COALESCE(SUM(total_gross_revenue), 0) AS total_revenue,
-                COALESCE(SUM(order_count), 0)          AS total_orders
+                COALESCE(SUM(gross_revenue), 0) AS total_revenue,
+                COALESCE(SUM(orders), 0)         AS total_orders
             FROM marts.mart_marketing_metrics
             WHERE tenant_id = :tenant_id
               AND period_type = :period_type
               AND (platform = :channel OR (:channel = 'organic' AND platform IS NULL))
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_marketing_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
         """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type, "channel": channel}).fetchone()
 
-        # Daily trend from mart_revenue_metrics (or marketing metrics daily)
+        # Daily trend: period_type='daily' has period_end=period_start, so filter by
+        # date range instead of period_end subquery to cover the trailing 90 days.
         trend_rows = db_session.execute(text("""
             SELECT
-                DATE(period_start)                    AS day,
-                COALESCE(SUM(total_gross_revenue), 0) AS revenue
+                period_start::date                AS day,
+                COALESCE(SUM(gross_revenue), 0)   AS revenue
             FROM marts.mart_marketing_metrics
             WHERE tenant_id = :tenant_id
               AND period_type = 'daily'
               AND (platform = :channel OR (:channel = 'organic' AND platform IS NULL))
-            GROUP BY DATE(period_start)
+              AND period_start >= current_date - interval '89 days'
+              AND period_start <= current_date
+            GROUP BY period_start::date
             ORDER BY day ASC
-            LIMIT 90
         """), {"tenant_id": tenant_ctx.tenant_id, "channel": channel}).fetchall()
 
-        # Top products via attribution join (canonical orders + last_click)
+        # Top products via attribution join.
+        # Attribution table is in schema 'attribution' (dbt materialization), not 'analytics'.
         product_rows = db_session.execute(text("""
             SELECT
-                COALESCE(o.title, 'Unknown Product')  AS product_name,
+                COALESCE(o.title, 'Unknown Product')    AS product_name,
                 COALESCE(SUM(o.price * li.quantity), 0) AS revenue,
-                COALESCE(SUM(li.quantity), 0)          AS units_sold,
-                COALESCE(AVG(o.price), 0)              AS avg_price
+                COALESCE(SUM(li.quantity), 0)           AS units_sold,
+                COALESCE(AVG(o.price), 0)               AS avg_price
             FROM canonical.fact_orders_v1 fo
             JOIN canonical.order_line_items li ON li.order_id = fo.order_id
             JOIN canonical.products o ON o.product_id = li.product_id
-            JOIN analytics.last_click lc ON lc.order_id = fo.order_id
+            JOIN attribution.last_click lc ON lc.order_id = fo.order_id
             WHERE fo.tenant_id = :tenant_id
               AND (lc.platform = :channel OR (:channel = 'organic' AND lc.platform IS NULL))
             GROUP BY o.title
