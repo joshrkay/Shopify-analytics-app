@@ -89,6 +89,28 @@ export interface OAuthCompleteResponse {
 }
 
 // =============================================================================
+// API Key Connection Types
+// =============================================================================
+
+/**
+ * Request to connect a source via API key
+ */
+export interface ApiKeyConnectRequest {
+  api_key: string;
+  display_name?: string;
+}
+
+/**
+ * Response from creating an API key source connection
+ */
+export interface ApiKeyConnectResponse {
+  success: boolean;
+  connection_id: string;
+  message: string;
+  error?: string;
+}
+
+// =============================================================================
 // Sync Configuration Types
 // =============================================================================
 
