@@ -381,7 +381,10 @@ class TokenManager:
                 if expires_at <= datetime.now(timezone.utc):
                     return False
             except (ValueError, TypeError):
-                pass
+                logger.warning(
+                    "Invalid token_expires_at format in credential metadata",
+                    extra={"tenant_id": self.tenant_id, "credential_id": credential_id},
+                )
 
         return True
 
@@ -454,7 +457,10 @@ class TokenManager:
                         attempt_number=error_count,
                     )
             except (ValueError, TypeError):
-                pass
+                logger.warning(
+                    "Invalid last_refresh_attempt_at format in credential metadata",
+                    extra={"tenant_id": self.tenant_id, "credential_id": credential.id},
+                )
 
         # Decrypt current tokens
         try:
