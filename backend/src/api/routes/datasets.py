@@ -637,11 +637,13 @@ async def get_channel_breakdown(
         raise HTTPException(status_code=400, detail=f"Invalid metric: {metric}")
 
     try:
-        # CASE WHEN with bind parameter avoids f-string SQL while keeping a single query.
-        # All THEN branches are aggregates or a constant (0), which is valid in PostgreSQL.
+        # Fetch revenue and spend as fixed columns alongside the selected metric_value.
+        # Using CASE WHEN for metric_value keeps the query fully parameterised (no f-strings).
         rows = db_session.execute(text("""
             SELECT
-                COALESCE(platform, 'organic') AS channel,
+                COALESCE(platform, 'organic')   AS channel,
+                COALESCE(SUM(gross_revenue), 0) AS revenue,
+                COALESCE(SUM(spend), 0)         AS spend,
                 CASE
                     WHEN :metric = 'revenue'     THEN COALESCE(SUM(gross_revenue), 0)
                     WHEN :metric = 'spend'       THEN COALESCE(SUM(spend), 0)
@@ -679,7 +681,7 @@ async def get_channel_breakdown(
                 pct_of_total=pct,
             ))
 
-        bar = [ChannelBar(channel=r.channel, revenue=r.value, spend=0.0) for r in table]
+        bar = [ChannelBar(channel=r.channel, revenue=float(r.revenue), spend=float(r.spend)) for r in rows]
 
         return ChannelBreakdownSummary(
             total=total,
