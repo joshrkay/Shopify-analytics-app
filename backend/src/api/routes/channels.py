@@ -38,11 +38,11 @@ router = APIRouter(prefix="/api/channels", tags=["channels"])
 
 TIMEFRAME_TO_PERIOD: dict[str, str] = {
     "7days":       "last_7_days",
-    "thisWeek":    "this_week",
+    "thisWeek":    "weekly",
     "30days":      "last_30_days",
-    "thisMonth":   "this_month",
+    "thisMonth":   "monthly",
     "90days":      "last_90_days",
-    "thisQuarter": "this_quarter",
+    "thisQuarter": "quarterly",
 }
 
 CHANNEL_DISPLAY_NAMES: dict[str, str] = {
