@@ -749,15 +749,30 @@ async def get_channel_drilldown(
             ORDER BY day ASC
         """), {"tenant_id": tenant_ctx.tenant_id, "channel": channel}).fetchall()
 
-        # Top products via attribution join.
-        # Attribution table is in schema 'attribution' (dbt materialization), not 'analytics'.
+        total_rev = float(totals.total_revenue) if totals else 0.0
+
+        trend = [
+            DailyTrendPoint(date=str(r.day), revenue=float(r.revenue))
+            for r in trend_rows
+        ]
+
+    except Exception:
+        logger.warning("Channel drilldown query failed for channel %s", channel, exc_info=True)
+        raise HTTPException(status_code=503, detail="Analytics data unavailable")
+
+    # canonical.order_line_items and canonical.products are not yet built in the
+    # dbt data layer, so this query is isolated in its own try/except.  Totals +
+    # trend are returned regardless; products degrades to an empty list until
+    # those canonical tables exist.
+    products: list[ProductRow] = []
+    try:
         product_rows = db_session.execute(text("""
             SELECT
                 COALESCE(o.title, 'Unknown Product')    AS product_name,
                 COALESCE(SUM(o.price * li.quantity), 0) AS revenue,
                 COALESCE(SUM(li.quantity), 0)           AS units_sold,
                 COALESCE(AVG(o.price), 0)               AS avg_price
-            FROM canonical.fact_orders_v1 fo
+            FROM canonical.orders fo
             JOIN canonical.order_line_items li ON li.order_id = fo.order_id
             JOIN canonical.products o ON o.product_id = li.product_id
             JOIN attribution.last_click lc ON lc.order_id = fo.order_id
@@ -768,15 +783,6 @@ async def get_channel_drilldown(
             LIMIT 10
         """), {"tenant_id": tenant_ctx.tenant_id, "channel": channel}).fetchall()
 
-        total_rev = float(totals.total_revenue) if totals else 0.0
-        unique_products = len(product_rows)
-
-        trend = [
-            DailyTrendPoint(date=str(r.day), revenue=float(r.revenue))
-            for r in trend_rows
-        ]
-
-        products = []
         for i, r in enumerate(product_rows):
             rev = float(r.revenue)
             pct = round(rev / total_rev * 100, 1) if total_rev else 0.0
@@ -788,16 +794,14 @@ async def get_channel_drilldown(
                 avg_price=float(r.avg_price),
                 pct_of_channel=pct,
             ))
-
-        return ChannelDrilldownResponse(
-            channel=channel,
-            display_name=display_name,
-            total_revenue=total_rev,
-            unique_products=unique_products,
-            daily_trend=trend,
-            products=products,
-        )
-
     except Exception as exc:
-        logger.warning("Channel drilldown query failed for %s: %s", channel, exc)
-        raise HTTPException(status_code=503, detail="Analytics data unavailable")
+        logger.warning("Products drilldown unavailable for channel %s: %s", channel, exc)
+
+    return ChannelDrilldownResponse(
+        channel=channel,
+        display_name=display_name,
+        total_revenue=total_rev,
+        unique_products=len(products),
+        daily_trend=trend,
+        products=products,
+    )

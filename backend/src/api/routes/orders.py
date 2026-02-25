@@ -5,7 +5,7 @@ Provides:
   GET /api/orders — paginated order list with UTM fields from last-click attribution
 
 No entitlement gate — available on all plans.
-Queries: canonical.fact_orders_v1 LEFT JOIN attribution.last_click
+Queries: canonical.orders LEFT JOIN attribution.last_click
 Tenant isolation: WHERE fo.tenant_id = :tenant_id on every query.
 """
 
@@ -101,7 +101,7 @@ async def get_orders(
                 lc.utm_medium,
                 lc.utm_campaign,
                 lc.platform
-            FROM canonical.fact_orders_v1 fo
+            FROM canonical.orders fo
             LEFT JOIN attribution.last_click lc
                    ON lc.order_id = fo.order_id
                   AND lc.tenant_id = fo.tenant_id
@@ -118,7 +118,7 @@ async def get_orders(
 
         total_row = db.execute(text("""
             SELECT COUNT(*) AS total
-            FROM canonical.fact_orders_v1 fo
+            FROM canonical.orders fo
             WHERE fo.tenant_id = :tenant_id
               AND fo.order_created_at >= :start_date
         """), {
