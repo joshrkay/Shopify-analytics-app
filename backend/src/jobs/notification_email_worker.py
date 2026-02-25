@@ -160,8 +160,7 @@ class NotificationEmailWorker:
         In production, this would query the user service or Clerk.
         For now, returns None (emails require user lookup integration).
         """
-        # TODO: Integrate with user service to get email addresses
-        # This is a placeholder - actual implementation would query Clerk or user table
+        # Placeholder: email lookup requires Clerk user service integration
         return None
 
     async def process_notification(self, notification: Notification) -> bool:

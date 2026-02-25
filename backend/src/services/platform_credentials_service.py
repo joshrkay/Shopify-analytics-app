@@ -107,26 +107,6 @@ class PlatformCredentialsService:
         Returns:
             MetaCredentials if found and valid, None otherwise
         """
-        # TODO: Implement actual database lookup
-        # For now, return placeholder that indicates implementation needed
-
-        # Example implementation:
-        # credential_record = self.db.execute(
-        #     select(PlatformCredential)
-        #     .where(PlatformCredential.tenant_id == tenant_id)
-        #     .where(PlatformCredential.platform == Platform.META.value)
-        #     .where(PlatformCredential.is_active == True)
-        # ).scalar_one_or_none()
-        #
-        # if not credential_record:
-        #     return None
-        #
-        # decrypted = self._decrypt_credentials(credential_record.encrypted_data)
-        # return MetaCredentials(
-        #     access_token=decrypted["access_token"],
-        #     ad_account_id=decrypted["ad_account_id"],
-        # )
-
         logger.warning(
             "Meta credentials lookup not implemented",
             extra={"tenant_id": tenant_id}
@@ -143,9 +123,6 @@ class PlatformCredentialsService:
         Returns:
             GoogleAdsCredentials if found and valid, None otherwise
         """
-        # TODO: Implement actual database lookup
-        # Similar to get_meta_credentials
-
         logger.warning(
             "Google Ads credentials lookup not implemented",
             extra={"tenant_id": tenant_id}
@@ -275,19 +252,6 @@ class PlatformCredentialsService:
                 needs_reauth=True,
             )
 
-        # TODO: Perform actual API test call
-        # try:
-        #     await executor.test_connection()
-        # except PlatformAPIError as e:
-        #     if e.status_code == 401:
-        #         return CredentialValidation(
-        #             is_valid=False,
-        #             status=CredentialStatus.EXPIRED,
-        #             message="Access token has expired",
-        #             platform=platform,
-        #             needs_reauth=True,
-        #         )
-
         return CredentialValidation(
             is_valid=True,
             status=CredentialStatus.ACTIVE,
@@ -333,20 +297,8 @@ class PlatformCredentialsService:
         Returns:
             True if stored successfully, False otherwise
         """
-        # TODO: Implement credential storage with encryption
-        # encrypted_data = self._encrypt_credentials(credentials)
-        #
-        # credential_record = PlatformCredential(
-        #     tenant_id=tenant_id,
-        #     platform=platform.value,
-        #     encrypted_data=encrypted_data,
-        #     is_active=True,
-        # )
-        # self.db.add(credential_record)
-        # self.db.commit()
-
         logger.warning(
-            "Credential storage not implemented",
+            "Credential storage not yet implemented",
             extra={"tenant_id": tenant_id, "platform": platform.value}
         )
         return False
@@ -366,9 +318,8 @@ class PlatformCredentialsService:
         Returns:
             True if revoked successfully, False otherwise
         """
-        # TODO: Implement credential revocation
         logger.warning(
-            "Credential revocation not implemented",
+            "Credential revocation not yet implemented",
             extra={"tenant_id": tenant_id, "platform": platform.value}
         )
         return False
@@ -387,11 +338,6 @@ class PlatformCredentialsService:
         Returns:
             Encrypted bytes
         """
-        # TODO: Implement actual encryption (AES-256-GCM recommended)
-        # from cryptography.fernet import Fernet
-        # f = Fernet(self.encryption_key)
-        # return f.encrypt(json.dumps(data).encode())
-
         raise NotImplementedError("Credential encryption not implemented")
 
     def _decrypt_credentials(self, encrypted_data: bytes) -> dict:
@@ -404,7 +350,6 @@ class PlatformCredentialsService:
         Returns:
             Decrypted credential dictionary
         """
-        # TODO: Implement actual decryption
         raise NotImplementedError("Credential decryption not implemented")
 
 
