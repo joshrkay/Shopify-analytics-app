@@ -65,6 +65,8 @@ class InsightResponse(BaseModel):
     generated_at: datetime
     is_read: bool
     is_dismissed: bool
+    estimated_dollar_impact: Optional[float] = None
+    dollar_impact_explanation: Optional[str] = None
 
 
 class InsightsListResponse(BaseModel):
@@ -126,6 +128,8 @@ def _insight_to_response(insight: AIInsight) -> InsightResponse:
         generated_at=insight.generated_at,
         is_read=bool(insight.is_read),
         is_dismissed=bool(insight.is_dismissed),
+        estimated_dollar_impact=float(insight.estimated_dollar_impact) if insight.estimated_dollar_impact is not None else None,
+        dollar_impact_explanation=insight.dollar_impact_explanation,
     )
 
 

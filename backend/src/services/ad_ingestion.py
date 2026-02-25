@@ -44,6 +44,8 @@ class AdPlatform(str, Enum):
     # Social ad platforms
     TIKTOK_ADS = "tiktok_ads"
     SNAPCHAT_ADS = "snapchat_ads"
+    PINTEREST_ADS = "pinterest_ads"
+    TWITTER_ADS = "twitter_ads"
     # Email marketing platforms
     KLAVIYO = "klaviyo"
     SHOPIFY_EMAIL = "shopify_email"
@@ -59,6 +61,8 @@ AIRBYTE_SOURCE_TYPES = {
     AdPlatform.GOOGLE_ADS: "source-google-ads",
     AdPlatform.TIKTOK_ADS: "source-tiktok-marketing",
     AdPlatform.SNAPCHAT_ADS: "source-snapchat-marketing",
+    AdPlatform.PINTEREST_ADS: "source-pinterest-ads",
+    AdPlatform.TWITTER_ADS: "source-twitter-ads",
     AdPlatform.KLAVIYO: "source-klaviyo",
     AdPlatform.SHOPIFY_EMAIL: "source-shopify",  # Uses Shopify source for email data
     AdPlatform.ATTENTIVE: "source-attentive",

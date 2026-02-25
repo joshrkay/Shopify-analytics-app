@@ -23,6 +23,7 @@ MIGRATIONS = [
     "0055_rbac_roles.sql",
     "0056_agency_access.sql",
     "0057_access_revocation.sql",
+    "add_insight_dollar_impact.sql",
 ]
 
 

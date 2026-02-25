@@ -38,6 +38,8 @@ export interface Insight {
   generated_at: string;
   is_read: boolean;
   is_dismissed: boolean;
+  estimated_dollar_impact: number | null;
+  dollar_impact_explanation: string | null;
 }
 
 export interface InsightsListResponse {
