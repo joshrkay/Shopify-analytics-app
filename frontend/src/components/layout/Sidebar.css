@@ -54,6 +54,17 @@
   background: var(--p-color-bg-surface-selected);
 }
 
+.sidebar-nav-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding: var(--p-space-300) var(--p-space-200);
