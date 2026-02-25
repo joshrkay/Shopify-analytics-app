@@ -433,6 +433,18 @@ class KpiSummaryResponse(BaseModel):
     active_channels: int
 
 
+def _get_db_for_kpi(request: Request):
+    """DB dependency without entitlement check — KPI endpoints are available on all plans."""
+    from src.platform.tenant_context import get_tenant_context as _ctx
+    from src.database.session import SessionLocal
+    _ctx(request)  # validates JWT + tenant
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 @router.get(
     "/kpi-summary",
     response_model=KpiSummaryResponse,
@@ -546,18 +558,6 @@ async def get_kpi_summary(
         logger.warning("KPI summary query failed: %s", exc)
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Analytics data unavailable")
 
-
-def _get_db_for_kpi(request: Request):
-    """DB dependency without entitlement check — KPI is available on all plans."""
-    from src.database.session import get_db_session as _get
-    from src.platform.tenant_context import get_tenant_context as _ctx
-    _ctx(request)  # validates JWT + tenant
-    from src.database.session import SessionLocal
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 # =============================================================================
