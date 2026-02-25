@@ -55,6 +55,7 @@ from src.api.routes import audit_export
 from src.api.routes import shopify_embed_entry
 from src.api.routes import agency
 from src.api.routes import datasets
+from src.api.routes import channels
 from src.api.routes import attribution
 from src.api.routes import orders
 from src.api.routes import custom_dashboards
@@ -340,6 +341,9 @@ app.include_router(report_templates.router)
 # Include dataset discovery + chart preview routes (requires authentication)
 # Phase 2A/2B - Dataset Discovery & Chart Preview
 app.include_router(datasets.router)
+
+# Include per-channel metrics routes (no entitlement gate — all plans)
+app.include_router(channels.router)
 
 # Include attribution + orders routes (no entitlement gate — all plans)
 app.include_router(attribution.router)
