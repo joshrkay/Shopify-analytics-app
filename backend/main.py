@@ -36,6 +36,7 @@ from src.api.routes import recommendations
 from src.api.routes import action_proposals
 from src.api.routes import actions
 from src.api.routes import llm_config
+from src.api.routes import ai_chat
 from src.api.routes import changelog
 from src.api.routes import admin_changelog
 from src.api.routes import what_changed
@@ -275,6 +276,9 @@ app.include_router(actions.router)
 # Include LLM config routes (requires authentication and AI entitlement)
 # Story 8.8 - Model Routing & Prompt Governance
 app.include_router(llm_config.router)
+
+# Include AI chat route (requires authentication and LLM entitlement)
+app.include_router(ai_chat.router)
 
 # Include changelog routes (requires authentication)
 # Story 9.7 - In-App Changelog & Release Notes
