@@ -195,7 +195,7 @@ export function useConnectionWizard(): UseConnectionWizardResult {
     // For OAuth, test happens in OAuthCallback page after redirect
     // This is a placeholder for the API key flow
     try {
-      // TODO: Implement API key connection test
+      // API key connection test not yet implemented — always succeeds for wizard flow
       setState((prev) => ({
         ...prev,
         testResult: { success: true, message: 'Connection successful' },
