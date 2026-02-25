@@ -1,6 +1,7 @@
 import { TrendingUp, TrendingDown, Calendar, Sparkles, AlertCircle, ArrowRight, Zap, Brain, ChevronDown, LayoutDashboard, Send, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { createHeadersAsync, API_BASE_URL } from "../services/apiUtils";
 
 type TimeFrame = "7days" | "thisWeek" | "30days" | "thisMonth" | "90days" | "thisQuarter";
 
@@ -418,102 +419,51 @@ function AIInsightsSection() {
     "Which ad creatives are performing best?",
   ];
 
-  const handleAskQuestion = () => {
+  const handleAskQuestion = async () => {
     if (!question.trim()) return;
 
     setIsAsking(true);
 
-    // Add user question to conversation
     const userMessage = {
       type: "user" as const,
       message: question,
-      timestamp: "Just now"
+      timestamp: "Just now",
     };
-
     setConversationHistory(prev => [...prev, userMessage]);
+    const asked = question;
     setQuestion("");
 
-    // Simulate AI response
-    setTimeout(() => {
-      let aiResponse = {
-        type: "ai" as const,
-        message: "",
-        timestamp: "Just now",
-        data: null as any
-      };
+    try {
+      const headers = await createHeadersAsync();
+      const response = await fetch(`${API_BASE_URL}/api/ai/chat`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ question: asked.trim() }),
+      });
 
-      // Smart responses based on question content
-      if (question.toLowerCase().includes("top") && question.toLowerCase().includes("product")) {
-        aiResponse.message = "Here are your top 5 products by revenue and their customer acquisition costs:";
-        aiResponse.data = {
-          type: "table",
-          headers: ["Product", "Revenue", "Orders", "CAC", "Profit Margin"],
-          rows: [
-            ["Wireless Headphones Pro", "$12,450", "234", "$18.50", "67%"],
-            ["Smart Watch Ultra", "$9,820", "156", "$24.20", "58%"],
-            ["Bluetooth Speaker", "$7,340", "312", "$12.80", "71%"],
-            ["Fitness Tracker", "$5,920", "198", "$15.40", "64%"],
-            ["USB-C Hub", "$4,680", "445", "$8.90", "75%"],
-          ]
-        };
-      } else if (question.toLowerCase().includes("roas") || question.toLowerCase().includes("campaign")) {
-        aiResponse.message = "Your top performing campaigns ranked by ROAS:";
-        aiResponse.data = {
-          type: "list",
-          items: [
-            { label: "Summer Sale - Facebook", value: "4.2x ROAS", detail: "$8,234 spend → $34,583 revenue", status: "success" },
-            { label: "Brand Awareness - Google", value: "3.8x ROAS", detail: "$3,124 spend → $11,871 revenue", status: "success" },
-            { label: "Product Launch - TikTok", value: "3.1x ROAS", detail: "$1,100 spend → $3,410 revenue", status: "warning" },
-          ]
-        };
-      } else if (question.toLowerCase().includes("conversion") || question.toLowerCase().includes("channel")) {
-        aiResponse.message = "Here's your conversion rate breakdown by channel over the last 30 days:";
-        aiResponse.data = {
-          type: "metrics",
-          items: [
-            { label: "Facebook Ads", value: "3.2%", change: "+0.4%", trend: "up" },
-            { label: "Google Ads", value: "2.8%", change: "+0.2%", trend: "up" },
-            { label: "TikTok Ads", value: "2.1%", change: "-0.5%", trend: "down" },
-            { label: "Organic Search", value: "4.5%", change: "+0.8%", trend: "up" },
-          ]
-        };
-      } else if (question.toLowerCase().includes("cac") || question.toLowerCase().includes("acquisition cost")) {
-        aiResponse.message = "Your customer acquisition cost breakdown by channel:";
-        aiResponse.data = {
-          type: "table",
-          headers: ["Channel", "Total Spend", "New Customers", "CAC", "LTV/CAC Ratio"],
-          rows: [
-            ["Facebook Ads", "$8,234", "412", "$19.99", "3.2x"],
-            ["Google Ads", "$3,124", "156", "$20.03", "3.0x"],
-            ["TikTok Ads", "$1,100", "78", "$14.10", "4.1x"],
-          ]
-        };
-      } else if (question.toLowerCase().includes("creative") || question.toLowerCase().includes("ad creative")) {
-        aiResponse.message = "Top performing ad creatives based on engagement and conversion:";
-        aiResponse.data = {
-          type: "list",
-          items: [
-            { label: "Video Ad - Summer Collection", value: "5.2% CTR", detail: "234 conversions, $12,450 revenue", status: "success" },
-            { label: "Carousel - Product Showcase", value: "4.1% CTR", detail: "189 conversions, $9,820 revenue", status: "success" },
-            { label: "Static Image - Sale Banner", value: "2.8% CTR", detail: "98 conversions, $4,680 revenue", status: "warning" },
-          ]
-        };
-      } else {
-        aiResponse.message = "I can help you analyze your data! Here are some insights based on your current metrics:";
-        aiResponse.data = {
-          type: "insights",
-          items: [
-            { icon: "📈", text: "Your overall ROAS is 3.6x, which is 20% above industry average" },
-            { icon: "💰", text: "Total revenue is up 12.5% compared to last period" },
-            { icon: "🎯", text: "Facebook Ads are your most profitable channel with 66% of total ad spend" },
-            { icon: "⚠️", text: "TikTok conversion rate has dropped 23% - consider refreshing creatives" },
-          ]
-        };
+      if (!response.ok) {
+        throw new Error(`AI chat failed: ${response.status}`);
       }
 
+      const data = await response.json();
+      const aiResponse = {
+        type: "ai" as const,
+        message: data.message,
+        timestamp: "Just now",
+        data: null as any,
+      };
       setConversationHistory(prev => [...prev, aiResponse]);
+    } catch {
+      const errorResponse = {
+        type: "ai" as const,
+        message: "I'm having trouble connecting right now. Please try again in a moment.",
+        timestamp: "Just now",
+        data: null as any,
+      };
+      setConversationHistory(prev => [...prev, errorResponse]);
+    } finally {
       setIsAsking(false);
-    }, 1500);
+    }
   };
 
   const askSuggestedQuestion = (suggestedQ: string) => {
