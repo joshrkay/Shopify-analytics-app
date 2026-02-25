@@ -17,6 +17,7 @@
  * Story 0.3.2 — Keyboard navigation through sidebar
  */
 
+import { useCallback } from 'react';
 import { Icon, Text } from '@shopify/polaris';
 import type { IconSource } from '@shopify/polaris';
 import {
@@ -29,9 +30,10 @@ import {
   SettingsIcon,
   CreditCardIcon,
   SearchIcon,
+  ExitIcon,
 } from '@shopify/polaris-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useUser, useOrganization } from '@clerk/clerk-react';
+import { useUser, useOrganization, useClerk } from '@clerk/clerk-react';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { isFeatureEntitled } from '../../services/entitlementsApi';
 import { useSidebar } from './RootLayout';
@@ -97,6 +99,7 @@ export function Sidebar() {
   const { membership } = useOrganization();
   const { entitlements } = useEntitlements();
   const { isOpen, close } = useSidebar();
+  const { signOut } = useClerk();
 
   const isAdmin = membership?.role === 'org:admin';
   const userName = user?.fullName || user?.firstName || 'User';
@@ -107,6 +110,10 @@ export function Sidebar() {
     navigate(path);
     close();
   };
+
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+  }, [signOut]);
 
   const renderSection = (section: NavSection) => {
     const visibleItems = section.items.filter(
@@ -165,6 +172,15 @@ export function Sidebar() {
             {userEmail && <div className="sidebar-user-email">{userEmail}</div>}
           </div>
         </div>
+        <button
+          type="button"
+          className="sidebar-logout-btn"
+          onClick={handleSignOut}
+          aria-label="Sign out"
+        >
+          <Icon source={ExitIcon} />
+          <span>Logout</span>
+        </button>
       </div>
     </nav>
   );
