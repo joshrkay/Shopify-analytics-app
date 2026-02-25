@@ -625,6 +625,61 @@ class InsightGenerationService:
         content = "|".join(parts)
         return hashlib.sha256(content.encode()).hexdigest()
 
+    def _enhance_with_llm(
+        self,
+        detected: DetectedInsight,
+        summary: str,
+        why_it_matters: str,
+    ) -> tuple[str, str]:
+        """
+        Optionally enhance insight text with LLM.
+
+        Returns the original deterministic text if:
+        - Tenant is not entitled to LLM routing
+        - LLM templates are not seeded in the database
+        - LLM call fails for any reason
+        - Already running in an async event loop
+        """
+        try:
+            import asyncio
+            from src.services.llm_integration import enhance_with_llm
+
+            variables = {
+                "insight_type": detected.insight_type.value,
+                "severity": detected.severity.value,
+                "metrics": [m.to_dict() for m in detected.metrics],
+                "period_type": detected.period_type,
+                "platform": detected.platform or "all",
+            }
+
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                # Already in async context — skip LLM to avoid nested loop
+                return summary, why_it_matters
+
+            enhanced_summary = asyncio.run(enhance_with_llm(
+                db_session=self.db,
+                tenant_id=self.tenant_id,
+                template_key="insight_summary",
+                variables=variables,
+                fallback_content=summary,
+            ))
+            enhanced_why = asyncio.run(enhance_with_llm(
+                db_session=self.db,
+                tenant_id=self.tenant_id,
+                template_key="insight_why_it_matters",
+                variables=variables,
+                fallback_content=why_it_matters,
+            ))
+            return enhanced_summary, enhanced_why
+        except Exception:
+            # LLM enhancement is optional — never block insight generation
+            return summary, why_it_matters
+
     def _persist_insight(
         self,
         detected: DetectedInsight,
@@ -636,6 +691,11 @@ class InsightGenerationService:
         content_hash = self._generate_content_hash(detected)
         summary = render_insight_summary(detected)
         why_it_matters = render_why_it_matters(detected)
+
+        # Optional LLM enhancement (graceful fallback to deterministic text)
+        summary, why_it_matters = self._enhance_with_llm(
+            detected, summary, why_it_matters
+        )
 
         insight = AIInsight(
             tenant_id=self.tenant_id,
