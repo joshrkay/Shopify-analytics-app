@@ -178,7 +178,7 @@ async def get_channel_metrics(
                 COALESCE(SUM(conversions), 0)  AS conversions
             FROM analytics.marketing_spend
             WHERE tenant_id       = :tenant_id
-              AND source_platform = :platform
+              AND (source_platform = :platform OR (:platform = 'organic' AND source_platform IS NULL))
               AND date >= current_date - (:lookback_days * INTERVAL '1 day')
               AND date <= current_date
         """), {
