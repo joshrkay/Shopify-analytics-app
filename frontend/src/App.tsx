@@ -48,6 +48,8 @@ import Settings from './pages/Settings';
 import { DashboardHome } from './pages/DashboardHome';
 import { Dashboard } from './pages/Dashboard';
 import BillingCheckout from './pages/BillingCheckout';
+import { Attribution } from './pages/Attribution';
+import { Orders } from './pages/Orders';
 
 // =============================================================================
 // FeatureGateRoute — redirects to paywall if feature not entitled
@@ -166,6 +168,8 @@ function AppWithOrg() {
             <Route path="/billing/callback" element={<BillingCheckout />} />
             <Route path="/insights" element={<InsightsFeed />} />
             <Route path="/approvals" element={<ApprovalsInbox />} />
+            <Route path="/attribution" element={<Attribution />} />
+            <Route path="/orders" element={<Orders />} />
             <Route path="/whats-new" element={<WhatsNew />} />
             <Route path="/data-sources" element={<DataSources />} />
             <Route path="/admin/plans" element={<AdminPlans />} />

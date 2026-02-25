@@ -22,6 +22,8 @@ import type { IconSource } from '@shopify/polaris';
 import {
   HomeIcon,
   ChartVerticalIcon,
+  ChartLineIcon,
+  ListBulletedIcon,
   LightbulbIcon,
   DatabaseIcon,
   SettingsIcon,
@@ -53,6 +55,8 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Main',
     items: [
       { label: 'Home', path: '/home', icon: HomeIcon },
+      { label: 'Attribution', path: '/attribution', icon: ChartLineIcon },
+      { label: 'Orders', path: '/orders', icon: ListBulletedIcon },
       { label: 'Builder', path: '/dashboards', icon: ChartVerticalIcon, matchPrefix: true, feature: 'custom_reports' },
       { label: 'Insights', path: '/insights', icon: LightbulbIcon, feature: 'ai_insights' },
     ],
