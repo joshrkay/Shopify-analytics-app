@@ -14,7 +14,7 @@ SECURITY:
 
 Queries:
   1. mart_marketing_metrics   — revenue, spend, gross_roas
-  2. analytics.fct_marketing_spend — clicks, impressions, ctr, conversions
+  2. analytics.marketing_spend — clicks, impressions, ctr, conversions
   3. mart_marketing_metrics daily — daily revenue trend
 """
 
