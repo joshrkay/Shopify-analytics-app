@@ -66,3 +66,4 @@ analytics/target/
 analytics/dbt_packages/
 analytics/logs/
 analytics/*.log
+.hypothesis/
