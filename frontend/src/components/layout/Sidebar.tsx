@@ -17,6 +17,7 @@
  * Story 0.3.2 — Keyboard navigation through sidebar
  */
 
+import { useCallback } from 'react';
 import { Icon, Text } from '@shopify/polaris';
 import type { IconSource } from '@shopify/polaris';
 import {
@@ -29,9 +30,10 @@ import {
   SettingsIcon,
   CreditCardIcon,
   SearchIcon,
+  ExitIcon,
 } from '@shopify/polaris-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useUser, useOrganization } from '@clerk/clerk-react';
+import { useUser, useOrganization, useClerk } from '@clerk/clerk-react';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { isFeatureEntitled } from '../../services/entitlementsApi';
 import { useSidebar } from './RootLayout';
@@ -40,7 +42,9 @@ import './Sidebar.css';
 interface NavItem {
   label: string;
   path: string;
-  icon: IconSource;
+  icon?: IconSource;
+  /** Emoji icon shown in place of a Polaris icon (used for channel links) */
+  emoji?: string;
   matchPrefix?: boolean;
   feature?: string;
 }
@@ -59,6 +63,18 @@ const NAV_SECTIONS: NavSection[] = [
       { label: 'Orders', path: '/orders', icon: ListBulletedIcon },
       { label: 'Builder', path: '/dashboards', icon: ChartVerticalIcon, matchPrefix: true, feature: 'custom_reports' },
       { label: 'Insights', path: '/insights', icon: LightbulbIcon, feature: 'ai_insights' },
+    ],
+  },
+  {
+    title: 'Channels',
+    items: [
+      { label: 'Google Ads',     path: '/channels/google_ads',    emoji: '🔍', matchPrefix: true },
+      { label: 'Facebook Ads',   path: '/channels/meta_ads',      emoji: '📘', matchPrefix: true },
+      { label: 'Instagram Ads',  path: '/channels/instagram_ads', emoji: '📷', matchPrefix: true },
+      { label: 'TikTok Ads',     path: '/channels/tiktok_ads',    emoji: '🎵', matchPrefix: true },
+      { label: 'Snapchat Ads',   path: '/channels/snapchat_ads',  emoji: '👻', matchPrefix: true },
+      { label: 'Pinterest Ads',  path: '/channels/pinterest_ads', emoji: '📌', matchPrefix: true },
+      { label: 'Twitter Ads',    path: '/channels/twitter_ads',   emoji: '🐦', matchPrefix: true },
     ],
   },
   {
@@ -97,6 +113,7 @@ export function Sidebar() {
   const { membership } = useOrganization();
   const { entitlements } = useEntitlements();
   const { isOpen, close } = useSidebar();
+  const { signOut } = useClerk();
 
   const isAdmin = membership?.role === 'org:admin';
   const userName = user?.fullName || user?.firstName || 'User';
@@ -107,6 +124,10 @@ export function Sidebar() {
     navigate(path);
     close();
   };
+
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+  }, [signOut]);
 
   const renderSection = (section: NavSection) => {
     const visibleItems = section.items.filter(
@@ -135,7 +156,11 @@ export function Sidebar() {
                 }
               }}
             >
-              <Icon source={item.icon} />
+              {item.emoji ? (
+                <span className="sidebar-nav-emoji" aria-hidden="true">{item.emoji}</span>
+              ) : item.icon ? (
+                <Icon source={item.icon} />
+              ) : null}
               <Text as="span" variant="bodyMd">
                 {item.label}
               </Text>
@@ -165,6 +190,15 @@ export function Sidebar() {
             {userEmail && <div className="sidebar-user-email">{userEmail}</div>}
           </div>
         </div>
+        <button
+          type="button"
+          className="sidebar-logout-btn"
+          onClick={handleSignOut}
+          aria-label="Sign out"
+        >
+          <Icon source={ExitIcon} />
+          <span>Logout</span>
+        </button>
       </div>
     </nav>
   );

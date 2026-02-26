@@ -41,6 +41,7 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
 
 # OS
 .DS_Store

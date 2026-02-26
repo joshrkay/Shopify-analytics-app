@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { getKpiSummary, type KpiSummaryResponse } from "../services/kpiApi";
+import { BreakdownModal } from "../components/dashboard/BreakdownModal";
 
 type TimeFrame = "7days" | "thisWeek" | "30days" | "thisMonth" | "90days" | "thisQuarter";
 
@@ -34,6 +35,9 @@ export function Dashboard() {
 
   const [kpiData, setKpiData] = useState<KpiSummaryResponse | null>(null);
   const [kpiLoading, setKpiLoading] = useState(false);
+
+  // Breakdown modal state: null = closed, otherwise the metric to show
+  const [breakdownMetric, setBreakdownMetric] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -220,24 +224,28 @@ export function Dashboard() {
               value={kpiData ? fmtCurrency(kpiData.total_revenue.value) : "—"}
               change={fmtChange(kpiData?.total_revenue.change_pct ?? null).label}
               trend={fmtChange(kpiData?.total_revenue.change_pct ?? null).trend}
+              onBreakdown={() => setBreakdownMetric("revenue")}
             />
             <MetricCard
               title="Ad Spend"
               value={kpiData ? fmtCurrency(kpiData.total_ad_spend.value) : "—"}
               change={fmtChange(kpiData?.total_ad_spend.change_pct ?? null).label}
               trend={fmtChange(kpiData?.total_ad_spend.change_pct ?? null).trend}
+              onBreakdown={() => setBreakdownMetric("spend")}
             />
             <MetricCard
               title="ROAS"
               value={kpiData ? kpiData.average_roas.value.toFixed(2) + "x" : "—"}
               change={fmtChange(kpiData?.average_roas.change_pct ?? null).label}
               trend={fmtChange(kpiData?.average_roas.change_pct ?? null).trend}
+              onBreakdown={() => setBreakdownMetric("roas")}
             />
             <MetricCard
               title="Orders"
               value={kpiData ? kpiData.total_conversions.value.toLocaleString() : "—"}
               change={fmtChange(kpiData?.total_conversions.change_pct ?? null).label}
               trend={fmtChange(kpiData?.total_conversions.change_pct ?? null).trend}
+              onBreakdown={() => setBreakdownMetric("conversions")}
             />
           </>
         )}
@@ -324,8 +332,11 @@ export function Dashboard() {
               </>
             )}
           </div>
-          <button className="text-blue-600 text-sm font-medium mt-4 hover:underline">
-            View Details →
+          <button
+            onClick={() => setBreakdownMetric("revenue")}
+            className="text-blue-600 text-sm font-medium mt-4 hover:underline block"
+          >
+            View breakdown →
           </button>
         </div>
       </div>
@@ -334,6 +345,20 @@ export function Dashboard() {
       <div className="mt-6">
         {hasAIConfigured ? <AIInsightsSection /> : <AIInsightsCTA />}
       </div>
+
+      {/* Channel Breakdown Modal */}
+      <BreakdownModal
+        open={breakdownMetric !== null}
+        onClose={() => setBreakdownMetric(null)}
+        metric={breakdownMetric ?? "revenue"}
+        timeframe={timeframe}
+        title={
+          breakdownMetric === "spend" ? "Ad Spend Breakdown" :
+          breakdownMetric === "roas" ? "ROAS Breakdown" :
+          breakdownMetric === "conversions" ? "Orders Breakdown" :
+          "Revenue Breakdown"
+        }
+      />
     </div>
   );
 }
@@ -462,7 +487,7 @@ function EmptyDashboard() {
   );
 }
 
-function MetricCard({ title, value, change, trend, isSample }: { title: string; value: string; change: string; trend: "up" | "down"; isSample?: boolean }) {
+function MetricCard({ title, value, change, trend, isSample, onBreakdown }: { title: string; value: string; change: string; trend: "up" | "down"; isSample?: boolean; onBreakdown?: () => void }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 relative">
       {isSample && (
@@ -478,6 +503,14 @@ function MetricCard({ title, value, change, trend, isSample }: { title: string; 
         {trend === "up" ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
         {change}
       </div>
+      {onBreakdown && (
+        <button
+          onClick={onBreakdown}
+          className="mt-3 text-xs text-blue-600 font-medium hover:underline"
+        >
+          View breakdown →
+        </button>
+      )}
     </div>
   );
 }
