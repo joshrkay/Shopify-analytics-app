@@ -151,13 +151,27 @@ services:
         sync: false
       - key: ENCRYPTION_KEY
         sync: false
+      # AIRBYTE_WORKSPACE_ID is no longer required at startup — workspaces are
+      # provisioned per-tenant and stored on the Tenant record. This can be kept
+      # as a legacy fallback for tools that still reference a single workspace.
       - key: AIRBYTE_WORKSPACE_ID
+        sync: false
+      # Airbyte OSS (self-hosted) — Basic auth credentials
+      # Set AIRBYTE_USERNAME + AIRBYTE_PASSWORD for OSS deployments.
+      # Set AIRBYTE_API_TOKEN for Airbyte Cloud / OSS Bearer token auth.
+      - key: AIRBYTE_USERNAME
+        sync: false
+      - key: AIRBYTE_PASSWORD
         sync: false
       - key: AIRBYTE_API_TOKEN
         sync: false
-      # Airbyte OSS host — e.g. http://airbyte:8006/api/v1
+      # Airbyte OSS host — e.g. http://airbyte-api-server:8006/v1 (OSS)
+      # or https://api.airbyte.com/v1 (Cloud)
       - key: AIRBYTE_BASE_URL
         sync: false
+      # PostgreSQL destination schema for Airbyte raw data (default: airbyte_raw)
+      - key: AIRBYTE_DESTINATION_SCHEMA
+        value: "airbyte_raw"
       - key: WORKER_AIRBYTE_SYNC_TIMEOUT_SECONDS
         value: "3600"
       - key: WORKER_SYNC_CHECK_INTERVAL_SECONDS

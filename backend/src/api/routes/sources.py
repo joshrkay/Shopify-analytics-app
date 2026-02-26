@@ -34,6 +34,7 @@ from src.services.airbyte_service import (
     ConnectionNotFoundServiceError,
     DuplicateConnectionError,
 )
+from src.services.airbyte_workspace import ensure_tenant_workspace
 from src.services.ad_ingestion import (
     AdPlatform,
     AIRBYTE_SOURCE_TYPES,
@@ -42,6 +43,7 @@ from src.integrations.airbyte.client import get_airbyte_client, AirbyteError
 from src.integrations.airbyte.models import (
     SourceCreationRequest,
     ConnectionCreationRequest,
+    DestinationCreationRequest,
 )
 from src.api.schemas.sources import (
     SourceSummary,
@@ -304,6 +306,7 @@ async def initiate_oauth(
     request: Request,
     platform: str,
     body: Optional[OAuthInitiateRequest] = None,
+    db_session=Depends(get_db_session),
 ):
     """
     Initiate OAuth authorization flow for a data source platform.
@@ -311,6 +314,9 @@ async def initiate_oauth(
     Delegates to Airbyte OSS to generate the authorization URL. Airbyte
     manages all platform OAuth credentials (client IDs, secrets) internally,
     so the application does not need per-platform credential env vars.
+
+    Ensures the tenant has an Airbyte workspace (provisioning one on first use),
+    so the OAuth flow is always scoped to the tenant's isolated workspace.
 
     The state token embedded by Airbyte in the consent URL is extracted and
     stored with tenant context so the callback can validate the request.
@@ -350,11 +356,22 @@ async def initiate_oauth(
         oauth_input_config["shop"] = shop_domain
 
     try:
+        # Ensure the tenant has an isolated Airbyte workspace (lazy provision)
+        from src.models.tenant import Tenant
+        tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
+        tenant_name = tenant.name if tenant else tenant_ctx.tenant_id
+        workspace_id = await ensure_tenant_workspace(
+            tenant_id=tenant_ctx.tenant_id,
+            tenant_name=tenant_name,
+            db=db_session,
+        )
+
         airbyte_client = get_airbyte_client()
         oauth_response = await airbyte_client.initiate_oauth(
             source_type=airbyte_source_type,
             redirect_url=OAUTH_REDIRECT_URI,
             oauth_input_config=oauth_input_config,
+            workspace_id=workspace_id,
         )
     except AirbyteError as e:
         logger.error(
@@ -387,6 +404,7 @@ async def initiate_oauth(
         "tenant_id": tenant_ctx.tenant_id,
         "user_id": tenant_ctx.user_id,
         "platform": platform,
+        "workspace_id": workspace_id,
     }
     if shop_domain:
         state_data["shop_domain"] = shop_domain
@@ -394,7 +412,11 @@ async def initiate_oauth(
 
     logger.info(
         "OAuth flow initiated via Airbyte",
-        extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform},
+        extra={
+            "tenant_id": tenant_ctx.tenant_id,
+            "platform": platform,
+            "workspace_id": workspace_id,
+        },
     )
 
     return OAuthInitiateResponse(
@@ -440,6 +462,9 @@ async def oauth_callback(
 
     platform = state_data["platform"]
     shop_domain = state_data.get("shop_domain")
+    # workspace_id was stored in state during initiate — retrieve it here.
+    # If absent (legacy state entries), fall back to ensure_tenant_workspace.
+    stored_workspace_id: Optional[str] = state_data.get("workspace_id")
 
     try:
         airbyte_source_type = _resolve_airbyte_source_type(platform)
@@ -451,12 +476,30 @@ async def oauth_callback(
 
         airbyte_client = get_airbyte_client()
 
+        # Resolve the tenant's workspace — stored_workspace_id is set for
+        # flows initiated after the per-tenant workspace refactor; the fallback
+        # handles any in-flight legacy state entries.
+        if stored_workspace_id:
+            workspace_id = stored_workspace_id
+        else:
+            from src.models.tenant import Tenant
+            tenant = db_session.query(Tenant).filter(
+                Tenant.id == tenant_ctx.tenant_id
+            ).first()
+            tenant_name = tenant.name if tenant else tenant_ctx.tenant_id
+            workspace_id = await ensure_tenant_workspace(
+                tenant_id=tenant_ctx.tenant_id,
+                tenant_name=tenant_name,
+                db=db_session,
+            )
+
         # Complete OAuth via Airbyte — exchanges the authorization code for
         # platform credentials.  Airbyte validates its own state token here.
         oauth_result = await airbyte_client.complete_oauth(
             source_type=airbyte_source_type,
             redirect_url=OAUTH_REDIRECT_URI,
             query_params={"code": body.code, "state": body.state},
+            workspace_id=workspace_id,
         )
 
         if not oauth_result.get("request_succeeded", True):
@@ -473,48 +516,41 @@ async def oauth_callback(
         if shop_domain:
             source_config["shop"] = shop_domain
 
-        # Create the source in Airbyte using SourceCreationRequest
+        # Create the source in the tenant's workspace
         source_request = SourceCreationRequest(
             name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} - {tenant_ctx.tenant_id[:8]}",
             source_type=airbyte_source_type,
             configuration=source_config,
         )
-        source = await airbyte_client.create_source(source_request)
+        source = await airbyte_client.create_source(source_request, workspace_id=workspace_id)
 
-        # Get the default destination and create a connection
-        destinations = await airbyte_client.list_destinations()
+        # Resolve the destination for this workspace.
+        # ensure_tenant_workspace provisions one at workspace creation time, but
+        # if that failed the operator may not have added it yet.  We attempt to
+        # auto-provision here as a second chance before giving up.
+        destinations = await airbyte_client.list_destinations(workspace_id=workspace_id)
 
-        destination_id = None
-        if destinations:
-            destination_id = destinations[0].destination_id
-
-        connection_id = None
-        if destination_id:
-            conn_request = ConnectionCreationRequest(
-                source_id=source.source_id,
-                destination_id=destination_id,
-                name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} sync",
+        if not destinations:
+            from src.services.airbyte_workspace import _parse_db_connection_config
+            dest_request = DestinationCreationRequest(
+                name=f"PostgreSQL - {tenant_ctx.tenant_id[:8]}",
+                destination_type="destination-postgres",
+                configuration=_parse_db_connection_config(),
             )
-            connection = await airbyte_client.create_connection(conn_request)
-            connection_id = connection.connection_id
+            dest = await airbyte_client.create_destination(
+                dest_request, workspace_id=workspace_id
+            )
+            destinations = [dest]
 
-        if not connection_id:
-            logger.error(
-                "No Airbyte destination available — cannot create connection pipeline. "
-                "The Airbyte workspace may not be fully configured.",
-                extra={
-                    "tenant_id": tenant_ctx.tenant_id,
-                    "platform": platform,
-                    "source_id": source.source_id,
-                },
-            )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    "Data pipeline could not be established: no destination configured "
-                    "in the sync workspace. Please contact support."
-                ),
-            )
+        destination_id = destinations[0].destination_id
+
+        conn_request = ConnectionCreationRequest(
+            source_id=source.source_id,
+            destination_id=destination_id,
+            name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} sync",
+        )
+        connection = await airbyte_client.create_connection(conn_request)
+        connection_id = connection.connection_id
 
         # Build configuration for tenant registration
         reg_config: dict = {"platform": platform}

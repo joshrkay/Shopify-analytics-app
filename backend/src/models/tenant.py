@@ -128,6 +128,14 @@ class Tenant(Base, TimestampMixin):
         comment="Tenant-level settings and configuration"
     )
 
+    # Airbyte workspace — provisioned on first data source connection (per-tenant isolation)
+    airbyte_workspace_id = Column(
+        String(255),
+        nullable=True,
+        index=True,
+        comment="Airbyte workspace ID provisioned for this tenant (per-tenant isolation)"
+    )
+
     # Relationships
     organization = relationship(
         "Organization",
