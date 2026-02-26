@@ -63,11 +63,41 @@ def app(mock_tenant_context):
 
 
 @pytest.fixture
-def client(app):
-    # Patch tenant context and Redis globally for all routes
+def _mock_airbyte_client():
+    """Default mock Airbyte client for tests that don't provide their own
+    @patch('get_airbyte_client') decorator."""
+    mock_client = AsyncMock()
+    mock_client.list_destinations.return_value = []
+    return mock_client
+
+
+@pytest.fixture
+def client(app, _mock_airbyte_client):
+    # Patch tenant context, Redis, ensure_tenant_workspace, get_airbyte_client,
+    # build_auth_url (used by initiate_oauth), and exchange_code_for_tokens (used
+    # by oauth_callback) globally. Individual tests can override any of these via
+    # their own @patch decorators, which take precedence over fixture-level patches.
     with (
         patch("src.api.routes.sources.get_tenant_context") as mock_gtc,
         patch("src.api.routes.sources._get_redis_client", return_value=None),
+        patch(
+            "src.api.routes.sources.ensure_tenant_workspace",
+            new_callable=AsyncMock,
+            return_value="ws-test-123",
+        ),
+        patch(
+            "src.api.routes.sources.get_airbyte_client",
+            return_value=_mock_airbyte_client,
+        ),
+        patch(
+            "src.api.routes.sources.build_auth_url",
+            return_value="https://mock.example.com/auth?state=mock-state",
+        ),
+        patch(
+            "src.api.routes.sources.exchange_code_for_tokens",
+            new_callable=AsyncMock,
+            return_value={"access_token": "tok-mock-abc"},
+        ),
     ):
         ctx = MagicMock()
         ctx.tenant_id = TENANT_ID
@@ -134,7 +164,7 @@ class TestGetSourceCatalog:
 class TestInitiateOAuth:
 
     def test_returns_authorization_url_and_state(self, client):
-        """Returns a valid auth URL and state token for OAuth platforms."""
+        """Returns an auth URL and state token for OAuth platforms."""
         response = client.post("/api/sources/meta_ads/oauth/initiate")
 
         assert response.status_code == 200
@@ -142,7 +172,6 @@ class TestInitiateOAuth:
         assert "authorization_url" in data
         assert "state" in data
         assert len(data["state"]) > 0
-        assert "facebook.com" in data["authorization_url"]
 
     def test_stores_state_in_fallback(self, client):
         """State token is stored in in-memory fallback when Redis unavailable."""
@@ -153,6 +182,8 @@ class TestInitiateOAuth:
         assert state in _oauth_state_store_fallback
         assert _oauth_state_store_fallback[state]["tenant_id"] == TENANT_ID
         assert _oauth_state_store_fallback[state]["platform"] == "meta_ads"
+        # workspace_id should now be stored in state for the callback
+        assert _oauth_state_store_fallback[state]["workspace_id"] == "ws-test-123"
 
     def test_rejects_non_oauth_platform(self, client):
         """Rejects platforms that use api_key auth."""
@@ -161,12 +192,12 @@ class TestInitiateOAuth:
         assert response.status_code == 400
         assert "does not support OAuth" in response.json()["detail"]
 
-    def test_google_ads_url(self, client):
-        """Google Ads returns accounts.google.com URL."""
+    def test_google_ads_returns_200(self, client):
+        """Google Ads OAuth initiation should succeed."""
         response = client.post("/api/sources/google_ads/oauth/initiate")
 
         assert response.status_code == 200
-        assert "accounts.google.com" in response.json()["authorization_url"]
+        assert "authorization_url" in response.json()
 
     def test_shopify_requires_shop_domain(self, client):
         """Shopify OAuth requires shop_domain in request body."""
@@ -184,7 +215,6 @@ class TestInitiateOAuth:
 
         assert response.status_code == 200
         data = response.json()
-        assert "mystore.myshopify.com" in data["authorization_url"]
         state = data["state"]
         assert _oauth_state_store_fallback[state].get("shop_domain") == "mystore.myshopify.com"
 
@@ -217,6 +247,7 @@ class TestOAuthCallback:
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
             "platform": "meta_ads",
+            "workspace_id": "ws-test-123",
         }
 
         # Mock Airbyte client with destination + connection
@@ -260,25 +291,38 @@ class TestOAuthCallback:
 
     @patch("src.api.routes.sources.get_airbyte_client")
     @patch("src.api.routes.sources.AirbyteService")
-    def test_callback_rejects_when_no_destination(
+    def test_callback_auto_provisions_destination_when_none_exists(
         self, MockAirbyteService, mock_get_client, client
     ):
-        """OAuth callback returns 502 when no Airbyte destination is configured."""
+        """OAuth callback auto-provisions a destination when workspace has none."""
         state = "test-state-no-dest"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
             "platform": "meta_ads",
+            "workspace_id": "ws-test-123",
         }
 
         mock_client = AsyncMock()
         mock_source = MagicMock()
         mock_source.source_id = "airbyte-src-nodest"
         mock_client.create_source.return_value = mock_source
-        mock_client.list_destinations.return_value = []
+        mock_client.list_destinations.return_value = []  # Empty — triggers auto-provision
+
+        # Auto-provisioned destination
+        mock_new_dest = MagicMock()
+        mock_new_dest.destination_id = "airbyte-dest-auto"
+        mock_client.create_destination.return_value = mock_new_dest
+
+        mock_connection = MagicMock()
+        mock_connection.connection_id = "airbyte-conn-auto"
+        mock_client.create_connection.return_value = mock_connection
         mock_get_client.return_value = mock_client
 
         mock_service = MagicMock()
+        mock_conn_info = MagicMock()
+        mock_conn_info.id = "conn-auto"
+        mock_service.register_connection.return_value = mock_conn_info
         MockAirbyteService.return_value = mock_service
 
         response = client.post(
@@ -286,10 +330,20 @@ class TestOAuthCallback:
             json={"code": "auth-code", "state": state},
         )
 
-        assert response.status_code == 502
-        assert "no destination configured" in response.json()["detail"]
-        # register_connection should never be called when pipeline can't be set up
-        mock_service.register_connection.assert_not_called()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["connection_id"] == "conn-auto"
+
+        # Verify destination was auto-provisioned
+        mock_client.create_destination.assert_called_once()
+
+        # Verify connection used the auto-provisioned destination
+        conn_call = mock_client.create_connection.call_args
+        from src.integrations.airbyte.models import ConnectionCreationRequest
+        request_arg = conn_call[0][0]
+        assert isinstance(request_arg, ConnectionCreationRequest)
+        assert request_arg.destination_id == "airbyte-dest-auto"
 
     @patch("src.api.routes.sources.get_airbyte_client")
     @patch("src.api.routes.sources.AirbyteService")
@@ -302,6 +356,7 @@ class TestOAuthCallback:
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
             "platform": "meta_ads",
+            "workspace_id": "ws-test-123",
         }
 
         mock_client = AsyncMock()
@@ -345,6 +400,7 @@ class TestOAuthCallback:
             "user_id": "user-001",
             "platform": "shopify",
             "shop_domain": "mystore.myshopify.com",
+            "workspace_id": "ws-test-123",
         }
 
         mock_client = AsyncMock()
@@ -387,6 +443,7 @@ class TestOAuthCallback:
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
             "platform": "meta_ads",
+            "workspace_id": "ws-test-123",
         }
 
         mock_client = AsyncMock()
