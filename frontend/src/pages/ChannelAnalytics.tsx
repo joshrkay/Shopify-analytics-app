@@ -97,7 +97,7 @@ export function ChannelAnalytics() {
           setDrilldown(d);
         }
       })
-      .catch(() => {/* silently leave null — backend 503 when mart has no data */})
+      .catch((err) => { console.error('Failed to fetch channel analytics:', err); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
