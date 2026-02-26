@@ -23,6 +23,7 @@ import logging
 import os
 import secrets
 from typing import List, Optional
+from urllib.parse import urlparse, parse_qs
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 
@@ -190,138 +191,34 @@ def _save_sync_settings_to_db(service: AirbyteService, settings: dict) -> None:
 
 
 # =============================================================================
-# OAuth URL builders
+# Airbyte source type mapping for OAuth
 # =============================================================================
 
-def _build_meta_oauth_url(state: str, **kwargs) -> str:
-    """Build Meta (Facebook) OAuth authorization URL."""
-    client_id = os.environ.get("META_APP_ID", "")
-    scopes = "ads_read,ads_management,read_insights"
-    return (
-        f"https://www.facebook.com/v18.0/dialog/oauth"
-        f"?client_id={client_id}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope={scopes}"
-        f"&response_type=code"
-    )
-
-
-def _build_google_oauth_url(state: str, **kwargs) -> str:
-    """Build Google Ads OAuth authorization URL."""
-    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
-    scopes = "https://www.googleapis.com/auth/adwords"
-    return (
-        f"https://accounts.google.com/o/oauth2/v2/auth"
-        f"?client_id={client_id}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope={scopes}"
-        f"&response_type=code"
-        f"&access_type=offline"
-        f"&prompt=consent"
-    )
-
-
-def _build_tiktok_oauth_url(state: str, **kwargs) -> str:
-    """Build TikTok Ads OAuth authorization URL."""
-    app_id = os.environ.get("TIKTOK_APP_ID", "")
-    return (
-        f"https://business-api.tiktok.com/portal/auth"
-        f"?app_id={app_id}"
-        f"&state={state}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-    )
-
-
-def _build_snapchat_oauth_url(state: str, **kwargs) -> str:
-    """Build Snapchat Ads OAuth authorization URL."""
-    client_id = os.environ.get("SNAPCHAT_CLIENT_ID", "")
-    scopes = "snapchat-marketing-api"
-    return (
-        f"https://accounts.snapchat.com/login/oauth2/authorize"
-        f"?client_id={client_id}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope={scopes}"
-        f"&response_type=code"
-    )
-
-
-def _build_pinterest_oauth_url(state: str, **kwargs) -> str:
-    """Build Pinterest Ads OAuth authorization URL (stub — requires PINTEREST_CLIENT_ID)."""
-    client_id = os.environ.get("PINTEREST_CLIENT_ID", "")
-    if not client_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Pinterest Ads integration coming soon — credentials not yet configured",
-        )
-    scopes = "ads:read,catalogs:read"
-    return (
-        f"https://www.pinterest.com/oauth/"
-        f"?client_id={client_id}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope={scopes}"
-        f"&response_type=code"
-    )
-
-
-def _build_twitter_oauth_url(state: str, **kwargs) -> str:
-    """Build Twitter/X Ads OAuth authorization URL (stub — requires TWITTER_CLIENT_ID)."""
-    client_id = os.environ.get("TWITTER_CLIENT_ID", "")
-    if not client_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Twitter/X Ads integration coming soon — credentials not yet configured",
-        )
-    scopes = "tweet.read%20users.read%20offline.access"
-    return (
-        f"https://twitter.com/i/oauth2/authorize"
-        f"?client_id={client_id}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope={scopes}"
-        f"&response_type=code"
-        f"&code_challenge=challenge"
-        f"&code_challenge_method=plain"
-    )
-
-
-def _build_shopify_oauth_url(state: str, shop_domain: Optional[str] = None, **kwargs) -> str:
-    """Build Shopify OAuth authorization URL.
-
-    Args:
-        state: CSRF state token.
-        shop_domain: The merchant's *.myshopify.com domain.
-            Required for multi-tenant Shopify OAuth.
-    """
-    api_key = os.environ.get("SHOPIFY_API_KEY", "")
-    scopes = "read_orders,read_products,read_customers,read_analytics"
-    if not shop_domain:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="shop_domain is required for Shopify OAuth",
-        )
-    return (
-        f"https://{shop_domain}/admin/oauth/authorize"
-        f"?client_id={api_key}"
-        f"&scope={scopes}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-    )
-
-
-OAUTH_URL_BUILDERS: dict[str, callable] = {
-    "shopify": _build_shopify_oauth_url,
-    "meta_ads": _build_meta_oauth_url,
-    "google_ads": _build_google_oauth_url,
-    "tiktok_ads": _build_tiktok_oauth_url,
-    "snapchat_ads": _build_snapchat_oauth_url,
-    "pinterest_ads": _build_pinterest_oauth_url,
-    "twitter_ads": _build_twitter_oauth_url,
-    "shopify_email": _build_shopify_oauth_url,
+# Maps our internal platform keys → Airbyte source type strings used in
+# initiate_o_auth / complete_o_auth calls.  Airbyte manages all platform
+# OAuth credentials (client IDs, secrets) internally.
+PLATFORM_TO_AIRBYTE_SOURCE_TYPE: dict[str, str] = {
+    "shopify": "source-shopify",
+    "shopify_email": "source-shopify",
+    "meta_ads": "source-facebook-marketing",
+    "google_ads": "source-google-ads",
+    "tiktok_ads": "source-tiktok-marketing",
+    "snapchat_ads": "source-snapchat-marketing",
+    "pinterest_ads": "source-pinterest-ads",
+    "twitter_ads": "source-twitter-ads",
 }
+
+
+def _resolve_airbyte_source_type(platform: str) -> Optional[str]:
+    """Return the Airbyte source type string for a platform, or None."""
+    if platform in PLATFORM_TO_AIRBYTE_SOURCE_TYPE:
+        return PLATFORM_TO_AIRBYTE_SOURCE_TYPE[platform]
+    # Fall back to the AdPlatform enum mapping already used elsewhere
+    try:
+        platform_enum = AdPlatform(platform)
+        return AIRBYTE_SOURCE_TYPES.get(platform_enum)
+    except ValueError:
+        return None
 
 
 # =============================================================================
@@ -411,8 +308,12 @@ async def initiate_oauth(
     """
     Initiate OAuth authorization flow for a data source platform.
 
-    Generates a CSRF state token and returns the platform-specific
-    authorization URL for the frontend to open in a popup.
+    Delegates to Airbyte OSS to generate the authorization URL. Airbyte
+    manages all platform OAuth credentials (client IDs, secrets) internally,
+    so the application does not need per-platform credential env vars.
+
+    The state token embedded by Airbyte in the consent URL is extracted and
+    stored with tenant context so the callback can validate the request.
 
     For Shopify, the request body must include ``shop_domain``.
 
@@ -428,22 +329,61 @@ async def initiate_oauth(
             detail=f"Platform '{platform}' does not support OAuth. Auth type: {auth_type}",
         )
 
-    # Check we have a URL builder for this platform
-    url_builder = OAUTH_URL_BUILDERS.get(platform)
-    if not url_builder:
+    airbyte_source_type = _resolve_airbyte_source_type(platform)
+    if not airbyte_source_type:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"OAuth not configured for platform: {platform}",
         )
 
-    # Extract shop_domain for Shopify platforms
     shop_domain = body.shop_domain if body else None
 
-    # Generate CSRF state token
-    state = secrets.token_urlsafe(32)
+    # Shopify requires shop domain in the OAuth input configuration
+    if platform in ("shopify", "shopify_email") and not shop_domain:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="shop_domain is required for Shopify OAuth",
+        )
 
-    # Store state with tenant context for validation on callback
-    state_data = {
+    oauth_input_config: dict = {}
+    if shop_domain:
+        oauth_input_config["shop"] = shop_domain
+
+    try:
+        airbyte_client = get_airbyte_client()
+        oauth_response = await airbyte_client.initiate_oauth(
+            source_type=airbyte_source_type,
+            redirect_url=OAUTH_REDIRECT_URI,
+            oauth_input_config=oauth_input_config,
+        )
+    except AirbyteError as e:
+        logger.error(
+            "Airbyte OAuth initiation failed",
+            extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to initiate OAuth via Airbyte",
+        )
+
+    # Airbyte returns the consent URL with its own state embedded
+    consent_url = oauth_response.get("consentUrl") or oauth_response.get("consent_url", "")
+    if not consent_url:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Airbyte did not return a consent URL",
+        )
+
+    # Extract Airbyte's state value from the consent URL so we can use it as
+    # the key in our tenant-mapping store.  This allows the callback to look
+    # up which tenant/platform initiated the flow without a separate state
+    # parameter, while Airbyte still validates its own state on complete_o_auth.
+    parsed = urlparse(consent_url)
+    qs = parse_qs(parsed.query)
+    state_values = qs.get("state", [])
+    state = state_values[0] if state_values else secrets.token_urlsafe(32)
+
+    state_data: dict = {
         "tenant_id": tenant_ctx.tenant_id,
         "user_id": tenant_ctx.user_id,
         "platform": platform,
@@ -452,18 +392,13 @@ async def initiate_oauth(
         state_data["shop_domain"] = shop_domain
     _store_oauth_state(state, state_data)
 
-    authorization_url = url_builder(state, shop_domain=shop_domain)
-
     logger.info(
-        "OAuth flow initiated",
-        extra={
-            "tenant_id": tenant_ctx.tenant_id,
-            "platform": platform,
-        },
+        "OAuth flow initiated via Airbyte",
+        extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform},
     )
 
     return OAuthInitiateResponse(
-        authorization_url=authorization_url,
+        authorization_url=consent_url,
         state=state,
     )
 
@@ -507,25 +442,34 @@ async def oauth_callback(
     shop_domain = state_data.get("shop_domain")
 
     try:
-        # Create Airbyte source for the platform
-        airbyte_client = get_airbyte_client()
-        airbyte_source_type = None
-        try:
-            platform_enum = AdPlatform(platform)
-            airbyte_source_type = AIRBYTE_SOURCE_TYPES.get(platform_enum)
-        except ValueError:
-            # Shopify or other non-AdPlatform
-            if platform in ("shopify", "shopify_email"):
-                airbyte_source_type = "source-shopify"
-
+        airbyte_source_type = _resolve_airbyte_source_type(platform)
         if not airbyte_source_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"No Airbyte source type for platform: {platform}",
             )
 
-        # Build source configuration
-        source_config: dict = {"auth_code": body.code}
+        airbyte_client = get_airbyte_client()
+
+        # Complete OAuth via Airbyte — exchanges the authorization code for
+        # platform credentials.  Airbyte validates its own state token here.
+        oauth_result = await airbyte_client.complete_oauth(
+            source_type=airbyte_source_type,
+            redirect_url=OAUTH_REDIRECT_URI,
+            query_params={"code": body.code, "state": body.state},
+        )
+
+        if not oauth_result.get("request_succeeded", True):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Airbyte OAuth completion did not succeed",
+            )
+
+        # auth_payload contains the connector credentials returned by Airbyte
+        auth_payload: dict = oauth_result.get("auth_payload", {})
+
+        # Build source configuration from Airbyte credentials
+        source_config: dict = dict(auth_payload)
         if shop_domain:
             source_config["shop"] = shop_domain
 
@@ -573,7 +517,7 @@ async def oauth_callback(
             )
 
         # Build configuration for tenant registration
-        reg_config: dict = {"platform": platform, "auth_code_used": True}
+        reg_config: dict = {"platform": platform}
         if shop_domain:
             reg_config["shop_domain"] = shop_domain
 
