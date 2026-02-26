@@ -158,7 +158,7 @@ export function ChannelAnalytics() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
         {loading ? (
-          Array.from({ length: 7 }).map((_, i) => (
+          Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
               <div className="h-3 bg-gray-200 rounded w-20 mb-3" />
               <div className="h-7 bg-gray-200 rounded w-24" />
