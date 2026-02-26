@@ -14,7 +14,7 @@ SECURITY:
 
 Queries:
   1. mart_marketing_metrics   — revenue, spend, gross_roas
-  2. analytics.fct_marketing_spend — clicks, impressions, ctr, conversions
+  2. analytics.marketing_spend — clicks, impressions, ctr, conversions
   3. mart_marketing_metrics daily — daily revenue trend
 """
 
@@ -136,7 +136,6 @@ async def get_channel_metrics(
             SELECT
                 COALESCE(SUM(gross_revenue), 0)  AS revenue,
                 COALESCE(SUM(spend), 0)          AS spend,
-                COALESCE(AVG(gross_roas), 0)     AS roas,
                 COALESCE(SUM(orders), 0)         AS orders
             FROM marts.mart_marketing_metrics
             WHERE tenant_id   = :tenant_id
@@ -174,7 +173,6 @@ async def get_channel_metrics(
             SELECT
                 COALESCE(SUM(clicks), 0)       AS clicks,
                 COALESCE(SUM(impressions), 0)  AS impressions,
-                COALESCE(AVG(ctr), 0)          AS ctr,
                 COALESCE(SUM(conversions), 0)  AS conversions
             FROM analytics.marketing_spend
             WHERE tenant_id       = :tenant_id
@@ -211,7 +209,7 @@ async def get_channel_metrics(
         # ── Build response ─────────────────────────────────────────────────
         revenue  = float(mkt.revenue)  if mkt else 0.0
         spend    = float(mkt.spend)    if mkt else 0.0
-        roas     = float(mkt.roas)     if mkt else 0.0
+        roas     = revenue / spend if spend > 0 else 0.0
         orders   = int(mkt.orders)     if mkt else 0
 
         clicks      = int(clicks_row.clicks)         if clicks_row else 0
@@ -219,6 +217,7 @@ async def get_channel_metrics(
         ctr = clicks / impressions if impressions > 0 else 0.0
         conversions = int(clicks_row.conversions)    if clicks_row else 0
 
+        ctr       = clicks / impressions if impressions > 0 else 0.0
         conv_rate = conversions / clicks if clicks > 0 else 0.0
 
         trend = [
