@@ -24,6 +24,7 @@ MIGRATIONS = [
     "0056_agency_access.sql",
     "0057_access_revocation.sql",
     "add_insight_dollar_impact.sql",
+    "add_tenant_airbyte_workspace.sql",
 ]
 
 
