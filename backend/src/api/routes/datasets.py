@@ -756,8 +756,8 @@ async def get_channel_drilldown(
             for r in trend_rows
         ]
 
-    except Exception as exc:
-        logger.warning("Channel drilldown query failed for %s: %s", channel, exc)
+    except Exception:
+        logger.warning("Channel drilldown query failed for channel %s", channel, exc_info=True)
         raise HTTPException(status_code=503, detail="Analytics data unavailable")
 
     # canonical.order_line_items and canonical.products are not yet built in the

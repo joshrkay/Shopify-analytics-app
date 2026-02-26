@@ -54,6 +54,17 @@
   background: var(--p-color-bg-surface-selected);
 }
 
+.sidebar-nav-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding: var(--p-space-300) var(--p-space-200);
@@ -100,6 +111,34 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Logout button in footer */
+.sidebar-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--p-space-200);
+  width: 100%;
+  padding: var(--p-space-200) var(--p-space-300);
+  margin-top: var(--p-space-100);
+  background: none;
+  border: none;
+  border-radius: var(--p-border-radius-200);
+  cursor: pointer;
+  color: var(--p-color-text-critical);
+  font-size: var(--p-font-size-75);
+  font-weight: var(--p-font-weight-medium);
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-logout-btn:hover {
+  background-color: var(--p-color-bg-surface-critical);
+}
+
+.sidebar-logout-btn:focus-visible {
+  outline: 2px solid var(--p-color-border-emphasis);
+  outline-offset: -2px;
 }
 
 /* Focus indicator for nav items */

@@ -38,11 +38,11 @@ router = APIRouter(prefix="/api/channels", tags=["channels"])
 
 TIMEFRAME_TO_PERIOD: dict[str, str] = {
     "7days":       "last_7_days",
-    "thisWeek":    "this_week",
+    "thisWeek":    "weekly",
     "30days":      "last_30_days",
-    "thisMonth":   "this_month",
+    "thisMonth":   "monthly",
     "90days":      "last_90_days",
-    "thisQuarter": "this_quarter",
+    "thisQuarter": "quarterly",
 }
 
 CHANNEL_DISPLAY_NAMES: dict[str, str] = {
@@ -176,7 +176,7 @@ async def get_channel_metrics(
                 COALESCE(SUM(conversions), 0)  AS conversions
             FROM analytics.marketing_spend
             WHERE tenant_id       = :tenant_id
-              AND source_platform = :platform
+              AND (source_platform = :platform OR (:platform = 'organic' AND source_platform IS NULL))
               AND date >= current_date - (:lookback_days * INTERVAL '1 day')
               AND date <= current_date
         """), {
@@ -214,6 +214,7 @@ async def get_channel_metrics(
 
         clicks      = int(clicks_row.clicks)         if clicks_row else 0
         impressions = int(clicks_row.impressions)    if clicks_row else 0
+        ctr = clicks / impressions if impressions > 0 else 0.0
         conversions = int(clicks_row.conversions)    if clicks_row else 0
 
         ctr       = clicks / impressions if impressions > 0 else 0.0
