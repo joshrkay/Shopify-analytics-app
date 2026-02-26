@@ -84,13 +84,16 @@ def _get_database_session() -> Session:
     return session_factory()
 
 
-def _update_last_sync_timestamps(db_session: Session) -> None:
+def _update_last_sync_timestamps(db_session: Session) -> int:
     """
     Update last_sync_at on connections whose latest job succeeded.
 
     Scans recently completed SUCCESS jobs and propagates the timestamp
     back to the connection record so the scheduler knows when the
     connection last synced.
+
+    Returns the number of connections updated (used by the caller to decide
+    whether to trigger a dbt incremental run).
     """
     from src.ingestion.jobs.models import IngestionJob, JobStatus
     from src.models.airbyte_connection import TenantAirbyteConnection
@@ -130,18 +133,24 @@ def _update_last_sync_timestamps(db_session: Session) -> None:
             extra={"count": len(recent_successes)},
         )
 
+    return len(recent_successes)
+
 
 async def run_cycle(db_session: Session, stats: ExecutorStats) -> None:
     """
-    Run one executor cycle: process queued jobs, then retry jobs.
+    Run one executor cycle: process queued jobs, then retry jobs, then dbt.
 
     Delegates to the existing JobRunner from ingestion infrastructure.
+    When at least one Airbyte sync succeeded this cycle, fires dbt as a
+    background asyncio task so the executor loop isn't blocked while dbt
+    transforms the freshly landed raw data.
 
     Args:
         db_session: Database session
         stats: Cumulative stats tracker
     """
     from src.ingestion.jobs.runner import JobRunner
+    from src.workers.dbt_runner import run_dbt_incremental
 
     runner = JobRunner(db_session=db_session)
 
@@ -152,8 +161,20 @@ async def run_cycle(db_session: Session, stats: ExecutorStats) -> None:
         retried = await runner.process_retry_jobs(limit=MAX_JOBS_PER_CYCLE)
         stats.total_retry_processed += retried
 
-        # Propagate success timestamps back to connection records
-        _update_last_sync_timestamps(db_session)
+        # Propagate success timestamps back to connection records.
+        # Returns count of connections updated this cycle.
+        sync_successes = _update_last_sync_timestamps(db_session)
+
+        # Trigger dbt incremental run when at least one sync completed.
+        # create_task() returns immediately; the executor loop keeps running
+        # while dbt transforms the newly landed raw data in the background.
+        # The lock inside run_dbt_incremental prevents concurrent dbt runs.
+        if sync_successes > 0:
+            asyncio.create_task(run_dbt_incremental())
+            logger.info(
+                "dbt_runner.triggered",
+                extra={"sync_successes": sync_successes},
+            )
 
         stats.cycles += 1
 
