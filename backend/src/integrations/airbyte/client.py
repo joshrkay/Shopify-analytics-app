@@ -11,7 +11,9 @@ This client handles:
 - Connection management (list, get)
 - Source and destination management
 - Sync job orchestration (trigger, status, wait)
-- OAuth flows for data source connections
+
+Note: OAuth flows are handled by oauth_registry.py (app-managed per-provider) — not
+delegated to the Airbyte API, which only supports OAuth delegation on Airbyte Cloud.
 
 Documentation: https://reference.airbyte.com/
 """
@@ -329,6 +331,9 @@ class AirbyteClient:
         """
         Trigger a manual sync for a connection.
 
+        Uses POST /jobs per the Airbyte Public API spec (not the deprecated
+        POST /connections/{id}/sync from the old Config API).
+
         Args:
             connection_id: Connection UUID
 
@@ -340,10 +345,11 @@ class AirbyteClient:
         """
         data = await self._request(
             "POST",
-            f"/connections/{connection_id}/sync",
+            "/jobs",
+            json={"connectionId": connection_id, "jobType": "sync"},
         )
 
-        job_id = data.get("jobId", "")
+        job_id = str(data.get("jobId", ""))
 
         logger.info(
             "Airbyte sync triggered",
@@ -762,101 +768,6 @@ class AirbyteClient:
             "Airbyte connection deleted",
             extra={"connection_id": connection_id},
         )
-
-    # =========================================================================
-    # OAuth Methods
-    # =========================================================================
-
-    async def initiate_oauth(
-        self,
-        source_type: str,
-        redirect_url: str,
-        oauth_input_config: Optional[Dict[str, Any]] = None,
-        workspace_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Initiate OAuth authorization flow for a source via Airbyte.
-
-        Airbyte generates the authorization URL (including CSRF state) and
-        manages platform OAuth credentials internally. This replaces the need
-        to hold platform client IDs/secrets in the application.
-
-        Args:
-            source_type: Airbyte source type string (e.g. 'source-google-ads')
-            redirect_url: OAuth callback URL the provider will redirect to
-            oauth_input_config: Optional connector-specific OAuth inputs
-                (e.g. {'shop': 'mystore.myshopify.com'} for Shopify)
-            workspace_id: Override workspace ID (uses default if not provided)
-
-        Returns:
-            Dict containing 'consentUrl' (the authorization URL to open)
-
-        Raises:
-            AirbyteError: On API errors
-        """
-        ws_id = workspace_id or self.workspace_id
-        data = await self._request(
-            "POST",
-            "/sources/initiate_o_auth",
-            json={
-                "workspaceId": ws_id,
-                "sourceType": source_type,
-                "redirectUrl": redirect_url,
-                "oAuthInputConfiguration": oauth_input_config or {},
-            },
-        )
-        logger.info(
-            "Airbyte OAuth initiated",
-            extra={"source_type": source_type},
-        )
-        return data
-
-    async def complete_oauth(
-        self,
-        source_type: str,
-        redirect_url: str,
-        query_params: Dict[str, str],
-        workspace_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Complete OAuth authorization flow and retrieve credentials via Airbyte.
-
-        Airbyte validates the state token and exchanges the authorization code
-        for platform credentials, which are returned in 'auth_payload'.
-
-        Args:
-            source_type: Airbyte source type string (e.g. 'source-google-ads')
-            redirect_url: OAuth callback URL used during initiation
-            query_params: Query parameters received at the callback URL
-                (must include 'code' and 'state')
-            workspace_id: Override workspace ID (uses default if not provided)
-
-        Returns:
-            Dict containing 'request_succeeded' and 'auth_payload' with
-            connector credentials to use when creating the source
-
-        Raises:
-            AirbyteError: On API errors
-        """
-        ws_id = workspace_id or self.workspace_id
-        data = await self._request(
-            "POST",
-            "/sources/complete_o_auth",
-            json={
-                "workspaceId": ws_id,
-                "sourceType": source_type,
-                "redirectUrl": redirect_url,
-                "queryParams": query_params,
-            },
-        )
-        logger.info(
-            "Airbyte OAuth completed",
-            extra={
-                "source_type": source_type,
-                "request_succeeded": data.get("request_succeeded"),
-            },
-        )
-        return data
 
     # =========================================================================
     # Workspace Management Methods

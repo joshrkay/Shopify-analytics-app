@@ -35,15 +35,17 @@ from src.services.airbyte_service import (
     DuplicateConnectionError,
 )
 from src.services.airbyte_workspace import ensure_tenant_workspace
-from src.services.ad_ingestion import (
-    AdPlatform,
-    AIRBYTE_SOURCE_TYPES,
-)
 from src.integrations.airbyte.client import get_airbyte_client, AirbyteError
 from src.integrations.airbyte.models import (
     SourceCreationRequest,
     ConnectionCreationRequest,
     DestinationCreationRequest,
+)
+from src.integrations.airbyte.oauth_registry import (
+    OAUTH_REGISTRY,
+    build_auth_url,
+    build_source_config,
+    exchange_code_for_tokens,
 )
 from src.api.schemas.sources import (
     SourceSummary,
@@ -193,12 +195,11 @@ def _save_sync_settings_to_db(service: AirbyteService, settings: dict) -> None:
 
 
 # =============================================================================
-# Airbyte source type mapping for OAuth
+# Airbyte source type mapping
 # =============================================================================
 
 # Maps our internal platform keys → Airbyte source type strings used in
-# initiate_o_auth / complete_o_auth calls.  Airbyte manages all platform
-# OAuth credentials (client IDs, secrets) internally.
+# create_source calls (embedded as sourceType inside configuration).
 PLATFORM_TO_AIRBYTE_SOURCE_TYPE: dict[str, str] = {
     "shopify": "source-shopify",
     "shopify_email": "source-shopify",
@@ -213,14 +214,7 @@ PLATFORM_TO_AIRBYTE_SOURCE_TYPE: dict[str, str] = {
 
 def _resolve_airbyte_source_type(platform: str) -> Optional[str]:
     """Return the Airbyte source type string for a platform, or None."""
-    if platform in PLATFORM_TO_AIRBYTE_SOURCE_TYPE:
-        return PLATFORM_TO_AIRBYTE_SOURCE_TYPE[platform]
-    # Fall back to the AdPlatform enum mapping already used elsewhere
-    try:
-        platform_enum = AdPlatform(platform)
-        return AIRBYTE_SOURCE_TYPES.get(platform_enum)
-    except ValueError:
-        return None
+    return PLATFORM_TO_AIRBYTE_SOURCE_TYPE.get(platform)
 
 
 # =============================================================================
@@ -311,15 +305,13 @@ async def initiate_oauth(
     """
     Initiate OAuth authorization flow for a data source platform.
 
-    Delegates to Airbyte OSS to generate the authorization URL. Airbyte
-    manages all platform OAuth credentials (client IDs, secrets) internally,
-    so the application does not need per-platform credential env vars.
+    Builds the provider's OAuth authorization URL directly using per-platform
+    app credentials (META_APP_ID, GOOGLE_CLIENT_ID, etc.) from the environment.
+    This app-managed approach works with both Airbyte OSS and Cloud — unlike
+    Airbyte's own initiateOAuth endpoint which is Cloud-only.
 
-    Ensures the tenant has an Airbyte workspace (provisioning one on first use),
-    so the OAuth flow is always scoped to the tenant's isolated workspace.
-
-    The state token embedded by Airbyte in the consent URL is extracted and
-    stored with tenant context so the callback can validate the request.
+    Ensures the tenant has an Airbyte workspace (provisioning one on first use)
+    so the subsequent oauth_callback can create the source in the correct workspace.
 
     For Shopify, the request body must include ``shop_domain``.
 
@@ -335,70 +327,29 @@ async def initiate_oauth(
             detail=f"Platform '{platform}' does not support OAuth. Auth type: {auth_type}",
         )
 
-    airbyte_source_type = _resolve_airbyte_source_type(platform)
-    if not airbyte_source_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth not configured for platform: {platform}",
-        )
-
     shop_domain = body.shop_domain if body else None
 
-    # Shopify requires shop domain in the OAuth input configuration
+    # Shopify requires shop domain for URL interpolation
     if platform in ("shopify", "shopify_email") and not shop_domain:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="shop_domain is required for Shopify OAuth",
         )
 
-    oauth_input_config: dict = {}
-    if shop_domain:
-        oauth_input_config["shop"] = shop_domain
+    # Ensure the tenant has an isolated Airbyte workspace (lazy provision)
+    from src.models.tenant import Tenant
+    tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
+    tenant_name = tenant.name if tenant else tenant_ctx.tenant_id
+    workspace_id = await ensure_tenant_workspace(
+        tenant_id=tenant_ctx.tenant_id,
+        tenant_name=tenant_name,
+        db=db_session,
+    )
 
-    try:
-        # Ensure the tenant has an isolated Airbyte workspace (lazy provision)
-        from src.models.tenant import Tenant
-        tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
-        tenant_name = tenant.name if tenant else tenant_ctx.tenant_id
-        workspace_id = await ensure_tenant_workspace(
-            tenant_id=tenant_ctx.tenant_id,
-            tenant_name=tenant_name,
-            db=db_session,
-        )
-
-        airbyte_client = get_airbyte_client()
-        oauth_response = await airbyte_client.initiate_oauth(
-            source_type=airbyte_source_type,
-            redirect_url=OAUTH_REDIRECT_URI,
-            oauth_input_config=oauth_input_config,
-            workspace_id=workspace_id,
-        )
-    except AirbyteError as e:
-        logger.error(
-            "Airbyte OAuth initiation failed",
-            extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform, "error": str(e)},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to initiate OAuth via Airbyte",
-        )
-
-    # Airbyte returns the consent URL with its own state embedded
-    consent_url = oauth_response.get("consentUrl") or oauth_response.get("consent_url", "")
-    if not consent_url:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Airbyte did not return a consent URL",
-        )
-
-    # Extract Airbyte's state value from the consent URL so we can use it as
-    # the key in our tenant-mapping store.  This allows the callback to look
-    # up which tenant/platform initiated the flow without a separate state
-    # parameter, while Airbyte still validates its own state on complete_o_auth.
-    parsed = urlparse(consent_url)
-    qs = parse_qs(parsed.query)
-    state_values = qs.get("state", [])
-    state = state_values[0] if state_values else secrets.token_urlsafe(32)
+    # Generate CSRF state token and build the platform's authorization URL.
+    # build_auth_url raises 400 if platform is unknown, 502 if credentials missing.
+    state = secrets.token_urlsafe(32)
+    auth_url = build_auth_url(platform, state, OAUTH_REDIRECT_URI, shop_domain=shop_domain)
 
     state_data: dict = {
         "tenant_id": tenant_ctx.tenant_id,
@@ -411,7 +362,7 @@ async def initiate_oauth(
     _store_oauth_state(state, state_data)
 
     logger.info(
-        "OAuth flow initiated via Airbyte",
+        "OAuth flow initiated",
         extra={
             "tenant_id": tenant_ctx.tenant_id,
             "platform": platform,
@@ -420,7 +371,7 @@ async def initiate_oauth(
     )
 
     return OAuthInitiateResponse(
-        authorization_url=consent_url,
+        authorization_url=auth_url,
         state=state,
     )
 
@@ -474,8 +425,6 @@ async def oauth_callback(
                 detail=f"No Airbyte source type for platform: {platform}",
             )
 
-        airbyte_client = get_airbyte_client()
-
         # Resolve the tenant's workspace — stored_workspace_id is set for
         # flows initiated after the per-tenant workspace refactor; the fallback
         # handles any in-flight legacy state entries.
@@ -493,28 +442,17 @@ async def oauth_callback(
                 db=db_session,
             )
 
-        # Complete OAuth via Airbyte — exchanges the authorization code for
-        # platform credentials.  Airbyte validates its own state token here.
-        oauth_result = await airbyte_client.complete_oauth(
-            source_type=airbyte_source_type,
-            redirect_url=OAUTH_REDIRECT_URI,
-            query_params={"code": body.code, "state": body.state},
-            workspace_id=workspace_id,
+        # Exchange the authorization code for tokens with the platform directly.
+        # build_source_config maps token response fields + env var credentials
+        # to the Airbyte source configuration dict.
+        tokens = await exchange_code_for_tokens(
+            platform, body.code, OAUTH_REDIRECT_URI, shop_domain
         )
-
-        if not oauth_result.get("request_succeeded", True):
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Airbyte OAuth completion did not succeed",
-            )
-
-        # auth_payload contains the connector credentials returned by Airbyte
-        auth_payload: dict = oauth_result.get("auth_payload", {})
-
-        # Build source configuration from Airbyte credentials
-        source_config: dict = dict(auth_payload)
+        source_config: dict = build_source_config(platform, tokens)
         if shop_domain:
             source_config["shop"] = shop_domain
+
+        airbyte_client = get_airbyte_client()
 
         # Create the source in the tenant's workspace
         source_request = SourceCreationRequest(

@@ -76,6 +76,41 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
 
+      # ── OAuth redirect URI ────────────────────────────────────────
+      - key: OAUTH_REDIRECT_URI
+        value: "https://app.markinsight.net/api/sources/oauth/callback"
+
+      # ── Ad Platform OAuth Apps ────────────────────────────────────
+      # App-managed OAuth: our app registers with each platform and
+      # handles the full OAuth flow directly (no Airbyte delegation).
+      # See backend/src/integrations/airbyte/oauth_registry.py
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ADS_DEVELOPER_TOKEN
+        sync: false
+      - key: TIKTOK_APP_ID
+        sync: false
+      - key: TIKTOK_APP_SECRET
+        sync: false
+      - key: SNAPCHAT_CLIENT_ID
+        sync: false
+      - key: SNAPCHAT_CLIENT_SECRET
+        sync: false
+      - key: PINTEREST_APP_ID
+        sync: false
+      - key: PINTEREST_APP_SECRET
+        sync: false
+      - key: TWITTER_CLIENT_ID
+        sync: false
+      - key: TWITTER_CLIENT_SECRET
+        sync: false
+
   # ============================================
   # SERVICES BELOW ARE NOT YET DEPLOYED
   # Uncomment when scaling requires them.

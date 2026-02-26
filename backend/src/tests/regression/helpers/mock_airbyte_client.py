@@ -7,7 +7,7 @@ Supports configuring mock state for different test scenarios.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, field
 
 from src.integrations.airbyte.models import (
@@ -16,10 +16,13 @@ from src.integrations.airbyte.models import (
     AirbyteJob,
     AirbyteJobStatus,
     AirbyteSyncResult,
+    AirbyteWorkspace,
+    AirbyteDestination,
     ConnectionStatus,
     AirbyteSchedule,
     ScheduleType,
     AirbyteJobAttempt,
+    DestinationCreationRequest,
 )
 from src.integrations.airbyte.exceptions import (
     AirbyteError,
@@ -313,3 +316,42 @@ class MockAirbyteClient:
             poll_interval_seconds=poll_interval_seconds,
             connection_id=connection_id,
         )
+
+    async def create_workspace(
+        self,
+        name: str,
+        organization_id: Optional[str] = None,
+    ) -> AirbyteWorkspace:
+        """Create a mock workspace and store it."""
+        self._check_failure()
+
+        workspace_id = f"ws-{uuid.uuid4().hex[:8]}"
+        workspace = AirbyteWorkspace(
+            workspace_id=workspace_id,
+            name=name,
+            organization_id=organization_id,
+        )
+        if not hasattr(self, "_workspaces"):
+            self._workspaces: Dict[str, AirbyteWorkspace] = {}
+        self._workspaces[workspace_id] = workspace
+        return workspace
+
+    async def create_destination(
+        self,
+        request: DestinationCreationRequest,
+        workspace_id: Optional[str] = None,
+    ) -> AirbyteDestination:
+        """Create a mock destination and store it."""
+        self._check_failure()
+
+        destination_id = f"dest-{uuid.uuid4().hex[:8]}"
+        destination = AirbyteDestination(
+            destination_id=destination_id,
+            name=request.name,
+            destination_type=request.destination_type,
+            workspace_id=workspace_id or self.workspace_id,
+        )
+        if not hasattr(self, "_destinations"):
+            self._destinations: Dict[str, AirbyteDestination] = {}
+        self._destinations[destination_id] = destination
+        return destination

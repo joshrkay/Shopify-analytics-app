@@ -273,9 +273,8 @@ class SourceCreationRequest:
     def to_dict(self, workspace_id: str) -> Dict[str, Any]:
         return {
             "name": self.name,
-            "sourceType": self.source_type,
             "workspaceId": workspace_id,
-            "configuration": self.configuration,
+            "configuration": {"sourceType": self.source_type, **self.configuration},
         }
 
 
@@ -329,7 +328,6 @@ class DestinationCreationRequest:
     def to_dict(self, workspace_id: str) -> Dict[str, Any]:
         return {
             "name": self.name,
-            "destinationType": self.destination_type,
             "workspaceId": workspace_id,
-            "configuration": self.configuration,
+            "configuration": {"destinationType": self.destination_type, **self.configuration},
         }
