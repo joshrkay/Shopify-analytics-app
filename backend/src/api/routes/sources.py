@@ -341,7 +341,6 @@ async def initiate_oauth(
         )
 
     # Ensure the tenant has an isolated Airbyte workspace (lazy provision)
-    from src.models.tenant import Tenant
     tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
     tenant_name = tenant.name if tenant else tenant_ctx.tenant_id
     workspace_id = await ensure_tenant_workspace(
