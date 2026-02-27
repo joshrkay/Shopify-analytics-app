@@ -2,14 +2,16 @@
 Unit tests for Airbyte client.
 
 Tests cover:
-- Client initialization and validation
+- Client initialization and validation (Bearer + Basic auth)
 - Health check requests
 - Connection listing and retrieval
 - Sync triggering and monitoring
+- Workspace and destination creation
 - Error handling for various HTTP status codes
 - Timeout and connection error handling
 """
 
+import base64
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime, timezone
@@ -35,7 +37,11 @@ from src.integrations.airbyte.models import (
     AirbyteJob,
     AirbyteJobStatus,
     AirbyteSyncResult,
+    AirbyteWorkspace,
+    AirbyteDestination,
     ConnectionStatus,
+    DestinationCreationRequest,
+    SourceCreationRequest,
 )
 
 
@@ -80,27 +86,67 @@ class TestAirbyteClientInitialization:
         client = AirbyteClient(base_url="https://api.airbyte.test/v1/")
         assert client.base_url == "https://api.airbyte.test/v1"
 
-    def test_init_missing_token_raises(self, monkeypatch):
-        """Should raise ValueError if API token is missing."""
+    def test_init_no_auth_at_all_raises(self, monkeypatch):
+        """Should raise ValueError if no auth credentials are provided."""
         monkeypatch.delenv("AIRBYTE_API_TOKEN", raising=False)
-        monkeypatch.setenv("AIRBYTE_WORKSPACE_ID", "test-workspace")
+        monkeypatch.delenv("AIRBYTE_USERNAME", raising=False)
+        monkeypatch.delenv("AIRBYTE_PASSWORD", raising=False)
+        monkeypatch.delenv("AIRBYTE_WORKSPACE_ID", raising=False)
 
-        with pytest.raises(ValueError, match="API token is required"):
+        with pytest.raises(ValueError, match="Airbyte authentication is required"):
             AirbyteClient()
 
-    def test_init_missing_workspace_raises(self, monkeypatch):
-        """Should raise ValueError if workspace ID is missing."""
+    def test_init_workspace_id_optional(self, monkeypatch):
+        """workspace_id should be optional — per-tenant model passes it per call."""
         monkeypatch.setenv("AIRBYTE_API_TOKEN", "test-token")
         monkeypatch.delenv("AIRBYTE_WORKSPACE_ID", raising=False)
 
-        with pytest.raises(ValueError, match="workspace ID is required"):
-            AirbyteClient()
+        client = AirbyteClient()
+        assert client.workspace_id is None
+
+    def test_init_with_basic_auth(self, monkeypatch):
+        """Should initialize with Basic auth when username + password provided."""
+        monkeypatch.delenv("AIRBYTE_API_TOKEN", raising=False)
+        monkeypatch.delenv("AIRBYTE_USERNAME", raising=False)
+        monkeypatch.delenv("AIRBYTE_PASSWORD", raising=False)
+
+        client = AirbyteClient(username="admin", password="secret123")
+        expected = base64.b64encode(b"admin:secret123").decode()
+        assert client._client.headers["Authorization"] == f"Basic {expected}"
+
+    def test_init_with_basic_auth_env_vars(self, monkeypatch):
+        """Should read Basic auth credentials from env vars."""
+        monkeypatch.delenv("AIRBYTE_API_TOKEN", raising=False)
+        monkeypatch.setenv("AIRBYTE_USERNAME", "env-user")
+        monkeypatch.setenv("AIRBYTE_PASSWORD", "env-pass")
+
+        client = AirbyteClient()
+        expected = base64.b64encode(b"env-user:env-pass").decode()
+        assert client._client.headers["Authorization"] == f"Basic {expected}"
+
+    def test_init_basic_auth_precedence_over_bearer(self, monkeypatch):
+        """Basic auth should take precedence when both are configured."""
+        monkeypatch.setenv("AIRBYTE_API_TOKEN", "bearer-token")
+        monkeypatch.setenv("AIRBYTE_USERNAME", "admin")
+        monkeypatch.setenv("AIRBYTE_PASSWORD", "secret")
+
+        client = AirbyteClient()
+        assert client._client.headers["Authorization"].startswith("Basic ")
 
     def test_factory_function(self, mock_env):
         """Factory function should create client correctly."""
         client = get_airbyte_client()
         assert client.api_token == "test-token-12345"
         assert client.workspace_id == "test-workspace-id"
+
+    def test_factory_function_with_basic_auth(self, monkeypatch):
+        """Factory function should work with Basic auth params."""
+        monkeypatch.delenv("AIRBYTE_API_TOKEN", raising=False)
+        monkeypatch.delenv("AIRBYTE_USERNAME", raising=False)
+        monkeypatch.delenv("AIRBYTE_PASSWORD", raising=False)
+
+        client = get_airbyte_client(username="admin", password="pass")
+        assert client._client.headers["Authorization"].startswith("Basic ")
 
 
 class TestAirbyteClientHealthCheck:
@@ -240,7 +286,7 @@ class TestAirbyteClientSync:
 
     @pytest.mark.asyncio
     async def test_trigger_sync_success(self, client):
-        """Should trigger sync and return job ID."""
+        """Should trigger sync via POST /jobs and return job ID."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"jobId": "job-12345"}
@@ -252,6 +298,12 @@ class TestAirbyteClientSync:
 
             assert job_id == "job-12345"
             mock_request.assert_called_once()
+            call_args = mock_request.call_args
+            # Must use POST /jobs with connectionId + jobType (not /connections/{id}/sync)
+            assert "POST" in str(call_args)
+            assert "/jobs" in str(call_args)
+            request_body = call_args.kwargs.get("json") or call_args[1].get("json", {})
+            assert request_body == {"connectionId": "conn-1", "jobType": "sync"}
 
     @pytest.mark.asyncio
     async def test_get_job_success(self, client):
@@ -617,3 +669,178 @@ class TestAirbyteModels:
             error_message="Sync failed",
         )
         assert failed_result.is_successful is False
+
+    def test_workspace_from_dict(self):
+        """Should parse workspace response correctly."""
+        data = {
+            "workspaceId": "ws-abc123",
+            "name": "Test Workspace",
+            "organizationId": "org-xyz",
+        }
+        workspace = AirbyteWorkspace.from_dict(data)
+        assert workspace.workspace_id == "ws-abc123"
+        assert workspace.name == "Test Workspace"
+        assert workspace.organization_id == "org-xyz"
+
+    def test_workspace_from_dict_defaults(self):
+        """Should use defaults for missing workspace fields."""
+        data = {}
+        workspace = AirbyteWorkspace.from_dict(data)
+        assert workspace.workspace_id == ""
+        assert workspace.name == ""
+        assert workspace.organization_id is None
+
+    def test_source_creation_request_to_dict(self):
+        """Should embed sourceType inside configuration (Airbyte Public API shape)."""
+        request = SourceCreationRequest(
+            name="Meta Ads - abc123",
+            source_type="source-facebook-marketing",
+            configuration={"access_token": "tok-xyz"},
+        )
+        result = request.to_dict("ws-123")
+        assert result == {
+            "name": "Meta Ads - abc123",
+            "workspaceId": "ws-123",
+            "configuration": {
+                "sourceType": "source-facebook-marketing",
+                "access_token": "tok-xyz",
+            },
+        }
+
+    def test_destination_creation_request_to_dict(self):
+        """Should embed destinationType inside configuration (Airbyte Public API shape)."""
+        request = DestinationCreationRequest(
+            name="PostgreSQL - abc123",
+            destination_type="destination-postgres",
+            configuration={"host": "localhost", "port": 5432},
+        )
+        result = request.to_dict("ws-123")
+        assert result == {
+            "name": "PostgreSQL - abc123",
+            "workspaceId": "ws-123",
+            "configuration": {
+                "destinationType": "destination-postgres",
+                "host": "localhost",
+                "port": 5432,
+            },
+        }
+
+
+class TestAirbyteClientWorkspace:
+    """Tests for workspace management."""
+
+    @pytest.mark.asyncio
+    async def test_create_workspace_success(self, client):
+        """Should create a workspace and return AirbyteWorkspace."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "workspaceId": "ws-new-123",
+            "name": "Acme Store (abc12345)",
+        }
+
+        with patch.object(client._client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+
+            workspace = await client.create_workspace("Acme Store (abc12345)")
+
+            assert workspace.workspace_id == "ws-new-123"
+            assert workspace.name == "Acme Store (abc12345)"
+            mock_request.assert_called_once()
+            call_kwargs = mock_request.call_args
+            assert "workspaces" in str(call_kwargs)
+
+    @pytest.mark.asyncio
+    async def test_create_workspace_with_org_id(self, client):
+        """Should include organizationId in payload when provided."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "workspaceId": "ws-org-456",
+            "name": "Org Workspace",
+            "organizationId": "org-789",
+        }
+
+        with patch.object(client._client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+
+            workspace = await client.create_workspace(
+                "Org Workspace", organization_id="org-789"
+            )
+
+            assert workspace.organization_id == "org-789"
+            # Verify organizationId was sent in the request body
+            call_args = mock_request.call_args
+            request_body = call_args.kwargs.get("json") or call_args[1].get("json", {})
+            assert request_body.get("organizationId") == "org-789"
+
+    @pytest.mark.asyncio
+    async def test_create_workspace_api_error(self, client):
+        """Should raise AirbyteError on API failure."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {"error": "Internal Server Error"}
+
+        with patch.object(client._client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+
+            with pytest.raises(AirbyteError):
+                await client.create_workspace("Failing Workspace")
+
+
+class TestAirbyteClientDestination:
+    """Tests for destination management."""
+
+    @pytest.mark.asyncio
+    async def test_create_destination_success(self, client):
+        """Should create a destination and return AirbyteDestination."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "destinationId": "dest-new-789",
+            "name": "PostgreSQL - abc123",
+            "destinationType": "destination-postgres",
+            "workspaceId": "test-workspace-id",
+        }
+
+        request = DestinationCreationRequest(
+            name="PostgreSQL - abc123",
+            destination_type="destination-postgres",
+            configuration={"host": "db.example.com", "port": 5432},
+        )
+
+        with patch.object(client._client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+
+            destination = await client.create_destination(request)
+
+            assert destination.destination_id == "dest-new-789"
+            assert destination.name == "PostgreSQL - abc123"
+            mock_request.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_destination_uses_override_workspace_id(self, client):
+        """Should use explicit workspace_id over constructor default."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "destinationId": "dest-override",
+            "name": "PG Override",
+            "destinationType": "destination-postgres",
+            "workspaceId": "ws-override-456",
+        }
+
+        request = DestinationCreationRequest(
+            name="PG Override",
+            destination_type="destination-postgres",
+            configuration={"host": "localhost"},
+        )
+
+        with patch.object(client._client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+
+            await client.create_destination(request, workspace_id="ws-override-456")
+
+            call_args = mock_request.call_args
+            request_body = call_args.kwargs.get("json") or call_args[1].get("json", {})
+            assert request_body.get("workspaceId") == "ws-override-456"

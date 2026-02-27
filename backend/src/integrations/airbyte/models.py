@@ -273,9 +273,8 @@ class SourceCreationRequest:
     def to_dict(self, workspace_id: str) -> Dict[str, Any]:
         return {
             "name": self.name,
-            "sourceType": self.source_type,
             "workspaceId": workspace_id,
-            "configuration": self.configuration,
+            "configuration": {"sourceType": self.source_type, **self.configuration},
         }
 
 
@@ -298,4 +297,37 @@ class ConnectionCreationRequest:
             "schedule": {"scheduleType": self.schedule_type.value},
             "namespaceDefinition": self.namespace_definition,
             "status": self.status,
+        }
+
+
+@dataclass
+class AirbyteWorkspace:
+    """Airbyte workspace."""
+
+    workspace_id: str
+    name: str
+    organization_id: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AirbyteWorkspace":
+        return cls(
+            workspace_id=data.get("workspaceId", ""),
+            name=data.get("name", ""),
+            organization_id=data.get("organizationId"),
+        )
+
+
+@dataclass
+class DestinationCreationRequest:
+    """Request to create a new Airbyte destination."""
+
+    name: str
+    destination_type: str
+    configuration: Dict[str, Any]
+
+    def to_dict(self, workspace_id: str) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "workspaceId": workspace_id,
+            "configuration": {"destinationType": self.destination_type, **self.configuration},
         }

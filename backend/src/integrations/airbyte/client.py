@@ -1,15 +1,25 @@
 """
-Airbyte Cloud API client for data synchronization management.
+Airbyte API client for data synchronization management.
+
+Supports both Airbyte OSS (self-hosted) and Airbyte Cloud:
+- OSS: Basic auth via AIRBYTE_USERNAME / AIRBYTE_PASSWORD
+- Cloud: Bearer token via AIRBYTE_API_TOKEN
 
 This client handles:
-- Health checks for Airbyte Cloud availability
+- Health checks for Airbyte availability
+- Workspace management (create, per-tenant provisioning)
 - Connection management (list, get)
+- Source and destination management
 - Sync job orchestration (trigger, status, wait)
+
+Note: OAuth flows are handled by oauth_registry.py (app-managed per-provider) — not
+delegated to the Airbyte API, which only supports OAuth delegation on Airbyte Cloud.
 
 Documentation: https://reference.airbyte.com/
 """
 
 import asyncio
+import base64
 import logging
 import os
 import time
@@ -33,13 +43,20 @@ from src.integrations.airbyte.models import (
     AirbyteSyncResult,
     AirbyteSource,
     AirbyteDestination,
+    AirbyteWorkspace,
     SourceCreationRequest,
     ConnectionCreationRequest,
+    DestinationCreationRequest,
 )
 
 logger = logging.getLogger(__name__)
 
-# Default configuration
+# Default configuration.
+# OSS deployments typically expose the public API at one of:
+#   http://<host>:8006/v1        (airbyte-api-server container, Airbyte >= 0.50)
+#   http://<host>:8000/api/public/v1  (nginx proxy path)
+# Cloud: https://api.airbyte.com/v1
+# Set AIRBYTE_BASE_URL to match your deployment.
 DEFAULT_BASE_URL = "https://api.airbyte.com/v1"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 10.0
@@ -49,12 +66,18 @@ DEFAULT_POLL_INTERVAL_SECONDS = 30
 
 class AirbyteClient:
     """
-    Async client for Airbyte Cloud API.
+    Async client for the Airbyte API (OSS and Cloud).
 
-    This client is designed to work with Airbyte Cloud's REST API.
-    All methods are async and should be used with async/await.
+    Authentication modes (checked in order):
+    1. Basic auth — set AIRBYTE_USERNAME + AIRBYTE_PASSWORD (Airbyte OSS default)
+    2. Bearer token — set AIRBYTE_API_TOKEN (Airbyte Cloud / OSS with token auth)
 
-    SECURITY: API token must be stored securely and never logged.
+    workspace_id is optional in the constructor. When not set the instance
+    has no default workspace; callers pass workspace_id per-call. This
+    supports the per-tenant workspace model where workspace IDs are stored
+    on Tenant records and resolved at call sites.
+
+    SECURITY: Credentials must be stored securely and never logged.
     """
 
     def __init__(
@@ -62,6 +85,8 @@ class AirbyteClient:
         base_url: Optional[str] = None,
         api_token: Optional[str] = None,
         workspace_id: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT_SECONDS,
     ):
@@ -69,36 +94,50 @@ class AirbyteClient:
         Initialize Airbyte client.
 
         Args:
-            base_url: Airbyte Cloud API base URL (default: from env or cloud URL)
-            api_token: API token for authentication (default: from env)
-            workspace_id: Airbyte workspace ID (default: from env)
+            base_url: API base URL (default: from AIRBYTE_BASE_URL env or Cloud URL)
+            api_token: Bearer token for authentication (default: from AIRBYTE_API_TOKEN env)
+            workspace_id: Optional default workspace ID (default: from AIRBYTE_WORKSPACE_ID env).
+                          Per-tenant workspace IDs are passed explicitly per call instead.
+            username: Basic auth username (default: from AIRBYTE_USERNAME env)
+            password: Basic auth password (default: from AIRBYTE_PASSWORD env)
             timeout: Request timeout in seconds
             connect_timeout: Connection timeout in seconds
+
+        Raises:
+            ValueError: If neither Basic auth credentials nor a Bearer token are configured
         """
         self.base_url = (
             base_url or os.getenv("AIRBYTE_BASE_URL") or DEFAULT_BASE_URL
         ).rstrip("/")
-        self.api_token = api_token or os.getenv("AIRBYTE_API_TOKEN")
+
+        # workspace_id is optional — per-tenant model stores it on the Tenant record
         self.workspace_id = workspace_id or os.getenv("AIRBYTE_WORKSPACE_ID")
 
-        if not self.api_token:
-            raise ValueError(
-                "Airbyte API token is required. Set AIRBYTE_API_TOKEN environment variable "
-                "or pass api_token parameter."
-            )
+        # Resolve auth header — Basic auth takes precedence over Bearer token
+        _username = username or os.getenv("AIRBYTE_USERNAME")
+        _password = password or os.getenv("AIRBYTE_PASSWORD")
 
-        if not self.workspace_id:
-            raise ValueError(
-                "Airbyte workspace ID is required. Set AIRBYTE_WORKSPACE_ID environment variable "
-                "or pass workspace_id parameter."
-            )
+        if _username and _password:
+            credentials = base64.b64encode(
+                f"{_username}:{_password}".encode()
+            ).decode()
+            auth_header = f"Basic {credentials}"
+        else:
+            self.api_token = api_token or os.getenv("AIRBYTE_API_TOKEN")
+            if not self.api_token:
+                raise ValueError(
+                    "Airbyte authentication is required. Set either "
+                    "AIRBYTE_USERNAME + AIRBYTE_PASSWORD (Airbyte OSS Basic auth) "
+                    "or AIRBYTE_API_TOKEN (Bearer token for Cloud / OSS token auth)."
+                )
+            auth_header = f"Bearer {self.api_token}"
 
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=connect_timeout),
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "Authorization": f"Bearer {self.api_token}",
+                "Authorization": auth_header,
             },
         )
 
@@ -292,6 +331,9 @@ class AirbyteClient:
         """
         Trigger a manual sync for a connection.
 
+        Uses POST /jobs per the Airbyte Public API spec (not the deprecated
+        POST /connections/{id}/sync from the old Config API).
+
         Args:
             connection_id: Connection UUID
 
@@ -303,10 +345,11 @@ class AirbyteClient:
         """
         data = await self._request(
             "POST",
-            f"/connections/{connection_id}/sync",
+            "/jobs",
+            json={"connectionId": connection_id, "jobType": "sync"},
         )
 
-        job_id = data.get("jobId", "")
+        job_id = str(data.get("jobId", ""))
 
         logger.info(
             "Airbyte sync triggered",
@@ -727,113 +770,110 @@ class AirbyteClient:
         )
 
     # =========================================================================
-    # OAuth Methods
+    # Workspace Management Methods
     # =========================================================================
 
-    async def initiate_oauth(
+    async def create_workspace(
         self,
-        source_type: str,
-        redirect_url: str,
-        oauth_input_config: Optional[Dict[str, Any]] = None,
-        workspace_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        name: str,
+        organization_id: Optional[str] = None,
+    ) -> AirbyteWorkspace:
         """
-        Initiate OAuth authorization flow for a source via Airbyte.
+        Create a new Airbyte workspace.
 
-        Airbyte generates the authorization URL (including CSRF state) and
-        manages platform OAuth credentials internally. This replaces the need
-        to hold platform client IDs/secrets in the application.
+        Used for per-tenant workspace provisioning. Each tenant gets an
+        isolated workspace so their sources and connections are fully
+        separated from other tenants.
 
         Args:
-            source_type: Airbyte source type string (e.g. 'source-google-ads')
-            redirect_url: OAuth callback URL the provider will redirect to
-            oauth_input_config: Optional connector-specific OAuth inputs
-                (e.g. {'shop': 'mystore.myshopify.com'} for Shopify)
-            workspace_id: Override workspace ID (uses default if not provided)
+            name: Human-readable workspace name (e.g. "Acme Store (abc12345)")
+            organization_id: Optional Airbyte organization ID to associate with
 
         Returns:
-            Dict containing 'consentUrl' (the authorization URL to open)
+            Created AirbyteWorkspace
+
+        Raises:
+            AirbyteError: On API errors
+        """
+        payload: Dict[str, Any] = {"name": name}
+        if organization_id:
+            payload["organizationId"] = organization_id
+
+        data = await self._request("POST", "/workspaces", json=payload)
+        workspace = AirbyteWorkspace.from_dict(data)
+
+        logger.info(
+            "Airbyte workspace created",
+            extra={"workspace_id": workspace.workspace_id, "name": name},
+        )
+
+        return workspace
+
+    async def create_destination(
+        self,
+        request: DestinationCreationRequest,
+        workspace_id: Optional[str] = None,
+    ) -> AirbyteDestination:
+        """
+        Create a new destination in an Airbyte workspace.
+
+        Used during workspace provisioning to add the PostgreSQL destination
+        that all sources in the workspace sync into.
+
+        Args:
+            request: Destination creation request (type + configuration)
+            workspace_id: Target workspace ID (uses default if not provided)
+
+        Returns:
+            Created AirbyteDestination
 
         Raises:
             AirbyteError: On API errors
         """
         ws_id = workspace_id or self.workspace_id
+
         data = await self._request(
             "POST",
-            "/sources/initiate_o_auth",
-            json={
-                "workspaceId": ws_id,
-                "sourceType": source_type,
-                "redirectUrl": redirect_url,
-                "oAuthInputConfiguration": oauth_input_config or {},
-            },
+            "/destinations",
+            json=request.to_dict(ws_id),
         )
+        destination = AirbyteDestination.from_dict(data)
+
         logger.info(
-            "Airbyte OAuth initiated",
-            extra={"source_type": source_type},
-        )
-        return data
-
-    async def complete_oauth(
-        self,
-        source_type: str,
-        redirect_url: str,
-        query_params: Dict[str, str],
-        workspace_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Complete OAuth authorization flow and retrieve credentials via Airbyte.
-
-        Airbyte validates the state token and exchanges the authorization code
-        for platform credentials, which are returned in 'auth_payload'.
-
-        Args:
-            source_type: Airbyte source type string (e.g. 'source-google-ads')
-            redirect_url: OAuth callback URL used during initiation
-            query_params: Query parameters received at the callback URL
-                (must include 'code' and 'state')
-            workspace_id: Override workspace ID (uses default if not provided)
-
-        Returns:
-            Dict containing 'request_succeeded' and 'auth_payload' with
-            connector credentials to use when creating the source
-
-        Raises:
-            AirbyteError: On API errors
-        """
-        ws_id = workspace_id or self.workspace_id
-        data = await self._request(
-            "POST",
-            "/sources/complete_o_auth",
-            json={
-                "workspaceId": ws_id,
-                "sourceType": source_type,
-                "redirectUrl": redirect_url,
-                "queryParams": query_params,
-            },
-        )
-        logger.info(
-            "Airbyte OAuth completed",
+            "Airbyte destination created",
             extra={
-                "source_type": source_type,
-                "request_succeeded": data.get("request_succeeded"),
+                "destination_id": destination.destination_id,
+                "destination_type": destination.destination_type,
+                "workspace_id": ws_id,
             },
         )
-        return data
+
+        return destination
 
 
 def get_airbyte_client(
     base_url: Optional[str] = None,
     api_token: Optional[str] = None,
     workspace_id: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
 ) -> AirbyteClient:
     """
     Factory function to create an AirbyteClient.
 
+    Auth is resolved automatically from environment variables when not passed:
+    - Basic auth: AIRBYTE_USERNAME + AIRBYTE_PASSWORD (Airbyte OSS)
+    - Bearer token: AIRBYTE_API_TOKEN (Airbyte Cloud / OSS token auth)
+
+    workspace_id is optional — the per-tenant model resolves workspace IDs
+    from Tenant records and passes them explicitly to each call.
+
     Args:
-        base_url: Override API base URL
-        api_token: Override API token
-        workspace_id: Override workspace ID
+        base_url: Override API base URL (default: AIRBYTE_BASE_URL env)
+        api_token: Override Bearer token (default: AIRBYTE_API_TOKEN env)
+        workspace_id: Optional default workspace ID (default: AIRBYTE_WORKSPACE_ID env)
+        username: Override Basic auth username (default: AIRBYTE_USERNAME env)
+        password: Override Basic auth password (default: AIRBYTE_PASSWORD env)
 
     Returns:
         Configured AirbyteClient instance
@@ -842,4 +882,6 @@ def get_airbyte_client(
         base_url=base_url,
         api_token=api_token,
         workspace_id=workspace_id,
+        username=username,
+        password=password,
     )
