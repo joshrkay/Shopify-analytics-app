@@ -28,6 +28,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
+from src.database.session import get_db_session_sync
+from src.models.tenant import Tenant, TenantStatus
+from src.services.clerk_sync_service import ClerkSyncService
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -154,10 +158,6 @@ async def provision_tenant(request: Request):
         )
 
     # --- 3. Run provisioning ---
-    from src.database.session import get_db_session_sync
-    from src.models.tenant import Tenant, TenantStatus
-    from src.services.clerk_sync_service import ClerkSyncService
-
     db = next(get_db_session_sync())
     try:
         sync = ClerkSyncService(db, skip_audit=True)
