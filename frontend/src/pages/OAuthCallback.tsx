@@ -1,151 +1,94 @@
 /**
  * OAuth Callback Page
  *
- * Handles OAuth redirect callback from external platforms (Meta Ads, Google Ads, etc.)
- * Parses authorization code and state from query params, completes OAuth flow via backend,
- * then redirects to /sources page.
+ * Handles the OAuth redirect from external platforms (Meta Ads, Google Ads, etc.)
+ * after the user grants authorization in a popup window.
  *
- * Security: State parameter is validated by backend to prevent CSRF attacks.
+ * Flow:
+ *   1. Platform redirects popup to /oauth/callback?code=...&state=...
+ *   2. This page reads code + state from URL params
+ *   3. Posts {type:'OAUTH_COMPLETE', code, state} to window.opener
+ *   4. Closes the popup
+ *
+ * The parent window (wizard) receives the message, calls the backend to
+ * exchange the code, and drives the rest of the wizard flow (including
+ * account selection for Meta Ads).
+ *
+ * Security: State parameter is validated by the backend during exchange.
  *
  * Phase 3 — Subphase 3.4: OAuth Redirect Handler
  */
 
-import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Page, Card, Banner, Spinner, BlockStack, Text } from '@shopify/polaris';
-import { completeOAuth } from '../services/sourcesApi';
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Page, Card, Spinner, BlockStack, Text } from '@shopify/polaris';
+
+export const OAUTH_COMPLETE_MESSAGE = 'OAUTH_COMPLETE';
+export const OAUTH_ERROR_MESSAGE = 'OAUTH_ERROR';
 
 export default function OAuthCallback() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
-  const [completing, setCompleting] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
+    const code = searchParams.get('code');
+    const state = searchParams.get('state');
+    const errorParam = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description');
 
-    async function handleCallback() {
-      // Extract OAuth callback parameters
-      const code = searchParams.get('code');
-      const state = searchParams.get('state');
-      const errorParam = searchParams.get('error');
-      const errorDescription = searchParams.get('error_description');
-
-      // Handle OAuth error from provider
-      if (errorParam) {
-        if (!cancelled) {
-          setError(
-            errorDescription ||
-              `OAuth authorization failed: ${errorParam}` ||
-              'Authorization was denied or failed'
-          );
-          setCompleting(false);
-        }
-        return;
-      }
-
-      // Validate required parameters
-      if (!code || !state) {
-        if (!cancelled) {
-          setError('Invalid OAuth callback: missing code or state parameter');
-          setCompleting(false);
-        }
-        return;
-      }
-
-      // Complete OAuth flow via backend
-      try {
-        const response = await completeOAuth({ code, state });
-
-        if (!cancelled) {
-          if (response.success) {
-            // Success: redirect to sources page
-            navigate('/sources', {
-              replace: true,
-              state: {
-                message: 'Data source connected successfully',
-                connectionId: response.connection_id,
-              },
-            });
-          } else {
-            setError(response.error || 'Failed to complete OAuth authorization');
-            setCompleting(false);
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error('OAuth completion failed:', err);
-          setError(
-            err instanceof Error ? err.message : 'Failed to complete OAuth authorization'
-          );
-          setCompleting(false);
-        }
-      }
+    if (!window.opener) {
+      // Not in a popup — nothing to post to. Show a message and let the user
+      // navigate manually. This shouldn't happen in normal use.
+      return;
     }
 
-    handleCallback();
+    if (errorParam) {
+      window.opener.postMessage(
+        {
+          type: OAUTH_ERROR_MESSAGE,
+          error: errorDescription || errorParam || 'Authorization was denied',
+        },
+        window.location.origin,
+      );
+      window.close();
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [searchParams, navigate]);
+    if (!code || !state) {
+      window.opener.postMessage(
+        {
+          type: OAUTH_ERROR_MESSAGE,
+          error: 'Invalid OAuth callback: missing code or state parameter',
+        },
+        window.location.origin,
+      );
+      window.close();
+      return;
+    }
 
-  if (completing) {
-    return (
-      <Page narrowWidth>
-        <Card>
-          <BlockStack gap="400" inlineAlign="center">
-            <Spinner size="large" />
-            <BlockStack gap="200" inlineAlign="center">
-              <Text as="h2" variant="headingMd">
-                Completing Connection...
-              </Text>
-              <Text as="p" tone="subdued">
-                Please wait while we finish setting up your data source.
-              </Text>
-            </BlockStack>
+    // Send code + state to the parent window — the wizard will call the backend.
+    window.opener.postMessage(
+      { type: OAUTH_COMPLETE_MESSAGE, code, state },
+      window.location.origin,
+    );
+    window.close();
+  }, [searchParams]);
+
+  // Shown briefly while useEffect runs (typically < 100ms before popup closes)
+  return (
+    <Page narrowWidth>
+      <Card>
+        <BlockStack gap="400" inlineAlign="center">
+          <Spinner size="large" />
+          <BlockStack gap="200" inlineAlign="center">
+            <Text as="h2" variant="headingMd">
+              Completing Authorization...
+            </Text>
+            <Text as="p" tone="subdued">
+              This window will close automatically.
+            </Text>
           </BlockStack>
-        </Card>
-      </Page>
-    );
-  }
-
-  if (error) {
-    return (
-      <Page narrowWidth>
-        <BlockStack gap="400">
-          <Banner
-            title="Connection Failed"
-            tone="critical"
-            action={{
-              content: 'Try Again',
-              onAction: () => navigate('/sources'),
-            }}
-          >
-            <p>{error}</p>
-          </Banner>
-          <Card>
-            <BlockStack gap="400">
-              <Text as="h2" variant="headingMd">
-                Unable to Connect Data Source
-              </Text>
-              <Text as="p">
-                We encountered an error while connecting your data source. This may be due to:
-              </Text>
-              <ul>
-                <li>Authorization was denied or cancelled</li>
-                <li>Invalid or expired authorization code</li>
-                <li>Network connectivity issues</li>
-              </ul>
-              <Text as="p">
-                Please try connecting again. If the problem persists, contact support.
-              </Text>
-            </BlockStack>
-          </Card>
         </BlockStack>
-      </Page>
-    );
-  }
-
-  return null;
+      </Card>
+    </Page>
+  );
 }

@@ -33,6 +33,7 @@ import {
   updateSelectedAccounts,
 } from '../services/dataSourcesApi';
 import { getErrorMessage } from '../services/apiUtils';
+import { OAUTH_COMPLETE_MESSAGE, OAUTH_ERROR_MESSAGE } from '../pages/OAuthCallback';
 
 // =============================================================================
 // Constants
@@ -185,6 +186,10 @@ export function useConnectSourceWizard(): UseConnectSourceWizardResult {
     };
   }, [state.step, state.connectionId]);
 
+  // Stable ref so the message listener always calls the latest handleOAuthComplete
+  // without needing it in the dependency array (it's stable but declared below).
+  const handleOAuthCompleteRef = useRef<((params: OAuthCallbackParams) => Promise<void>) | null>(null);
+
   const initWithPlatform = useCallback((platform: DataSourceDefinition) => {
     setState({
       ...INITIAL_STATE,
@@ -311,6 +316,38 @@ export function useConnectSourceWizard(): UseConnectSourceWizardResult {
       }));
     }
   }, []);
+
+  // Keep the ref pointing at the latest handleOAuthComplete so the message listener
+  // below always calls the current version without a stale closure.
+  handleOAuthCompleteRef.current = handleOAuthComplete;
+
+  // Listen for the postMessage sent by OAuthCallback.tsx (popup window).
+  // Only active while on the 'oauth' step; cleans up when step changes.
+  useEffect(() => {
+    if (state.step !== 'oauth') return;
+
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === OAUTH_COMPLETE_MESSAGE) {
+        const { code, state: oauthState } = event.data as {
+          type: string;
+          code: string;
+          state: string;
+        };
+        handleOAuthCompleteRef.current?.({ code, state: oauthState });
+      } else if (event.data?.type === OAUTH_ERROR_MESSAGE) {
+        setState((prev) => ({
+          ...prev,
+          error: (event.data as { type: string; error?: string }).error ?? 'Authorization failed',
+          loading: false,
+        }));
+      }
+    }
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [state.step]);
 
   const loadAccounts = useCallback(async () => {
     if (!stateRef.current.connectionId) return;
