@@ -50,6 +50,8 @@ import { Dashboard } from './pages/Dashboard';
 import BillingCheckout from './pages/BillingCheckout';
 import { Attribution } from './pages/Attribution';
 import { Orders } from './pages/Orders';
+import { Onboarding } from './pages/Onboarding';
+import { ChannelAnalytics } from './pages/ChannelAnalytics';
 
 // =============================================================================
 // FeatureGateRoute — redirects to paywall if feature not entitled
@@ -148,6 +150,9 @@ function AppWithOrg() {
     <AgencyProvider>
       <DataHealthProvider>
         <Routes>
+          {/* Onboarding wizard — full-screen, no sidebar */}
+          <Route path="/onboarding" element={<Onboarding />} />
+
           {/* New Tailwind-based layout with sidebar + header */}
           <Route element={<Root />}>
             <Route path="/" element={<Dashboard />} />
@@ -170,6 +175,7 @@ function AppWithOrg() {
             <Route path="/approvals" element={<ApprovalsInbox />} />
             <Route path="/attribution" element={<Attribution />} />
             <Route path="/orders" element={<Orders />} />
+            <Route path="/channels/:platform" element={<ChannelAnalytics />} />
             <Route path="/whats-new" element={<WhatsNew />} />
             <Route path="/data-sources" element={<DataSources />} />
             <Route path="/admin/plans" element={<AdminPlans />} />
