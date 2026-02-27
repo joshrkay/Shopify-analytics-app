@@ -62,6 +62,8 @@ from src.api.schemas.sources import (
     UpdateSyncConfigRequest,
     GlobalSyncSettingsResponse,
     UpdateGlobalSyncSettingsRequest,
+    ApiKeyConnectRequest,
+    ApiKeyConnectResponse,
     normalize_connection_to_source,
     PLATFORM_DISPLAY_NAMES,
     PLATFORM_AUTH_TYPE,
