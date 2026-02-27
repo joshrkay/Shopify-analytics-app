@@ -27,6 +27,7 @@ export {
   getAvailableSources,
   initiateOAuth,
   completeOAuth,
+  finalizeOAuth,
   disconnectSource,
   testConnection,
   updateSyncConfig,
