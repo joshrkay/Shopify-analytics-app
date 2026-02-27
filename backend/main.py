@@ -50,6 +50,7 @@ from src.api.dq import routes as sync_health
 from src.api.routes import admin_diagnostics
 from src.api.routes import agency_access
 from src.api.routes import auth_refresh_jwt
+from src.api.routes import auth_provision
 from src.api.routes import audit_logs
 from src.api.routes import audit_export
 from src.api.routes import shopify_embed_entry
@@ -330,6 +331,10 @@ app.include_router(agency_access.router)
 # Include auth JWT refresh routes (requires authentication)
 # Story 5.5.3 - Tenant Selector + JWT Refresh for Active Tenant Context
 app.include_router(auth_refresh_jwt.router)
+# Include explicit provisioning endpoint (bypasses TenantContextMiddleware —
+# listed in PUBLIC_PATHS so the middleware skips it).  Called by the frontend
+# when every API call returns TENANT_NOT_PROVISIONED.
+app.include_router(auth_provision.router)
 app.include_router(audit_logs.router)
 app.include_router(audit_export.router)
 
