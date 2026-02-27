@@ -167,6 +167,16 @@ class OAuthCallbackRequest(BaseModel):
     state: str
 
 
+class DiscoveredAccount(BaseModel):
+    """An ad account discovered from the platform after OAuth."""
+
+    id: str
+    """Platform-specific account ID (e.g. 'act_123456789' for Meta)."""
+
+    name: str
+    """Human-readable account name."""
+
+
 class OAuthCallbackResponse(BaseModel):
     """Response from OAuth callback."""
 
@@ -174,6 +184,22 @@ class OAuthCallbackResponse(BaseModel):
     connection_id: str
     message: str
     error: Optional[str] = None
+
+    # Set for platforms that require account selection before Airbyte source creation.
+    # The frontend should show account selection UI and call the finalize endpoint.
+    needs_account_selection: bool = False
+    discovered_accounts: Optional[List[DiscoveredAccount]] = None
+    pending_token: Optional[str] = None
+
+
+class OAuthFinalizeRequest(BaseModel):
+    """Request body for finalizing OAuth after account selection."""
+
+    pending_token: str
+    """Token returned by the callback endpoint identifying the stored pending auth."""
+
+    account_id: str
+    """The platform account ID the merchant selected (e.g. 'act_123456789' for Meta)."""
 
 
 # =============================================================================

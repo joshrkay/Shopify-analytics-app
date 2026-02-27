@@ -310,6 +310,72 @@ async def exchange_code_for_tokens(
         )
 
 
+# Platforms that require a separate account-selection step before the Airbyte
+# source can be created.  After exchanging the OAuth code we call discover_accounts()
+# to list available accounts, then the user picks one, and finalize_oauth() creates
+# the Airbyte source with the chosen account_id.
+PLATFORMS_NEEDING_ACCOUNT_SELECTION: set = {"meta_ads"}
+
+
+async def discover_accounts(platform: str, tokens: Dict[str, Any]) -> list:
+    """
+    Discover ad accounts available to the authenticated user after OAuth.
+
+    Returns a list of dicts with 'id' and 'name' keys.
+
+    Currently only implemented for meta_ads (Facebook Marketing API).
+    Other platforms return an empty list.
+
+    Raises:
+        HTTPException 502: If the Graph API call fails.
+    """
+    if platform != "meta_ads":
+        return []
+
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        return []
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            response = await http.get(
+                "https://graph.facebook.com/v19.0/me/adaccounts",
+                params={
+                    "fields": "id,name,account_status",
+                    "access_token": access_token,
+                },
+            )
+
+        if response.status_code != 200:
+            logger.error(
+                "Failed to discover Meta ad accounts",
+                extra={
+                    "status_code": response.status_code,
+                    "response": response.text[:200],
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to retrieve your Meta ad accounts. Please try again.",
+            )
+
+        data = response.json()
+        accounts = []
+        for acct in data.get("data", []):
+            accounts.append({"id": acct.get("id", ""), "name": acct.get("name", "")})
+        return accounts
+
+    except httpx.RequestError as exc:
+        logger.error(
+            "Network error discovering Meta ad accounts",
+            extra={"error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Network error while retrieving ad accounts. Please try again.",
+        )
+
+
 def build_source_config(platform: str, tokens: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build the Airbyte source configuration from OAuth token response + env vars.

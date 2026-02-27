@@ -25,6 +25,7 @@ import type {
 import {
   initiateOAuth,
   completeOAuth,
+  finalizeOAuth,
   updateSyncConfig,
   triggerSync,
   getSyncProgressDetailed,
@@ -55,6 +56,7 @@ const INITIAL_STATE: ConnectSourceWizardState = {
   syncProgress: null,
   error: null,
   loading: false,
+  pendingToken: null,
 };
 
 const STEP_ORDER: WizardStep[] = ['intro', 'oauth', 'accounts', 'syncConfig', 'syncing', 'success'];
@@ -256,15 +258,43 @@ export function useConnectSourceWizard(): UseConnectSourceWizardResult {
       const platform = stateRef.current.platform;
       const isAdsPlatform = platform?.category === 'ads';
 
+      // Platforms like Meta Ads return discovered_accounts + pending_token instead
+      // of creating the Airbyte source immediately.  Use the discovered accounts
+      // directly (no extra API call needed) and store the pending_token so that
+      // confirmAccounts can call finalizeOAuth with the selected account.
+      if (result.needs_account_selection && result.discovered_accounts) {
+        const accounts = result.discovered_accounts.map((a) => ({
+          id: a.id,
+          accountId: a.id,
+          accountName: a.name,
+          platform: platform?.platform ?? '',
+          isEnabled: true,
+          last30dSpend: null,
+        }));
+
+        setState((prev) => ({
+          ...prev,
+          connectionId: '',
+          pendingToken: result.pending_token ?? null,
+          accounts,
+          selectedAccountIds: [],
+          step: 'accounts',
+          loading: false,
+          error: null,
+        }));
+        return;
+      }
+
       setState((prev) => ({
         ...prev,
         connectionId: result.connection_id,
+        pendingToken: null,
         step: isAdsPlatform ? 'accounts' : 'syncConfig',
         loading: false,
         error: null,
       }));
 
-      // Auto-load accounts for ads platforms
+      // Auto-load accounts for ads platforms that don't use the pending flow
       if (isAdsPlatform && result.connection_id) {
         try {
           const accounts = await getAvailableAccounts(result.connection_id);
@@ -365,6 +395,44 @@ export function useConnectSourceWizard(): UseConnectSourceWizardResult {
   }, []);
 
   const confirmAccounts = useCallback(async () => {
+    const { pendingToken, selectedAccountIds, platform } = stateRef.current;
+
+    // Pending flow (Meta Ads and similar): the Airbyte source hasn't been created yet.
+    // Call finalizeOAuth with the selected account to create the source now.
+    if (pendingToken) {
+      if (selectedAccountIds.length === 0) {
+        setState((prev) => ({ ...prev, error: 'Please select at least one account.' }));
+        return;
+      }
+
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      try {
+        const result = await finalizeOAuth(
+          platform?.platform ?? '',
+          pendingToken,
+          selectedAccountIds[0],
+        );
+
+        setState((prev) => ({
+          ...prev,
+          connectionId: result.connection_id,
+          pendingToken: null,
+          step: 'syncConfig',
+          loading: false,
+          error: null,
+        }));
+      } catch (err) {
+        setState((prev) => ({
+          ...prev,
+          error: getErrorMessage(err, 'Failed to connect account'),
+          loading: false,
+        }));
+      }
+      return;
+    }
+
+    // Standard flow: connection already exists, just update account selection.
     if (!stateRef.current.connectionId) return;
 
     setState((prev) => ({ ...prev, loading: true, error: null }));
