@@ -385,7 +385,8 @@ class RecommendationGenerationService:
                 fallback_content=rationale,
             ))
             return enhanced_text, enhanced_rationale
-        except Exception:
+        except Exception as e:
+            logger.warning("LLM enhancement for recommendation failed, using fallback content.", extra={"error": str(e)}, exc_info=True)
             return recommendation_text, rationale
 
     def _persist_recommendation(
