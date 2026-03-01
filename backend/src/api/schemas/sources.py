@@ -25,6 +25,8 @@ SOURCE_TYPE_TO_PLATFORM: dict[str, str] = {
     "source-google-ads": "google_ads",
     "source-tiktok-marketing": "tiktok_ads",
     "source-snapchat-marketing": "snapchat_ads",
+    "source-pinterest-ads": "pinterest_ads",
+    "source-twitter-ads": "twitter_ads",
     "source-klaviyo": "klaviyo",
     "source-attentive": "attentive",
     "source-postscript": "postscript",
@@ -37,6 +39,8 @@ PLATFORM_AUTH_TYPE: dict[str, str] = {
     "google_ads": "oauth",
     "tiktok_ads": "oauth",
     "snapchat_ads": "oauth",
+    "pinterest_ads": "oauth",
+    "twitter_ads": "oauth",
     "klaviyo": "api_key",
     "shopify_email": "oauth",
     "attentive": "api_key",
@@ -50,6 +54,8 @@ PLATFORM_DISPLAY_NAMES: dict[str, str] = {
     "google_ads": "Google Ads",
     "tiktok_ads": "TikTok Ads",
     "snapchat_ads": "Snapchat Ads",
+    "pinterest_ads": "Pinterest Ads",
+    "twitter_ads": "Twitter/X Ads",
     "klaviyo": "Klaviyo",
     "shopify_email": "Shopify Email",
     "attentive": "Attentive",
@@ -92,6 +98,8 @@ PLATFORM_DESCRIPTIONS: dict[str, str] = {
     "google_ads": "Connect your Google Ads account for search and display campaign data",
     "tiktok_ads": "Connect your TikTok Ads account for short-form video campaign data",
     "snapchat_ads": "Connect your Snapchat Ads account for Snap campaign analytics",
+    "pinterest_ads": "Connect your Pinterest Ads account for promoted pin campaign analytics",
+    "twitter_ads": "Connect your Twitter/X Ads account for promoted tweet campaign analytics",
     "klaviyo": "Connect your Klaviyo account for email marketing analytics",
     "shopify_email": "Connect Shopify Email for email campaign performance data",
     "attentive": "Connect your Attentive account for SMS marketing analytics",
@@ -105,6 +113,8 @@ PLATFORM_CATEGORIES: dict[str, str] = {
     "google_ads": "ads",
     "tiktok_ads": "ads",
     "snapchat_ads": "ads",
+    "pinterest_ads": "ads",
+    "twitter_ads": "ads",
     "klaviyo": "email",
     "shopify_email": "email",
     "attentive": "sms",
@@ -157,6 +167,16 @@ class OAuthCallbackRequest(BaseModel):
     state: str
 
 
+class DiscoveredAccount(BaseModel):
+    """An ad account discovered from the platform after OAuth."""
+
+    id: str
+    """Platform-specific account ID (e.g. 'act_123456789' for Meta)."""
+
+    name: str
+    """Human-readable account name."""
+
+
 class OAuthCallbackResponse(BaseModel):
     """Response from OAuth callback."""
 
@@ -164,6 +184,22 @@ class OAuthCallbackResponse(BaseModel):
     connection_id: str
     message: str
     error: Optional[str] = None
+
+    # Set for platforms that require account selection before Airbyte source creation.
+    # The frontend should show account selection UI and call the finalize endpoint.
+    needs_account_selection: bool = False
+    discovered_accounts: Optional[List[DiscoveredAccount]] = None
+    pending_token: Optional[str] = None
+
+
+class OAuthFinalizeRequest(BaseModel):
+    """Request body for finalizing OAuth after account selection."""
+
+    pending_token: str
+    """Token returned by the callback endpoint identifying the stored pending auth."""
+
+    account_id: str
+    """The platform account ID the merchant selected (e.g. 'act_123456789' for Meta)."""
 
 
 # =============================================================================
@@ -203,6 +239,26 @@ class UpdateGlobalSyncSettingsRequest(BaseModel):
     default_frequency: Optional[str] = None
     pause_all_syncs: Optional[bool] = None
     max_concurrent_syncs: Optional[int] = None
+
+
+# =============================================================================
+# API Key Connection Models
+# =============================================================================
+
+class ApiKeyConnectRequest(BaseModel):
+    """Request body for connecting a source via API key."""
+
+    api_key: str
+    display_name: Optional[str] = None
+
+
+class ApiKeyConnectResponse(BaseModel):
+    """Response from creating an API key source connection."""
+
+    success: bool
+    connection_id: str
+    message: str
+    error: Optional[str] = None
 
 
 # =============================================================================

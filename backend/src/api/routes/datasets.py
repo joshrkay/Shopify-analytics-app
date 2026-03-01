@@ -15,10 +15,12 @@ Phase 2B - Chart Preview Backend
 """
 
 import logging
-from typing import Any, Optional
+from decimal import Decimal
+from typing import Any, Optional, List
 
-from fastapi import APIRouter, Request, HTTPException, status, Depends
+from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
 from src.api.dependencies.entitlements import check_custom_reports_entitlement
@@ -394,4 +396,412 @@ async def chart_preview(
         message=result.message,
         query_duration_ms=result.query_duration_ms,
         viz_type=result.viz_type,
+    )
+
+
+# =============================================================================
+# KPI Summary — Overview Dashboard (no custom_reports entitlement required)
+# =============================================================================
+
+TIMEFRAME_TO_PERIOD: dict[str, str] = {
+    "7days": "last_7_days",
+    "thisWeek": "weekly",
+    "30days": "last_30_days",
+    "thisMonth": "monthly",
+    "90days": "last_90_days",
+    "thisQuarter": "quarterly",
+}
+
+
+class KpiMetric(BaseModel):
+    value: float
+    change_pct: Optional[float] = None
+
+
+class ChannelBar(BaseModel):
+    channel: str
+    revenue: float
+    spend: float
+
+
+class KpiSummaryResponse(BaseModel):
+    total_revenue: KpiMetric
+    total_ad_spend: KpiMetric
+    average_roas: KpiMetric
+    total_conversions: KpiMetric
+    revenue_by_channel: List[ChannelBar]
+    active_channels: int
+
+
+def _get_db_for_kpi(request: Request):
+    """DB dependency without entitlement check — KPI endpoints are available on all plans."""
+    from src.platform.tenant_context import get_tenant_context as _ctx
+    from src.database.session import SessionLocal
+    _ctx(request)  # validates JWT + tenant
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@router.get(
+    "/kpi-summary",
+    response_model=KpiSummaryResponse,
+)
+async def get_kpi_summary(
+    request: Request,
+    timeframe: str = Query("30days", description="Timeframe: 7days, 30days, 90days, thisMonth, thisQuarter"),
+    db_session=Depends(_get_db_for_kpi),
+):
+    """
+    Aggregated KPI metrics for the Overview dashboard.
+
+    No custom_reports entitlement required — available on all plans.
+    Queries mart_marketing_metrics and mart_revenue_metrics directly.
+    """
+    tenant_ctx = get_tenant_context(request)
+    period_type = TIMEFRAME_TO_PERIOD.get(timeframe, "last_30_days")
+
+    try:
+        # Marketing metrics (spend, ROAS, conversions) — from mart_marketing_metrics.
+        # Columns: spend, orders, gross_roas, prior_spend, prior_orders, prior_gross_roas.
+        # period_end subquery selects the most-recent materialized window (rolling windows
+        # refresh daily; calendar periods refresh at period boundaries).
+        mkt_row = db_session.execute(text("""
+            SELECT
+                COALESCE(SUM(spend), 0)           AS total_spend,
+                COALESCE(SUM(orders), 0)           AS total_conversions,
+                COALESCE(AVG(gross_roas), 0)       AS avg_roas,
+                COALESCE(SUM(prior_spend), 0)      AS prior_spend,
+                COALESCE(SUM(prior_orders), 0)     AS prior_conversions,
+                COALESCE(AVG(prior_gross_roas), 0) AS prior_roas
+            FROM marts.mart_marketing_metrics
+            WHERE tenant_id = :tenant_id
+              AND period_type = :period_type
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_marketing_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
+        """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchone()
+
+        # Revenue metrics — gross_revenue and prior_gross_revenue from mart_revenue_metrics.
+        rev_row = db_session.execute(text("""
+            SELECT
+                COALESCE(SUM(gross_revenue), 0)       AS total_revenue,
+                COALESCE(SUM(prior_gross_revenue), 0) AS prior_revenue
+            FROM marts.mart_revenue_metrics
+            WHERE tenant_id = :tenant_id
+              AND period_type = :period_type
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_revenue_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
+        """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchone()
+
+        # Per-channel revenue + spend for grouped bar chart.
+        channel_rows = db_session.execute(text("""
+            SELECT
+                COALESCE(platform, 'organic') AS channel,
+                COALESCE(SUM(gross_revenue), 0) AS revenue,
+                COALESCE(SUM(spend), 0)          AS spend
+            FROM marts.mart_marketing_metrics
+            WHERE tenant_id = :tenant_id
+              AND period_type = :period_type
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_marketing_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
+            GROUP BY platform
+            ORDER BY revenue DESC
+        """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchall()
+
+        def _pct(current: float, prior: float) -> Optional[float]:
+            if prior and prior != 0:
+                return round((current - prior) / abs(prior) * 100, 1)
+            return None
+
+        rev = float(rev_row.total_revenue) if rev_row else 0.0
+        prior_rev = float(rev_row.prior_revenue) if rev_row else 0.0
+        spend = float(mkt_row.total_spend) if mkt_row else 0.0
+        prior_spend = float(mkt_row.prior_spend) if mkt_row else 0.0
+        roas = float(mkt_row.avg_roas) if mkt_row else 0.0
+        prior_roas = float(mkt_row.prior_roas) if mkt_row else 0.0
+        convs = float(mkt_row.total_conversions) if mkt_row else 0.0
+        prior_convs = float(mkt_row.prior_conversions) if mkt_row else 0.0
+
+        channels = [
+            ChannelBar(channel=r.channel, revenue=float(r.revenue), spend=float(r.spend))
+            for r in channel_rows
+        ]
+        active_channels = len(set(r.channel for r in channel_rows if float(r.revenue) > 0 or float(r.spend) > 0))
+
+        return KpiSummaryResponse(
+            total_revenue=KpiMetric(value=rev, change_pct=_pct(rev, prior_rev)),
+            total_ad_spend=KpiMetric(value=spend, change_pct=_pct(spend, prior_spend)),
+            average_roas=KpiMetric(value=roas, change_pct=_pct(roas, prior_roas)),
+            total_conversions=KpiMetric(value=convs, change_pct=_pct(convs, prior_convs)),
+            revenue_by_channel=channels,
+            active_channels=active_channels,
+        )
+
+    except Exception as exc:
+        logger.warning("KPI summary query failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Analytics data unavailable")
+
+
+
+# =============================================================================
+# Channel Breakdown — Level 1 (all channels) + Level 2 (channel drill-down)
+# =============================================================================
+
+class ChannelBreakdownRow(BaseModel):
+    rank: int
+    channel: str
+    display_name: str
+    value: float
+    pct_of_total: float
+
+
+class ChannelBreakdownSummary(BaseModel):
+    total: float
+    active_channels: int
+    bar_chart: List[ChannelBar]
+    pie_chart: List[ChannelBreakdownRow]
+    table: List[ChannelBreakdownRow]
+
+
+class ProductRow(BaseModel):
+    rank: int
+    product_name: str
+    revenue: float
+    units_sold: int
+    avg_price: float
+    pct_of_channel: float
+
+
+class DailyTrendPoint(BaseModel):
+    date: str
+    revenue: float
+
+
+class ChannelDrilldownResponse(BaseModel):
+    channel: str
+    display_name: str
+    total_revenue: float
+    unique_products: int
+    daily_trend: List[DailyTrendPoint]
+    products: List[ProductRow]
+
+
+CHANNEL_DISPLAY_NAMES: dict[str, str] = {
+    "meta_ads": "Facebook Ads",
+    "google_ads": "Google Ads",
+    "tiktok_ads": "TikTok Ads",
+    "snapchat_ads": "Snapchat Ads",
+    "pinterest_ads": "Pinterest Ads",
+    "twitter_ads": "Twitter Ads",
+    "instagram_ads": "Instagram Ads",
+    "organic": "Organic",
+}
+
+
+@router.get(
+    "/channel-breakdown",
+    response_model=ChannelBreakdownSummary,
+)
+async def get_channel_breakdown(
+    request: Request,
+    metric: str = Query("revenue", description="Metric: revenue, spend, roas, conversions"),
+    timeframe: str = Query("30days"),
+    db_session=Depends(_get_db_for_kpi),
+):
+    """
+    Level-1 channel breakdown for KPI breakdown modals.
+    Returns bar chart, pie chart, and ranked table for a given metric across all channels.
+    No custom_reports entitlement required.
+    """
+    tenant_ctx = get_tenant_context(request)
+    period_type = TIMEFRAME_TO_PERIOD.get(timeframe, "last_30_days")
+
+    if metric not in ("revenue", "spend", "roas", "conversions"):
+        raise HTTPException(status_code=400, detail=f"Invalid metric: {metric}")
+
+    try:
+        # Fetch revenue and spend as fixed columns alongside the selected metric_value.
+        # Using CASE WHEN for metric_value keeps the query fully parameterised (no f-strings).
+        rows = db_session.execute(text("""
+            SELECT
+                COALESCE(platform, 'organic')   AS channel,
+                COALESCE(SUM(gross_revenue), 0) AS revenue,
+                COALESCE(SUM(spend), 0)         AS spend,
+                CASE
+                    WHEN :metric = 'revenue'     THEN COALESCE(SUM(gross_revenue), 0)
+                    WHEN :metric = 'spend'       THEN COALESCE(SUM(spend), 0)
+                    WHEN :metric = 'roas'        THEN COALESCE(AVG(gross_roas), 0)
+                    WHEN :metric = 'conversions' THEN COALESCE(SUM(orders), 0)
+                    ELSE 0
+                END AS metric_value
+            FROM marts.mart_marketing_metrics
+            WHERE tenant_id = :tenant_id
+              AND period_type = :period_type
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_marketing_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
+            GROUP BY platform
+            ORDER BY metric_value DESC
+        """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type, "metric": metric}).fetchall()
+
+        total = sum(float(r.metric_value) for r in rows) if rows else 0.0
+        active = len([r for r in rows if float(r.metric_value) > 0])
+
+        table = []
+        for i, r in enumerate(rows):
+            val = float(r.metric_value)
+            pct = round(val / total * 100, 1) if total else 0.0
+            ch = r.channel
+            table.append(ChannelBreakdownRow(
+                rank=i + 1,
+                channel=ch,
+                display_name=CHANNEL_DISPLAY_NAMES.get(ch, ch.replace("_", " ").title()),
+                value=val,
+                pct_of_total=pct,
+            ))
+
+        bar = [ChannelBar(channel=r.channel, revenue=float(r.revenue), spend=float(r.spend)) for r in rows]
+
+        return ChannelBreakdownSummary(
+            total=total,
+            active_channels=active,
+            bar_chart=bar,
+            pie_chart=table,
+            table=table,
+        )
+
+    except Exception as exc:
+        logger.warning("Channel breakdown query failed: %s", exc)
+        raise HTTPException(status_code=503, detail="Analytics data unavailable")
+
+
+@router.get(
+    "/channel-breakdown/{channel}",
+    response_model=ChannelDrilldownResponse,
+)
+async def get_channel_drilldown(
+    channel: str,
+    request: Request,
+    timeframe: str = Query("30days"),
+    db_session=Depends(_get_db_for_kpi),
+):
+    """
+    Level-2 channel drill-down: daily revenue trend + top products for one channel.
+    No custom_reports entitlement required.
+    """
+    tenant_ctx = get_tenant_context(request)
+    period_type = TIMEFRAME_TO_PERIOD.get(timeframe, "last_30_days")
+    display_name = CHANNEL_DISPLAY_NAMES.get(channel, channel.replace("_", " ").title())
+
+    try:
+        # Aggregate totals for this channel — correct column names: gross_revenue, orders.
+        totals = db_session.execute(text("""
+            SELECT
+                COALESCE(SUM(gross_revenue), 0) AS total_revenue,
+                COALESCE(SUM(orders), 0)         AS total_orders
+            FROM marts.mart_marketing_metrics
+            WHERE tenant_id = :tenant_id
+              AND period_type = :period_type
+              AND (platform = :channel OR (:channel = 'organic' AND platform IS NULL))
+              AND period_end = (
+                  SELECT MAX(period_end)
+                  FROM marts.mart_marketing_metrics
+                  WHERE tenant_id = :tenant_id
+                    AND period_type = :period_type
+                    AND period_end <= current_date::date
+              )
+        """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type, "channel": channel}).fetchone()
+
+        # Daily trend: period_type='daily' has period_end=period_start, so filter by
+        # date range instead of period_end subquery to cover the trailing 90 days.
+        trend_rows = db_session.execute(text("""
+            SELECT
+                period_start::date                AS day,
+                COALESCE(SUM(gross_revenue), 0)   AS revenue
+            FROM marts.mart_marketing_metrics
+            WHERE tenant_id = :tenant_id
+              AND period_type = 'daily'
+              AND (platform = :channel OR (:channel = 'organic' AND platform IS NULL))
+              AND period_start >= current_date - interval '89 days'
+              AND period_start <= current_date
+            GROUP BY period_start::date
+            ORDER BY day ASC
+        """), {"tenant_id": tenant_ctx.tenant_id, "channel": channel}).fetchall()
+
+        total_rev = float(totals.total_revenue) if totals else 0.0
+
+        trend = [
+            DailyTrendPoint(date=str(r.day), revenue=float(r.revenue))
+            for r in trend_rows
+        ]
+
+    except Exception:
+        logger.warning("Channel drilldown query failed for channel %s", channel, exc_info=True)
+        raise HTTPException(status_code=503, detail="Analytics data unavailable")
+
+    # canonical.order_line_items and canonical.products are not yet built in the
+    # dbt data layer, so this query is isolated in its own try/except.  Totals +
+    # trend are returned regardless; products degrades to an empty list until
+    # those canonical tables exist.
+    products: list[ProductRow] = []
+    try:
+        product_rows = db_session.execute(text("""
+            SELECT
+                COALESCE(o.title, 'Unknown Product')    AS product_name,
+                COALESCE(SUM(o.price * li.quantity), 0) AS revenue,
+                COALESCE(SUM(li.quantity), 0)           AS units_sold,
+                COALESCE(AVG(o.price), 0)               AS avg_price
+            FROM canonical.orders fo
+            JOIN canonical.order_line_items li ON li.order_id = fo.order_id
+            JOIN canonical.products o ON o.product_id = li.product_id
+            JOIN attribution.last_click lc ON lc.order_id = fo.order_id
+            WHERE fo.tenant_id = :tenant_id
+              AND (lc.platform = :channel OR (:channel = 'organic' AND lc.platform IS NULL))
+            GROUP BY o.title
+            ORDER BY revenue DESC
+            LIMIT 10
+        """), {"tenant_id": tenant_ctx.tenant_id, "channel": channel}).fetchall()
+
+        for i, r in enumerate(product_rows):
+            rev = float(r.revenue)
+            pct = round(rev / total_rev * 100, 1) if total_rev else 0.0
+            products.append(ProductRow(
+                rank=i + 1,
+                product_name=r.product_name,
+                revenue=rev,
+                units_sold=int(r.units_sold),
+                avg_price=float(r.avg_price),
+                pct_of_channel=pct,
+            ))
+    except Exception as exc:
+        logger.warning("Products drilldown unavailable for channel %s: %s", channel, exc)
+
+    return ChannelDrilldownResponse(
+        channel=channel,
+        display_name=display_name,
+        total_revenue=total_rev,
+        unique_products=len(products),
+        daily_trend=trend,
+        products=products,
     )

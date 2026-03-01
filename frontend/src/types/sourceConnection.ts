@@ -79,9 +79,47 @@ export interface OAuthCallbackParams {
 }
 
 /**
+ * An ad account discovered from the platform immediately after OAuth.
+ * Returned when the backend needs the user to select an account before
+ * the Airbyte source can be created (e.g. Meta Ads).
+ */
+export interface DiscoveredAccount {
+  id: string;    // Platform-specific ID, e.g. 'act_123456789'
+  name: string;  // Human-readable account name
+}
+
+/**
  * Response from completing OAuth flow
  */
 export interface OAuthCompleteResponse {
+  success: boolean;
+  connection_id: string;
+  message: string;
+  error?: string;
+  /** True when account selection is required before the connection can be created. */
+  needs_account_selection?: boolean;
+  /** Accounts available for selection (set when needs_account_selection is true). */
+  discovered_accounts?: DiscoveredAccount[];
+  /** Opaque token identifying the stored pending OAuth state in Redis. */
+  pending_token?: string;
+}
+
+// =============================================================================
+// API Key Connection Types
+// =============================================================================
+
+/**
+ * Request to connect a source via API key
+ */
+export interface ApiKeyConnectRequest {
+  api_key: string;
+  display_name?: string;
+}
+
+/**
+ * Response from creating an API key source connection
+ */
+export interface ApiKeyConnectResponse {
   success: boolean;
   connection_id: string;
   message: string;
@@ -257,4 +295,6 @@ export interface ConnectSourceWizardState {
   syncProgress: DetailedSyncProgress | null;
   error: string | null;
   loading: boolean;
+  /** Set when the OAuth callback requires account selection (e.g. Meta Ads). */
+  pendingToken: string | null;
 }

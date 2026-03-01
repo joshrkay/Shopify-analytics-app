@@ -17,6 +17,8 @@ import type {
   OAuthInitiateResponse,
   OAuthCallbackParams,
   OAuthCompleteResponse,
+  ApiKeyConnectRequest,
+  ApiKeyConnectResponse,
   ConnectionTestResult,
   UpdateSyncConfigRequest,
 } from '../types/sourceConnection';
@@ -92,6 +94,10 @@ export async function initiateOAuth(platform: SourcePlatform): Promise<OAuthInit
  * Backend exchanges authorization code for access token, stores encrypted credentials,
  * and creates Airbyte connection.
  *
+ * For platforms requiring account selection (e.g. Meta Ads), the response will have
+ * needs_account_selection=true and discovered_accounts populated.  Call finalizeOAuth
+ * after the user picks an account.
+ *
  * @param params - OAuth callback parameters (code, state)
  */
 export async function completeOAuth(params: OAuthCallbackParams): Promise<OAuthCompleteResponse> {
@@ -102,6 +108,57 @@ export async function completeOAuth(params: OAuthCallbackParams): Promise<OAuthC
     body: JSON.stringify(params),
   });
   return handleResponse<OAuthCompleteResponse>(response);
+}
+
+/**
+ * Finalize OAuth for platforms that require account selection (e.g. Meta Ads).
+ *
+ * Call after the user selects an ad account from the list returned by completeOAuth.
+ * The backend retrieves the stored access token and creates the Airbyte source with
+ * the chosen account_id.
+ *
+ * @param platform    - Platform key (e.g. 'meta_ads')
+ * @param pendingToken - Token returned by completeOAuth (pending_token field)
+ * @param accountId   - The platform account ID selected by the merchant
+ */
+export async function finalizeOAuth(
+  platform: string,
+  pendingToken: string,
+  accountId: string,
+): Promise<OAuthCompleteResponse> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(`${API_BASE_URL}/api/sources/${platform}/oauth/finalize`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ pending_token: pendingToken, account_id: accountId }),
+  });
+  return handleResponse<OAuthCompleteResponse>(response);
+}
+
+// =============================================================================
+// API Key Connection
+// =============================================================================
+
+/**
+ * Connect a data source using an API key.
+ *
+ * Used for platforms with api_key auth type (Klaviyo, Attentive, Postscript, SMSBump).
+ * Creates the Airbyte source and connection pipeline on the backend.
+ *
+ * @param platform - Platform identifier (e.g., 'klaviyo', 'attentive')
+ * @param request - API key and optional display name
+ */
+export async function completeApiKeyConnect(
+  platform: string,
+  request: ApiKeyConnectRequest
+): Promise<ApiKeyConnectResponse> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(`${API_BASE_URL}/api/sources/${platform}/api-key/connect`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+  });
+  return handleResponse<ApiKeyConnectResponse>(response);
 }
 
 // =============================================================================

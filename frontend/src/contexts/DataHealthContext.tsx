@@ -30,6 +30,7 @@ import {
   type MerchantDataHealthResponse,
 } from '../services/syncHealthApi';
 import { isBackendDown, resetCircuitBreaker, isProvisioningError } from '../services/apiUtils';
+import { useProvisioningRetry } from '../hooks/useProvisioningRetry';
 import type { MerchantHealthState } from '../utils/data_health_copy';
 
 // =============================================================================
@@ -70,6 +71,8 @@ interface DataHealthContextValue extends DataHealthState {
   merchantHealthState: MerchantHealthState | null;
   /** Merchant-facing health message (Story 4.3) */
   merchantHealthMessage: string | null;
+  /** True while the hook is attempting to provision the org and retry */
+  isProvisioning: boolean;
 }
 
 // Poll intervals based on health status
@@ -115,6 +118,7 @@ export function DataHealthProvider({
   const isPendingRef = useRef(false);
   const consecutiveErrorsRef = useRef(0);
   const schedulePollRef = useRef<() => void>(() => {});
+  const { execute: executeWithProvision, isProvisioning } = useProvisioningRetry();
 
   // Fetch health and incidents data
   const fetchData = useCallback(async () => {
@@ -125,11 +129,13 @@ export function DataHealthProvider({
     isPendingRef.current = true;
 
     try {
-      const [healthData, incidentsData, merchantHealthData] = await Promise.all([
-        getCompactHealth(),
-        getActiveIncidents(),
-        getMerchantDataHealth().catch(() => null),
-      ]);
+      const [healthData, incidentsData, merchantHealthData] = await executeWithProvision(() =>
+        Promise.all([
+          getCompactHealth(),
+          getActiveIncidents(),
+          getMerchantDataHealth().catch(() => null),
+        ]),
+      );
 
       consecutiveErrorsRef.current = 0;
       setState({
@@ -162,7 +168,7 @@ export function DataHealthProvider({
     } finally {
       isPendingRef.current = false;
     }
-  }, []);
+  }, [executeWithProvision]);
 
   // Public refresh function (resets error backoff)
   const refresh = useCallback(async () => {
@@ -295,6 +301,7 @@ export function DataHealthProvider({
     freshnessLabel,
     merchantHealthState,
     merchantHealthMessage,
+    isProvisioning,
   };
 
   return (

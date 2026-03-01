@@ -23,6 +23,7 @@ import logging
 import os
 import secrets
 from typing import List, Optional
+from urllib.parse import urlparse, parse_qs
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 
@@ -33,14 +34,18 @@ from src.services.airbyte_service import (
     ConnectionNotFoundServiceError,
     DuplicateConnectionError,
 )
-from src.services.ad_ingestion import (
-    AdPlatform,
-    AIRBYTE_SOURCE_TYPES,
-)
+from src.services.airbyte_workspace import ensure_tenant_workspace
 from src.integrations.airbyte.client import get_airbyte_client, AirbyteError
 from src.integrations.airbyte.models import (
     SourceCreationRequest,
     ConnectionCreationRequest,
+    DestinationCreationRequest,
+)
+from src.integrations.airbyte.oauth_registry import (
+    OAUTH_REGISTRY,
+    build_auth_url,
+    build_source_config,
+    exchange_code_for_tokens,
 )
 from src.api.schemas.sources import (
     SourceSummary,
@@ -51,10 +56,14 @@ from src.api.schemas.sources import (
     OAuthInitiateResponse,
     OAuthCallbackRequest,
     OAuthCallbackResponse,
+    OAuthFinalizeRequest,
+    DiscoveredAccount,
     TestConnectionResponse,
     UpdateSyncConfigRequest,
     GlobalSyncSettingsResponse,
     UpdateGlobalSyncSettingsRequest,
+    ApiKeyConnectRequest,
+    ApiKeyConnectResponse,
     normalize_connection_to_source,
     PLATFORM_DISPLAY_NAMES,
     PLATFORM_AUTH_TYPE,
@@ -190,96 +199,26 @@ def _save_sync_settings_to_db(service: AirbyteService, settings: dict) -> None:
 
 
 # =============================================================================
-# OAuth URL builders
+# Airbyte source type mapping
 # =============================================================================
 
-def _build_meta_oauth_url(state: str, **kwargs) -> str:
-    """Build Meta (Facebook) OAuth authorization URL."""
-    client_id = os.environ.get("META_APP_ID", "")
-    scopes = "ads_read,ads_management,read_insights"
-    return (
-        f"https://www.facebook.com/v18.0/dialog/oauth"
-        f"?client_id={client_id}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope={scopes}"
-        f"&response_type=code"
-    )
-
-
-def _build_google_oauth_url(state: str, **kwargs) -> str:
-    """Build Google Ads OAuth authorization URL."""
-    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
-    scopes = "https://www.googleapis.com/auth/adwords"
-    return (
-        f"https://accounts.google.com/o/oauth2/v2/auth"
-        f"?client_id={client_id}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope={scopes}"
-        f"&response_type=code"
-        f"&access_type=offline"
-        f"&prompt=consent"
-    )
-
-
-def _build_tiktok_oauth_url(state: str, **kwargs) -> str:
-    """Build TikTok Ads OAuth authorization URL."""
-    app_id = os.environ.get("TIKTOK_APP_ID", "")
-    return (
-        f"https://business-api.tiktok.com/portal/auth"
-        f"?app_id={app_id}"
-        f"&state={state}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-    )
-
-
-def _build_snapchat_oauth_url(state: str, **kwargs) -> str:
-    """Build Snapchat Ads OAuth authorization URL."""
-    client_id = os.environ.get("SNAPCHAT_CLIENT_ID", "")
-    scopes = "snapchat-marketing-api"
-    return (
-        f"https://accounts.snapchat.com/login/oauth2/authorize"
-        f"?client_id={client_id}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-        f"&scope={scopes}"
-        f"&response_type=code"
-    )
-
-
-def _build_shopify_oauth_url(state: str, shop_domain: Optional[str] = None, **kwargs) -> str:
-    """Build Shopify OAuth authorization URL.
-
-    Args:
-        state: CSRF state token.
-        shop_domain: The merchant's *.myshopify.com domain.
-            Required for multi-tenant Shopify OAuth.
-    """
-    api_key = os.environ.get("SHOPIFY_API_KEY", "")
-    scopes = "read_orders,read_products,read_customers,read_analytics"
-    if not shop_domain:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="shop_domain is required for Shopify OAuth",
-        )
-    return (
-        f"https://{shop_domain}/admin/oauth/authorize"
-        f"?client_id={api_key}"
-        f"&scope={scopes}"
-        f"&redirect_uri={OAUTH_REDIRECT_URI}"
-        f"&state={state}"
-    )
-
-
-OAUTH_URL_BUILDERS: dict[str, callable] = {
-    "shopify": _build_shopify_oauth_url,
-    "meta_ads": _build_meta_oauth_url,
-    "google_ads": _build_google_oauth_url,
-    "tiktok_ads": _build_tiktok_oauth_url,
-    "snapchat_ads": _build_snapchat_oauth_url,
-    "shopify_email": _build_shopify_oauth_url,
+# Maps our internal platform keys → Airbyte source type strings used in
+# create_source calls (embedded as sourceType inside configuration).
+PLATFORM_TO_AIRBYTE_SOURCE_TYPE: dict[str, str] = {
+    "shopify": "source-shopify",
+    "shopify_email": "source-shopify",
+    "meta_ads": "source-facebook-marketing",
+    "google_ads": "source-google-ads",
+    "tiktok_ads": "source-tiktok-marketing",
+    "snapchat_ads": "source-snapchat-marketing",
+    "pinterest_ads": "source-pinterest-ads",
+    "twitter_ads": "source-twitter-ads",
 }
+
+
+def _resolve_airbyte_source_type(platform: str) -> Optional[str]:
+    """Return the Airbyte source type string for a platform, or None."""
+    return PLATFORM_TO_AIRBYTE_SOURCE_TYPE.get(platform)
 
 
 # =============================================================================
@@ -365,12 +304,18 @@ async def initiate_oauth(
     request: Request,
     platform: str,
     body: Optional[OAuthInitiateRequest] = None,
+    db_session=Depends(get_db_session),
 ):
     """
     Initiate OAuth authorization flow for a data source platform.
 
-    Generates a CSRF state token and returns the platform-specific
-    authorization URL for the frontend to open in a popup.
+    Builds the provider's OAuth authorization URL directly using per-platform
+    app credentials (META_APP_ID, GOOGLE_CLIENT_ID, etc.) from the environment.
+    This app-managed approach works with both Airbyte OSS and Cloud — unlike
+    Airbyte's own initiateOAuth endpoint which is Cloud-only.
+
+    Ensures the tenant has an Airbyte workspace (provisioning one on first use)
+    so the subsequent oauth_callback can create the source in the correct workspace.
 
     For Shopify, the request body must include ``shop_domain``.
 
@@ -386,44 +331,189 @@ async def initiate_oauth(
             detail=f"Platform '{platform}' does not support OAuth. Auth type: {auth_type}",
         )
 
-    # Check we have a URL builder for this platform
-    url_builder = OAUTH_URL_BUILDERS.get(platform)
-    if not url_builder:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth not configured for platform: {platform}",
-        )
-
-    # Extract shop_domain for Shopify platforms
     shop_domain = body.shop_domain if body else None
 
-    # Generate CSRF state token
-    state = secrets.token_urlsafe(32)
+    # Shopify requires shop domain for URL interpolation
+    if platform in ("shopify", "shopify_email") and not shop_domain:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="shop_domain is required for Shopify OAuth",
+        )
 
-    # Store state with tenant context for validation on callback
-    state_data = {
+    # Ensure the tenant has an isolated Airbyte workspace (lazy provision)
+    tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
+    tenant_name = tenant.name if tenant else tenant_ctx.tenant_id
+    workspace_id = await ensure_tenant_workspace(
+        tenant_id=tenant_ctx.tenant_id,
+        tenant_name=tenant_name,
+        db=db_session,
+    )
+
+    # Generate CSRF state token and build the platform's authorization URL.
+    # build_auth_url raises 400 if platform is unknown, 502 if credentials missing.
+    state = secrets.token_urlsafe(32)
+    auth_url = build_auth_url(platform, state, OAUTH_REDIRECT_URI, shop_domain=shop_domain)
+
+    state_data: dict = {
         "tenant_id": tenant_ctx.tenant_id,
         "user_id": tenant_ctx.user_id,
         "platform": platform,
+        "workspace_id": workspace_id,
     }
     if shop_domain:
         state_data["shop_domain"] = shop_domain
     _store_oauth_state(state, state_data)
-
-    authorization_url = url_builder(state, shop_domain=shop_domain)
 
     logger.info(
         "OAuth flow initiated",
         extra={
             "tenant_id": tenant_ctx.tenant_id,
             "platform": platform,
+            "workspace_id": workspace_id,
         },
     )
 
     return OAuthInitiateResponse(
-        authorization_url=authorization_url,
+        authorization_url=auth_url,
         state=state,
     )
+
+
+@router.post(
+    "/{platform}/api-key/connect",
+    response_model=ApiKeyConnectResponse,
+)
+async def connect_api_key_source(
+    request: Request,
+    platform: str,
+    body: ApiKeyConnectRequest,
+    db_session=Depends(get_db_session),
+):
+    """
+    Create a data source connection using an API key.
+
+    For platforms that use API key authentication (Klaviyo, Attentive,
+    Postscript, SMSBump), this endpoint accepts the API key, creates the
+    Airbyte source and connection pipeline, and registers it with the
+    tenant-scoped service.
+
+    SECURITY: Requires valid tenant context. API key is passed directly
+    to Airbyte (not stored by this service — Airbyte manages the credential).
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    # Validate platform uses API key auth
+    auth_type = PLATFORM_AUTH_TYPE.get(platform)
+    if auth_type != "api_key":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Platform '{platform}' does not use API key auth. Auth type: {auth_type}",
+        )
+
+    # Resolve Airbyte source type
+    try:
+        platform_enum = AdPlatform(platform)
+        airbyte_source_type = AIRBYTE_SOURCE_TYPES.get(platform_enum)
+    except ValueError:
+        airbyte_source_type = None
+
+    if not airbyte_source_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No Airbyte source type configured for platform: {platform}",
+        )
+
+    # Build Airbyte source config based on platform
+    source_config: dict
+    if platform == "klaviyo":
+        source_config = {"api_key": body.api_key}
+    elif platform in ("attentive", "postscript", "smsbump"):
+        source_config = {"api_key": body.api_key}
+    else:
+        source_config = {"api_key": body.api_key}
+
+    display = body.display_name or PLATFORM_DISPLAY_NAMES.get(platform, platform)
+
+    try:
+        airbyte_client = get_airbyte_client()
+
+        source_request = SourceCreationRequest(
+            name=f"{display} - {tenant_ctx.tenant_id[:8]}",
+            source_type=airbyte_source_type,
+            configuration=source_config,
+        )
+        source = await airbyte_client.create_source(source_request)
+
+        destinations = await airbyte_client.list_destinations()
+        destination_id = destinations[0].destination_id if destinations else None
+
+        if not destination_id:
+            logger.error(
+                "No Airbyte destination available for API key connection",
+                extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Data pipeline could not be established: no destination configured "
+                    "in the sync workspace. Please contact support."
+                ),
+            )
+
+        conn_request = ConnectionCreationRequest(
+            source_id=source.source_id,
+            destination_id=destination_id,
+            name=f"{display} sync",
+        )
+        connection = await airbyte_client.create_connection(conn_request)
+
+        service = AirbyteService(db_session, tenant_ctx.tenant_id)
+        conn_info = service.register_connection(
+            airbyte_connection_id=connection.connection_id,
+            connection_name=display,
+            connection_type="source",
+            airbyte_source_id=source.source_id,
+            source_type=airbyte_source_type,
+            configuration={"platform": platform, "auth_type": "api_key"},
+        )
+        service.activate_connection(conn_info.id)
+
+        logger.info(
+            "API key source connected",
+            extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform, "connection_id": conn_info.id},
+        )
+
+        return ApiKeyConnectResponse(
+            success=True,
+            connection_id=conn_info.id,
+            message=f"Successfully connected {display}",
+        )
+
+    except HTTPException:
+        raise
+    except DuplicateConnectionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+    except AirbyteError as e:
+        logger.error(
+            "API key connect failed - Airbyte error",
+            extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to create source connection via Airbyte",
+        )
+    except Exception as e:
+        logger.error(
+            "API key connect failed",
+            extra={"tenant_id": tenant_ctx.tenant_id, "platform": platform, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to connect source. Please try again.",
+        )
 
 
 @router.post(
@@ -463,101 +553,96 @@ async def oauth_callback(
 
     platform = state_data["platform"]
     shop_domain = state_data.get("shop_domain")
+    # workspace_id was stored in state during initiate — retrieve it here.
+    # If absent (legacy state entries), fall back to ensure_tenant_workspace.
+    stored_workspace_id: Optional[str] = state_data.get("workspace_id")
 
     try:
-        # Create Airbyte source for the platform
-        airbyte_client = get_airbyte_client()
-        airbyte_source_type = None
-        try:
-            platform_enum = AdPlatform(platform)
-            airbyte_source_type = AIRBYTE_SOURCE_TYPES.get(platform_enum)
-        except ValueError:
-            # Shopify or other non-AdPlatform
-            if platform in ("shopify", "shopify_email"):
-                airbyte_source_type = "source-shopify"
-
+        airbyte_source_type = _resolve_airbyte_source_type(platform)
         if not airbyte_source_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"No Airbyte source type for platform: {platform}",
             )
 
-        # Build source configuration
-        source_config: dict = {"auth_code": body.code}
+        # Resolve the tenant's workspace — stored_workspace_id is set for
+        # flows initiated after the per-tenant workspace refactor; the fallback
+        # handles any in-flight legacy state entries.
+        if stored_workspace_id:
+            workspace_id = stored_workspace_id
+        else:
+            from src.models.tenant import Tenant
+            tenant = db_session.query(Tenant).filter(
+                Tenant.id == tenant_ctx.tenant_id
+            ).first()
+            tenant_name = tenant.name if tenant else tenant_ctx.tenant_id
+            workspace_id = await ensure_tenant_workspace(
+                tenant_id=tenant_ctx.tenant_id,
+                tenant_name=tenant_name,
+                db=db_session,
+            )
+
+        # Exchange the authorization code for tokens with the platform directly.
+        # build_source_config maps token response fields + env var credentials
+        # to the Airbyte source configuration dict.
+        tokens = await exchange_code_for_tokens(
+            platform, body.code, OAUTH_REDIRECT_URI, shop_domain
+        )
+        source_config: dict = build_source_config(platform, tokens)
         if shop_domain:
             source_config["shop"] = shop_domain
 
-        # Create the source in Airbyte using SourceCreationRequest
+        airbyte_client = get_airbyte_client()
+
+        # Create the source in the tenant's workspace
         source_request = SourceCreationRequest(
             name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} - {tenant_ctx.tenant_id[:8]}",
             source_type=airbyte_source_type,
             configuration=source_config,
         )
-        source = await airbyte_client.create_source(source_request)
+        source = await airbyte_client.create_source(source_request, workspace_id=workspace_id)
 
-        # Get the default destination and create a connection
-        destinations = await airbyte_client.list_destinations()
+        # Resolve the destination for this workspace.
+        # ensure_tenant_workspace provisions one at workspace creation time, but
+        # if that failed the operator may not have added it yet.  We attempt to
+        # auto-provision here as a second chance before giving up.
+        destinations = await airbyte_client.list_destinations(workspace_id=workspace_id)
 
-        destination_id = None
-        if destinations:
-            destination_id = destinations[0].destination_id
-
-        connection_id = None
-        if destination_id:
-            conn_request = ConnectionCreationRequest(
-                source_id=source.source_id,
-                destination_id=destination_id,
-                name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} sync",
+        if not destinations:
+            from src.services.airbyte_workspace import _parse_db_connection_config
+            dest_request = DestinationCreationRequest(
+                name=f"PostgreSQL - {tenant_ctx.tenant_id[:8]}",
+                destination_type="destination-postgres",
+                configuration=_parse_db_connection_config(),
             )
-            connection = await airbyte_client.create_connection(conn_request)
-            connection_id = connection.connection_id
+            dest = await airbyte_client.create_destination(
+                dest_request, workspace_id=workspace_id
+            )
+            destinations = [dest]
 
-        if not connection_id:
-            logger.error(
-                "No Airbyte destination available — cannot create connection pipeline. "
-                "The Airbyte workspace may not be fully configured.",
-                extra={
-                    "tenant_id": tenant_ctx.tenant_id,
-                    "platform": platform,
-                    "source_id": source.source_id,
-                },
-            )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    "Data pipeline could not be established: no destination configured "
-                    "in the sync workspace. Please contact support."
-                ),
-            )
+        destination_id = destinations[0].destination_id
+
+        conn_request = ConnectionCreationRequest(
+            source_id=source.source_id,
+            destination_id=destination_id,
+            name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} sync",
+        )
+        connection = await airbyte_client.create_connection(conn_request)
+        connection_id = connection.connection_id
 
         # Build configuration for tenant registration
-        reg_config: dict = {"platform": platform, "auth_code_used": True}
+        reg_config: dict = {"platform": platform}
         if shop_domain:
-            reg_config["shop_domain"] = shop_domain
+            source_config["shop"] = shop_domain
 
-        # Register the connection with our tenant-scoped service.
-        # IMPORTANT: airbyte_connection_id must be the actual Airbyte
-        # pipeline/connection ID — never a source ID — because downstream
-        # sync operations call POST /connections/{id}/sync with this value.
-        service = AirbyteService(db_session, tenant_ctx.tenant_id)
-        conn_info = service.register_connection(
-            airbyte_connection_id=connection_id,
-            connection_name=PLATFORM_DISPLAY_NAMES.get(platform, platform),
-            connection_type="source",
-            airbyte_source_id=source.source_id,
-            source_type=airbyte_source_type,
-            configuration=reg_config,
-        )
-
-        service.activate_connection(conn_info.id)
-
-        logger.info(
-            "OAuth flow completed",
-            extra={
-                "tenant_id": tenant_ctx.tenant_id,
-                "platform": platform,
-                "connection_id": conn_info.id,
-            },
+        conn_info = await _create_airbyte_connection(
+            tenant_ctx=tenant_ctx,
+            platform=platform,
+            airbyte_source_type=airbyte_source_type,
+            workspace_id=workspace_id,
+            source_config=source_config,
+            shop_domain=shop_domain,
+            db_session=db_session,
         )
 
         return OAuthCallbackResponse(
@@ -606,6 +691,213 @@ async def oauth_callback(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to complete authorization. Please try again.",
+        )
+
+
+async def _create_airbyte_connection(
+    *,
+    tenant_ctx,
+    platform: str,
+    airbyte_source_type: str,
+    workspace_id: str,
+    source_config: dict,
+    shop_domain: Optional[str],
+    db_session,
+):
+    """
+    Shared helper: create an Airbyte source + connection and register it in our DB.
+
+    Called from both oauth_callback (standard platforms) and finalize_oauth (Meta Ads
+    and other platforms that require account selection before source creation).
+
+    Returns the registered ConnectionInfo.
+    """
+    airbyte_client = get_airbyte_client()
+
+    source_request = SourceCreationRequest(
+        name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} - {tenant_ctx.tenant_id[:8]}",
+        source_type=airbyte_source_type,
+        configuration=source_config,
+    )
+    source = await airbyte_client.create_source(source_request, workspace_id=workspace_id)
+
+    destinations = await airbyte_client.list_destinations(workspace_id=workspace_id)
+    if not destinations:
+        from src.services.airbyte_workspace import _parse_db_connection_config
+        dest_request = DestinationCreationRequest(
+            name=f"PostgreSQL - {tenant_ctx.tenant_id[:8]}",
+            destination_type="destination-postgres",
+            configuration=_parse_db_connection_config(),
+        )
+        dest = await airbyte_client.create_destination(dest_request, workspace_id=workspace_id)
+        destinations = [dest]
+
+    destination_id = destinations[0].destination_id
+
+    conn_request = ConnectionCreationRequest(
+        source_id=source.source_id,
+        destination_id=destination_id,
+        name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} sync",
+    )
+    connection = await airbyte_client.create_connection(conn_request)
+    connection_id = connection.connection_id
+
+    reg_config: dict = {"platform": platform}
+    if shop_domain:
+        reg_config["shop_domain"] = shop_domain
+
+    service = AirbyteService(db_session, tenant_ctx.tenant_id)
+    conn_info = service.register_connection(
+        airbyte_connection_id=connection_id,
+        connection_name=PLATFORM_DISPLAY_NAMES.get(platform, platform),
+        connection_type="source",
+        airbyte_source_id=source.source_id,
+        source_type=airbyte_source_type,
+        configuration=reg_config,
+    )
+    service.activate_connection(conn_info.id)
+
+    logger.info(
+        "Airbyte connection created and registered",
+        extra={
+            "tenant_id": tenant_ctx.tenant_id,
+            "platform": platform,
+            "connection_id": conn_info.id,
+        },
+    )
+    return conn_info
+
+
+@router.post(
+    "/{platform}/oauth/finalize",
+    response_model=OAuthCallbackResponse,
+)
+async def finalize_oauth(
+    request: Request,
+    platform: str,
+    body: OAuthFinalizeRequest,
+    db_session=Depends(get_db_session),
+):
+    """
+    Finalize OAuth for platforms that require account selection.
+
+    Called after the merchant selects an ad account from the list returned
+    by the OAuth callback.  Retrieves the stored access token, builds the
+    Airbyte source config with the chosen account_id, and creates the source.
+
+    Currently used for: meta_ads
+
+    SECURITY: Validates pending_token belongs to the current tenant.
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    # Retrieve and validate the pending token stored during oauth_callback
+    pending_data = _pop_oauth_state(body.pending_token)
+    if not pending_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired pending OAuth token. Please reconnect.",
+        )
+
+    if pending_data.get("tenant_id") != tenant_ctx.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Pending OAuth token does not match current tenant",
+        )
+
+    stored_platform = pending_data.get("platform")
+    if stored_platform != platform:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Platform mismatch: expected {platform}, got {stored_platform}",
+        )
+
+    tokens: dict = pending_data.get("tokens", {})
+    workspace_id: str = pending_data.get("workspace_id", "")
+    shop_domain: Optional[str] = pending_data.get("shop_domain")
+
+    airbyte_source_type = _resolve_airbyte_source_type(platform)
+    if not airbyte_source_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No Airbyte source type for platform: {platform}",
+        )
+
+    # Build source config from stored tokens + the selected account_id.
+    # For Meta, account_id may be in 'act_123456789' format — Airbyte's
+    # source-facebook-marketing accepts both with and without the 'act_' prefix.
+    source_config: dict = build_source_config(platform, tokens)
+    source_config["account_id"] = body.account_id
+    if shop_domain:
+        source_config["shop"] = shop_domain
+
+    try:
+        conn_info = await _create_airbyte_connection(
+            tenant_ctx=tenant_ctx,
+            platform=platform,
+            airbyte_source_type=airbyte_source_type,
+            workspace_id=workspace_id,
+            source_config=source_config,
+            shop_domain=shop_domain,
+            db_session=db_session,
+        )
+
+        logger.info(
+            "OAuth finalized after account selection",
+            extra={
+                "tenant_id": tenant_ctx.tenant_id,
+                "platform": platform,
+                "account_id": body.account_id,
+                "connection_id": conn_info.id,
+            },
+        )
+
+        return OAuthCallbackResponse(
+            success=True,
+            connection_id=conn_info.id,
+            message=f"Successfully connected {PLATFORM_DISPLAY_NAMES.get(platform, platform)}",
+        )
+
+    except HTTPException:
+        raise
+    except DuplicateConnectionError as e:
+        logger.warning(
+            "OAuth finalize rejected — duplicate connection",
+            extra={
+                "tenant_id": tenant_ctx.tenant_id,
+                "platform": platform,
+                "error": str(e),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+    except AirbyteError as e:
+        logger.error(
+            "OAuth finalize failed - Airbyte error",
+            extra={
+                "tenant_id": tenant_ctx.tenant_id,
+                "platform": platform,
+                "error": str(e),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to create source connection via Airbyte",
+        )
+    except Exception as e:
+        logger.error(
+            "OAuth finalize failed",
+            extra={
+                "tenant_id": tenant_ctx.tenant_id,
+                "platform": platform,
+                "error": str(e),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to complete connection setup. Please try again.",
         )
 
 

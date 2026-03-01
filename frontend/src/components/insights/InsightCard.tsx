@@ -160,6 +160,14 @@ export function InsightCard({
             {!insight.is_read && (
               <Badge tone="attention">New</Badge>
             )}
+            {insight.estimated_dollar_impact !== null && insight.estimated_dollar_impact !== undefined && (
+              <Tooltip content={insight.dollar_impact_explanation ?? 'Estimated dollar impact'}>
+                <Badge tone={insight.estimated_dollar_impact >= 0 ? 'success' : 'critical'}>
+                  {insight.estimated_dollar_impact >= 0 ? '+' : ''}
+                  ${Math.abs(insight.estimated_dollar_impact).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </Badge>
+              </Tooltip>
+            )}
           </InlineStack>
           <InlineStack gap="100" blockAlign="center">
             <Icon source={ClockIcon} tone="subdued" />

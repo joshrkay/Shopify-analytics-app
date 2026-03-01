@@ -1,8 +1,9 @@
 """
-Airbyte Cloud integration for data ingestion.
+Airbyte integration for data ingestion.
 
-This module provides a client for interacting with Airbyte Cloud API
-to manage data synchronization pipelines.
+Supports both Airbyte OSS (self-hosted, Basic auth) and Airbyte Cloud (Bearer token).
+Provides a client for managing workspaces, sources, destinations, connections,
+and sync jobs.
 """
 
 from src.integrations.airbyte.client import AirbyteClient, get_airbyte_client
@@ -19,6 +20,8 @@ from src.integrations.airbyte.models import (
     AirbyteJob,
     AirbyteJobStatus,
     AirbyteSyncResult,
+    AirbyteWorkspace,
+    DestinationCreationRequest,
 )
 
 __all__ = [
@@ -37,4 +40,6 @@ __all__ = [
     "AirbyteJob",
     "AirbyteJobStatus",
     "AirbyteSyncResult",
+    "AirbyteWorkspace",
+    "DestinationCreationRequest",
 ]

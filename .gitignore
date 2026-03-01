@@ -41,6 +41,7 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
 
 # OS
 .DS_Store
@@ -65,3 +66,4 @@ analytics/target/
 analytics/dbt_packages/
 analytics/logs/
 analytics/*.log
+.hypothesis/

@@ -76,6 +76,41 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
 
+      # ── OAuth redirect URI ────────────────────────────────────────
+      - key: OAUTH_REDIRECT_URI
+        value: "https://app.markinsight.net/api/sources/oauth/callback"
+
+      # ── Ad Platform OAuth Apps ────────────────────────────────────
+      # App-managed OAuth: our app registers with each platform and
+      # handles the full OAuth flow directly (no Airbyte delegation).
+      # See backend/src/integrations/airbyte/oauth_registry.py
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ADS_DEVELOPER_TOKEN
+        sync: false
+      - key: TIKTOK_APP_ID
+        sync: false
+      - key: TIKTOK_APP_SECRET
+        sync: false
+      - key: SNAPCHAT_CLIENT_ID
+        sync: false
+      - key: SNAPCHAT_CLIENT_SECRET
+        sync: false
+      - key: PINTEREST_APP_ID
+        sync: false
+      - key: PINTEREST_APP_SECRET
+        sync: false
+      - key: TWITTER_CLIENT_ID
+        sync: false
+      - key: TWITTER_CLIENT_SECRET
+        sync: false
+
   # ============================================
   # SERVICES BELOW ARE NOT YET DEPLOYED
   # Uncomment when scaling requires them.
@@ -112,91 +147,199 @@ services:
   #     - key: VITE_CLERK_PUBLISHABLE_KEY
   #       sync: false
 
-  # # ------------------------------------------
-  # # BACKGROUND WORKER SERVICE
-  # # ------------------------------------------
-  # - type: worker
-  #   name: markinsight-worker
-  #   runtime: docker
-  #   dockerfilePath: ./docker/worker.Dockerfile
-  #   dockerContext: .
-  #   branch: main
-  #   autoDeploy: true
-  #   region: oregon
-  #   envVars:
-  #     - key: ENV
-  #       value: production
-  #     - key: DATABASE_URL
-  #       fromDatabase:
-  #         name: markinsight-db
-  #         property: connectionString
-  #     - key: REDIS_URL
-  #       fromService:
-  #         type: redis
-  #         name: markinsight-redis
-  #         property: connectionString
-  #     - key: CLERK_SECRET_KEY
-  #       sync: false
-  #     - key: CLERK_WEBHOOK_SECRET
-  #       sync: false
-  #     - key: CLERK_FRONTEND_API
-  #       sync: false
-  #     - key: SHOPIFY_API_KEY
-  #       sync: false
-  #     - key: SHOPIFY_API_SECRET
-  #       sync: false
-  #     - key: OPENROUTER_API_KEY
-  #       sync: false
-  #     - key: ENCRYPTION_KEY
-  #       sync: false
-  #     - key: AIRBYTE_WORKSPACE_ID
-  #       sync: false
-  #     - key: AIRBYTE_API_TOKEN
-  #       sync: false
-  #     - key: WORKER_AIRBYTE_SYNC_TIMEOUT_SECONDS
-  #       value: "3600"
-  #     - key: WORKER_SYNC_CHECK_INTERVAL_SECONDS
-  #       value: "30"
-  #     - key: WORKER_MAX_CONCURRENT_SYNCS
-  #       value: "5"
+  # ------------------------------------------
+  # BACKGROUND WORKER SERVICE
+  # Long-lived process: polls DB every 30s, executes Airbyte sync jobs,
+  # and fires dbt incremental runs after each successful sync batch.
+  # ------------------------------------------
+  - type: worker
+    name: markinsight-worker
+    runtime: docker
+    dockerfilePath: ./docker/worker.Dockerfile
+    dockerContext: .
+    branch: main
+    autoDeploy: true
+    region: oregon
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: markinsight-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: markinsight-redis
+          property: connectionString
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_WEBHOOK_SECRET
+        sync: false
+      - key: CLERK_FRONTEND_API
+        sync: false
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      # AIRBYTE_WORKSPACE_ID is no longer required at startup — workspaces are
+      # provisioned per-tenant and stored on the Tenant record. This can be kept
+      # as a legacy fallback for tools that still reference a single workspace.
+      - key: AIRBYTE_WORKSPACE_ID
+        sync: false
+      # Airbyte OSS (self-hosted) — Basic auth credentials
+      # Set AIRBYTE_USERNAME + AIRBYTE_PASSWORD for OSS deployments.
+      # Set AIRBYTE_API_TOKEN for Airbyte Cloud / OSS Bearer token auth.
+      - key: AIRBYTE_USERNAME
+        sync: false
+      - key: AIRBYTE_PASSWORD
+        sync: false
+      - key: AIRBYTE_API_TOKEN
+        sync: false
+      # Airbyte OSS host — e.g. http://airbyte-api-server:8006/v1 (OSS)
+      # or https://api.airbyte.com/v1 (Cloud)
+      - key: AIRBYTE_BASE_URL
+        sync: false
+      # PostgreSQL destination schema for Airbyte raw data (default: airbyte_raw)
+      - key: AIRBYTE_DESTINATION_SCHEMA
+        value: "airbyte_raw"
+      - key: WORKER_AIRBYTE_SYNC_TIMEOUT_SECONDS
+        value: "3600"
+      - key: WORKER_SYNC_CHECK_INTERVAL_SECONDS
+        value: "30"
+      - key: WORKER_MAX_CONCURRENT_SYNCS
+        value: "5"
+      # Individual DB params required by dbt (profiles.yml uses env_var()).
+      # Render exposes these per-property from the managed Postgres instance.
+      - key: DB_HOST
+        fromDatabase:
+          name: markinsight-db
+          property: host
+      - key: DB_USER
+        fromDatabase:
+          name: markinsight-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: markinsight-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: markinsight-db
+          property: database
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_SSLMODE
+        value: "require"
 
-  # # ------------------------------------------
-  # # CRON JOB: RECONCILE SUBSCRIPTIONS
-  # # ------------------------------------------
-  # - type: cron
-  #   name: markinsight-reconcile-subscriptions
-  #   runtime: docker
-  #   schedule: "0 * * * *"
-  #   dockerfilePath: ./docker/worker.Dockerfile
-  #   dockerContext: .
-  #   dockerCommand: python -m src.jobs.reconcile_subscriptions
-  #   region: oregon
-  #   envVars:
-  #     - key: ENV
-  #       value: production
-  #     - key: DATABASE_URL
-  #       fromDatabase:
-  #         name: markinsight-db
-  #         property: connectionString
-  #     - key: REDIS_URL
-  #       fromService:
-  #         type: redis
-  #         name: markinsight-redis
-  #         property: connectionString
-  #     - key: CLERK_SECRET_KEY
-  #       sync: false
-  #     - key: CLERK_WEBHOOK_SECRET
-  #       sync: false
-  #     - key: CLERK_FRONTEND_API
-  #       sync: false
-  #     - key: SHOPIFY_API_KEY
-  #       sync: false
-  #     - key: SHOPIFY_API_SECRET
-  #       sync: false
-  #     - key: OPENROUTER_API_KEY
-  #       sync: false
-  #     - key: ENCRYPTION_KEY
-  #       sync: false
+  # ------------------------------------------
+  # CRON JOB: SYNC SCHEDULER
+  # Runs every 15 minutes to dispatch IngestionJob rows for each
+  # connection that is due for a sync. The worker (above) processes them.
+  # ------------------------------------------
+  - type: cron
+    name: markinsight-sync-scheduler
+    runtime: docker
+    schedule: "*/15 * * * *"
+    dockerfilePath: ./docker/worker.Dockerfile
+    dockerContext: .
+    dockerCommand: python -m src.workers.sync_scheduler
+    region: oregon
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: markinsight-db
+          property: connectionString
+      - key: CLERK_FRONTEND_API
+        sync: false
+
+  # ------------------------------------------
+  # CRON JOB: RECONCILE SUBSCRIPTIONS
+  # ------------------------------------------
+  - type: cron
+    name: markinsight-reconcile-subscriptions
+    runtime: docker
+    schedule: "0 * * * *"  # Every hour at :00
+    dockerfilePath: ./docker/worker.Dockerfile
+    dockerContext: .
+    dockerCommand: python -m src.jobs.reconcile_subscriptions
+    region: oregon
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: markinsight-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: markinsight-redis
+          property: connectionString
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_WEBHOOK_SECRET
+        sync: false
+      - key: CLERK_FRONTEND_API
+        sync: false
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+
+  # ------------------------------------------
+  # CRON JOB: DBT INCREMENTAL RUN (FALLBACK)
+  # Runs every hour as a safety net in case the event-driven dbt trigger
+  # in the sync executor is delayed or misses a cycle.
+  # Transforms raw Airbyte data (airbyte_raw.*) through the full dbt layer:
+  #   staging → canonical → attribution → metrics → marts
+  # ------------------------------------------
+  - type: cron
+    name: markinsight-dbt-incremental
+    runtime: docker
+    schedule: "30 * * * *"  # Every hour at :30 (offset from reconcile at :00)
+    dockerfilePath: ./docker/worker.Dockerfile
+    dockerContext: .
+    dockerCommand: python -m src.workers.dbt_runner
+    region: oregon
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: markinsight-db
+          property: connectionString
+      # Individual DB params required by dbt profiles.yml
+      - key: DB_HOST
+        fromDatabase:
+          name: markinsight-db
+          property: host
+      - key: DB_USER
+        fromDatabase:
+          name: markinsight-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: markinsight-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: markinsight-db
+          property: database
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_SSLMODE
+        value: "require"
 
   # # ------------------------------------------
   # # SUPERSET (Embedded Analytics)
@@ -230,16 +373,17 @@ services:
   #     - key: TALISMAN_ENABLED
   #       value: "true"
 
-  # # ------------------------------------------
-  # # REDIS: IN-MEMORY CACHE & QUEUE
-  # # ------------------------------------------
-  # - type: redis
-  #   name: markinsight-redis
-  #   plan: starter
-  #   region: oregon
-  #   ipAllowList:
-  #     - source: 0.0.0.0/0
-  #       description: Allow access from Render services and approved external clients
+  # ------------------------------------------
+  # REDIS: IN-MEMORY CACHE & QUEUE
+  # Required by OAuth state store, sync settings cache, and Superset.
+  # ------------------------------------------
+  - type: redis
+    name: markinsight-redis
+    plan: starter
+    region: oregon
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow access from Render services and approved external clients
 
 # ============================================
 # DATABASE: POSTGRES

@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     Integer,
     Float,
+    Numeric,
     Enum,
     DateTime,
     Text,
@@ -193,6 +194,19 @@ class AIInsight(Base, TimestampMixin, TenantScopedMixin):
         nullable=False,
         index=True,
         comment="SHA256 hash of input data for deduplication"
+    )
+
+    # LLM-generated dollar impact estimate (Story: Figma feature parity)
+    estimated_dollar_impact = Column(
+        Numeric(15, 2),
+        nullable=True,
+        comment="LLM-estimated dollar impact of this insight (positive=opportunity, negative=risk)"
+    )
+
+    dollar_impact_explanation = Column(
+        Text,
+        nullable=True,
+        comment="One-sentence LLM explanation of how the dollar impact was estimated"
     )
 
     # Read/dismiss status (for UI)

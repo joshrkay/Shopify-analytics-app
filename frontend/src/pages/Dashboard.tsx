@@ -1,7 +1,9 @@
 import { TrendingUp, TrendingDown, Calendar, Sparkles, AlertCircle, ArrowRight, Zap, Brain, ChevronDown, LayoutDashboard, Send, MessageSquare } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { createHeadersAsync, API_BASE_URL } from "../services/apiUtils";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { getKpiSummary, type KpiSummaryResponse } from "../services/kpiApi";
+import { BreakdownModal } from "../components/dashboard/BreakdownModal";
 
 type TimeFrame = "7days" | "thisWeek" | "30days" | "thisMonth" | "90days" | "thisQuarter";
 
@@ -30,6 +32,23 @@ export function Dashboard() {
   ];
 
   const [selectedDashboard, setSelectedDashboard] = useState<string>("default");
+
+  const [kpiData, setKpiData] = useState<KpiSummaryResponse | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(false);
+
+  // Breakdown modal state: null = closed, otherwise the metric to show
+  const [breakdownMetric, setBreakdownMetric] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setKpiLoading(true);
+    setKpiData(null);
+    getKpiSummary(timeframe)
+      .then(data => { if (!cancelled) setKpiData(data); })
+      .catch(() => { /* 503 when mart has no data yet — silently leave cards blank */ })
+      .finally(() => { if (!cancelled) setKpiLoading(false); });
+    return () => { cancelled = true; };
+  }, [timeframe]);
 
   // Show empty state if user skipped onboarding or has no connected sources
   if (!hasConnectedSources || hasSkippedOnboarding) {
@@ -188,38 +207,86 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* KPI cards — live data from /api/datasets/kpi-summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <MetricCard
-          title="Total Revenue"
-          value="$45,234"
-          change="+12.5%"
-          trend="up"
-        />
-        <MetricCard
-          title="Ad Spend"
-          value="$12,458"
-          change="+8.2%"
-          trend="up"
-        />
-        <MetricCard
-          title="ROAS"
-          value="3.63x"
-          change="+3.7%"
-          trend="up"
-        />
-        <MetricCard
-          title="Orders"
-          value="423"
-          change="+8.3%"
-          trend="up"
-        />
+        {kpiLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-6 animate-pulse">
+              <div className="h-3 bg-gray-200 rounded w-24 mb-3" />
+              <div className="h-8 bg-gray-200 rounded w-28 mb-2" />
+              <div className="h-3 bg-gray-200 rounded w-16" />
+            </div>
+          ))
+        ) : (
+          <>
+            <MetricCard
+              title="Total Revenue"
+              value={kpiData ? fmtCurrency(kpiData.total_revenue.value) : "—"}
+              change={fmtChange(kpiData?.total_revenue.change_pct ?? null).label}
+              trend={fmtChange(kpiData?.total_revenue.change_pct ?? null).trend}
+              onBreakdown={() => setBreakdownMetric("revenue")}
+            />
+            <MetricCard
+              title="Ad Spend"
+              value={kpiData ? fmtCurrency(kpiData.total_ad_spend.value) : "—"}
+              change={fmtChange(kpiData?.total_ad_spend.change_pct ?? null).label}
+              trend={fmtChange(kpiData?.total_ad_spend.change_pct ?? null).trend}
+              onBreakdown={() => setBreakdownMetric("spend")}
+            />
+            <MetricCard
+              title="ROAS"
+              value={kpiData ? kpiData.average_roas.value.toFixed(2) + "x" : "—"}
+              change={fmtChange(kpiData?.average_roas.change_pct ?? null).label}
+              trend={fmtChange(kpiData?.average_roas.change_pct ?? null).trend}
+              onBreakdown={() => setBreakdownMetric("roas")}
+            />
+            <MetricCard
+              title="Orders"
+              value={kpiData ? kpiData.total_conversions.value.toLocaleString() : "—"}
+              change={fmtChange(kpiData?.total_conversions.change_pct ?? null).label}
+              trend={fmtChange(kpiData?.total_conversions.change_pct ?? null).trend}
+              onBreakdown={() => setBreakdownMetric("conversions")}
+            />
+          </>
+        )}
       </div>
 
+      {/* Revenue & Spend by channel — grouped bar chart */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <h2 className="font-semibold text-gray-900 mb-4">Revenue vs Ad Spend</h2>
-        <div className="h-64 flex items-center justify-center text-gray-400">
-          Chart visualization would go here
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-gray-900">Revenue &amp; Spend by Channel</h2>
+          {kpiData && (
+            <span className="text-xs text-gray-500">{kpiData.active_channels} active channel{kpiData.active_channels !== 1 ? "s" : ""}</span>
+          )}
         </div>
+        {kpiLoading ? (
+          <div className="h-64 flex items-center justify-center">
+            <div className="animate-pulse text-gray-300 text-sm">Loading chart…</div>
+          </div>
+        ) : kpiData && kpiData.revenue_by_channel.length > 0 ? (
+          <ResponsiveContainer width="100%" height={256}>
+            <BarChart
+              data={kpiData.revenue_by_channel.map(ch => ({
+                name: CHANNEL_DISPLAY[ch.channel] ?? ch.channel.replace(/_/g, " "),
+                Revenue: ch.revenue,
+                Spend: ch.spend,
+              }))}
+              margin={{ top: 4, right: 8, bottom: 0, left: 24 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={v => "$" + (v >= 1000 ? (v / 1000).toFixed(0) + "k" : v)} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: number) => ["$" + v.toLocaleString(), ""]} />
+              <Legend />
+              <Bar dataKey="Revenue" fill="#1a56db" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="Spend" fill="#16a34a" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-64 flex items-center justify-center text-gray-400 text-sm">
+            No channel data for this period
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -230,19 +297,46 @@ export function Dashboard() {
             <CampaignRow name="Brand Awareness" roas="3.8x" />
             <CampaignRow name="Product Launch" roas="3.1x" />
           </div>
-          <button className="text-blue-600 text-sm font-medium mt-4 hover:underline">
-            View Details →
-          </button>
+          <Link to="/attribution" className="text-blue-600 text-sm font-medium mt-4 hover:underline block">
+            View Attribution →
+          </Link>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="font-semibold text-gray-900 mb-4">Channel Performance</h2>
           <div className="space-y-3">
-            <ChannelRow name="Facebook" amount="$8,234" percentage="66%" />
-            <ChannelRow name="Google" amount="$3,124" percentage="25%" />
-            <ChannelRow name="TikTok" amount="$1,100" percentage="9%" />
+            {kpiLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="animate-pulse flex justify-between py-2">
+                  <div className="h-4 bg-gray-200 rounded w-24" />
+                  <div className="h-4 bg-gray-200 rounded w-28" />
+                </div>
+              ))
+            ) : kpiData && kpiData.revenue_by_channel.length > 0 ? (
+              kpiData.revenue_by_channel.slice(0, 5).map(ch => {
+                const total = kpiData.revenue_by_channel.reduce((s, c) => s + c.revenue, 0);
+                const pct = total > 0 ? ((ch.revenue / total) * 100).toFixed(0) + "%" : "—";
+                return (
+                  <ChannelRow
+                    key={ch.channel}
+                    name={CHANNEL_DISPLAY[ch.channel] ?? ch.channel.replace(/_/g, " ")}
+                    amount={fmtCurrency(ch.revenue)}
+                    percentage={pct}
+                  />
+                );
+              })
+            ) : (
+              <>
+                <ChannelRow name="Facebook" amount="—" percentage="—" />
+                <ChannelRow name="Google" amount="—" percentage="—" />
+                <ChannelRow name="TikTok" amount="—" percentage="—" />
+              </>
+            )}
           </div>
-          <button className="text-blue-600 text-sm font-medium mt-4 hover:underline">
-            View Details →
+          <button
+            onClick={() => setBreakdownMetric("revenue")}
+            className="text-blue-600 text-sm font-medium mt-4 hover:underline block"
+          >
+            View breakdown →
           </button>
         </div>
       </div>
@@ -251,8 +345,48 @@ export function Dashboard() {
       <div className="mt-6">
         {hasAIConfigured ? <AIInsightsSection /> : <AIInsightsCTA />}
       </div>
+
+      {/* Channel Breakdown Modal */}
+      <BreakdownModal
+        open={breakdownMetric !== null}
+        onClose={() => setBreakdownMetric(null)}
+        metric={breakdownMetric ?? "revenue"}
+        timeframe={timeframe}
+        title={
+          breakdownMetric === "spend" ? "Ad Spend Breakdown" :
+          breakdownMetric === "roas" ? "ROAS Breakdown" :
+          breakdownMetric === "conversions" ? "Orders Breakdown" :
+          "Revenue Breakdown"
+        }
+      />
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const CHANNEL_DISPLAY: Record<string, string> = {
+  meta_ads: "Facebook Ads",
+  google_ads: "Google Ads",
+  tiktok_ads: "TikTok Ads",
+  snapchat_ads: "Snapchat Ads",
+  pinterest_ads: "Pinterest Ads",
+  twitter_ads: "Twitter Ads",
+  instagram_ads: "Instagram Ads",
+  organic: "Organic",
+};
+
+function fmtCurrency(v: number): string {
+  return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function fmtChange(pct: number | null): { label: string; trend: "up" | "down" } {
+  if (pct === null || pct === undefined) return { label: "—", trend: "up" };
+  const trend = pct >= 0 ? "up" : "down";
+  const label = (pct >= 0 ? "+" : "") + pct.toFixed(1) + "%";
+  return { label, trend };
 }
 
 function EmptyDashboard() {
@@ -353,7 +487,7 @@ function EmptyDashboard() {
   );
 }
 
-function MetricCard({ title, value, change, trend, isSample }: { title: string; value: string; change: string; trend: "up" | "down"; isSample?: boolean }) {
+function MetricCard({ title, value, change, trend, isSample, onBreakdown }: { title: string; value: string; change: string; trend: "up" | "down"; isSample?: boolean; onBreakdown?: () => void }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 relative">
       {isSample && (
@@ -369,6 +503,14 @@ function MetricCard({ title, value, change, trend, isSample }: { title: string; 
         {trend === "up" ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
         {change}
       </div>
+      {onBreakdown && (
+        <button
+          onClick={onBreakdown}
+          className="mt-3 text-xs text-blue-600 font-medium hover:underline"
+        >
+          View breakdown →
+        </button>
+      )}
     </div>
   );
 }
