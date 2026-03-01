@@ -676,8 +676,9 @@ class InsightGenerationService:
                 fallback_content=why_it_matters,
             ))
             return enhanced_summary, enhanced_why
-        except Exception:
+        except Exception as e:
             # LLM enhancement is optional — never block insight generation
+            logger.warning("LLM enhancement failed, using fallback content.", extra={"error": str(e)}, exc_info=True)
             return summary, why_it_matters
 
     def _persist_insight(
