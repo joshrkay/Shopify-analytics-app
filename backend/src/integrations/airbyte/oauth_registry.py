@@ -15,6 +15,7 @@ the environment variables listed in each PlatformOAuthConfig entry (see render.y
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
@@ -23,6 +24,27 @@ import httpx
 from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
+
+_SHOP_DOMAIN_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$")
+
+
+def validate_shop_domain(shop_domain: str) -> str:
+    """Validate and normalize shop_domain to prevent SSRF/Open Redirect.
+
+    Raises HTTPException 400 if domain doesn't match *.myshopify.com pattern.
+    """
+    normalized = shop_domain.lower().strip()
+    for prefix in ("https://", "http://"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+    normalized = normalized.rstrip("/")
+
+    if not _SHOP_DOMAIN_RE.match(normalized):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid shop_domain: must be a valid *.myshopify.com domain",
+        )
+    return normalized
 
 
 @dataclass
@@ -56,6 +78,16 @@ class PlatformOAuthConfig:
     extra_auth_params: Dict[str, str] = field(default_factory=dict)
     """Extra query parameters added to the authorization URL.
     E.g. {"access_type": "offline", "prompt": "consent"} for Google."""
+
+
+_SHOPIFY_OAUTH_CONFIG = PlatformOAuthConfig(
+    auth_url="https://{shop_domain}/admin/oauth/authorize",
+    token_url="https://{shop_domain}/admin/oauth/access_token",
+    scope="read_orders,read_products,read_customers,read_marketing_events",
+    client_id_env="SHOPIFY_API_KEY",
+    client_secret_env="SHOPIFY_API_SECRET",
+    token_to_source_config={"access_token": "access_token"},
+)
 
 
 OAUTH_REGISTRY: Dict[str, PlatformOAuthConfig] = {
@@ -92,23 +124,10 @@ OAUTH_REGISTRY: Dict[str, PlatformOAuthConfig] = {
         client_secret_env="TIKTOK_APP_SECRET",
         token_to_source_config={"access_token": "access_token"},
     ),
-    "shopify": PlatformOAuthConfig(
-        # {shop_domain} is interpolated at runtime from the request
-        auth_url="https://{shop_domain}/admin/oauth/authorize",
-        token_url="https://{shop_domain}/admin/oauth/access_token",
-        scope="read_orders,read_products,read_customers,read_marketing_events",
-        client_id_env="SHOPIFY_API_KEY",
-        client_secret_env="SHOPIFY_API_SECRET",
-        token_to_source_config={"access_token": "access_token"},
-    ),
-    "shopify_email": PlatformOAuthConfig(
-        auth_url="https://{shop_domain}/admin/oauth/authorize",
-        token_url="https://{shop_domain}/admin/oauth/access_token",
-        scope="read_orders,read_products,read_customers,read_marketing_events",
-        client_id_env="SHOPIFY_API_KEY",
-        client_secret_env="SHOPIFY_API_SECRET",
-        token_to_source_config={"access_token": "access_token"},
-    ),
+    # Shopify and Shopify Email share the same OAuth config.
+    # {shop_domain} is interpolated at runtime from the request.
+    "shopify": _SHOPIFY_OAUTH_CONFIG,
+    "shopify_email": _SHOPIFY_OAUTH_CONFIG,
     "snapchat_ads": PlatformOAuthConfig(
         auth_url="https://accounts.snapchat.com/login/oauth2/authorize",
         token_url="https://accounts.snapchat.com/login/oauth2/access_token",
@@ -198,6 +217,7 @@ def build_auth_url(
 
     auth_url = config.auth_url
     if shop_domain:
+        shop_domain = validate_shop_domain(shop_domain)
         auth_url = auth_url.format(shop_domain=shop_domain)
 
     params: Dict[str, str] = {
@@ -250,6 +270,7 @@ async def exchange_code_for_tokens(
 
     token_url = config.token_url
     if shop_domain:
+        shop_domain = validate_shop_domain(shop_domain)
         token_url = token_url.format(shop_domain=shop_domain)
 
     # Build the token exchange payload

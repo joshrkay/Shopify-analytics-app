@@ -3,7 +3,7 @@ Unit tests for Airbyte workspace provisioning service.
 
 Tests cover:
 - ensure_tenant_workspace() — idempotent per-tenant workspace provisioning
-- _parse_db_connection_config() — DATABASE_URL parsing + env overrides
+- parse_db_connection_config() — DATABASE_URL parsing + env overrides
 """
 
 import pytest
@@ -16,7 +16,7 @@ from src.integrations.airbyte.models import (
 )
 from src.services.airbyte_workspace import (
     ensure_tenant_workspace,
-    _parse_db_connection_config,
+    parse_db_connection_config,
 )
 
 
@@ -61,7 +61,7 @@ def _make_mock_client(workspace_id="ws-new-abc", dest_id="dest-new-xyz"):
 
 
 # =============================================================================
-# _parse_db_connection_config
+# parse_db_connection_config
 # =============================================================================
 
 class TestParseDbConnectionConfig:
@@ -84,7 +84,7 @@ class TestParseDbConnectionConfig:
         ):
             monkeypatch.delenv(key, raising=False)
 
-        config = _parse_db_connection_config()
+        config = parse_db_connection_config()
 
         assert config["host"] == "db.example.com"
         assert config["port"] == 5433
@@ -105,7 +105,7 @@ class TestParseDbConnectionConfig:
         monkeypatch.setenv("AIRBYTE_DESTINATION_USERNAME", "override-user")
         monkeypatch.setenv("AIRBYTE_DESTINATION_PASSWORD", "override-pass")
 
-        config = _parse_db_connection_config()
+        config = parse_db_connection_config()
 
         assert config["host"] == "override-host"
         assert config["port"] == 9999
@@ -125,7 +125,7 @@ class TestParseDbConnectionConfig:
         ):
             monkeypatch.delenv(key, raising=False)
 
-        config = _parse_db_connection_config()
+        config = parse_db_connection_config()
 
         assert config["host"] == "localhost"
         assert config["port"] == 5432
@@ -141,7 +141,7 @@ class TestParseDbConnectionConfig:
             "src.services.airbyte_workspace._DESTINATION_SCHEMA", "custom_raw"
         )
 
-        config = _parse_db_connection_config()
+        config = parse_db_connection_config()
 
         assert config["schema"] == "custom_raw"
 

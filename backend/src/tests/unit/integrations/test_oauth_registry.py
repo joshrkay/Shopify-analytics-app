@@ -19,6 +19,7 @@ from src.integrations.airbyte.oauth_registry import (
     build_auth_url,
     build_source_config,
     exchange_code_for_tokens,
+    validate_shop_domain,
 )
 
 
@@ -236,3 +237,102 @@ class TestBuildSourceConfig:
         assert config["developer_token"] == "dev-tok-google-123"
         assert config["client_id"] == "google-client-id"
         assert config["client_secret"] == "google-client-secret"
+
+
+# =============================================================================
+# validate_shop_domain — SSRF / Open Redirect regression tests
+# =============================================================================
+
+class TestValidateShopDomain:
+    """Regression tests for shop_domain validation (SSRF prevention)."""
+
+    def test_valid_domain_passes(self):
+        """Valid myshopify.com domain is accepted and returned normalized."""
+        assert validate_shop_domain("mystore.myshopify.com") == "mystore.myshopify.com"
+
+    def test_valid_domain_with_hyphens_and_numbers(self):
+        """Domain with hyphens and numbers is accepted."""
+        assert validate_shop_domain("my-store-123.myshopify.com") == "my-store-123.myshopify.com"
+
+    def test_normalizes_uppercase(self):
+        """Uppercase input is normalized to lowercase."""
+        assert validate_shop_domain("MYSTORE.myshopify.com") == "mystore.myshopify.com"
+
+    def test_normalizes_protocol_prefix(self):
+        """https:// prefix is stripped during normalization."""
+        assert validate_shop_domain("https://mystore.myshopify.com") == "mystore.myshopify.com"
+
+    def test_normalizes_http_prefix(self):
+        """http:// prefix is stripped during normalization."""
+        assert validate_shop_domain("http://mystore.myshopify.com") == "mystore.myshopify.com"
+
+    def test_normalizes_trailing_slash(self):
+        """Trailing slash is stripped during normalization."""
+        assert validate_shop_domain("mystore.myshopify.com/") == "mystore.myshopify.com"
+
+    def test_normalizes_combined(self):
+        """Combined protocol + uppercase + trailing slash is normalized."""
+        assert validate_shop_domain("HTTPS://MyStore.myshopify.com/") == "mystore.myshopify.com"
+
+    def test_rejects_attacker_domain(self):
+        """SSRF regression: rejects non-myshopify.com domain."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_shop_domain("attacker.com")
+        assert exc_info.value.status_code == 400
+        assert "myshopify.com" in exc_info.value.detail
+
+    def test_rejects_subdomain_bypass_attempt(self):
+        """Rejects domain where myshopify.com is a subdomain of attacker."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_shop_domain("store.myshopify.com.attacker.com")
+        assert exc_info.value.status_code == 400
+
+    def test_rejects_empty_string(self):
+        """Rejects empty shop domain."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_shop_domain("")
+        assert exc_info.value.status_code == 400
+
+    def test_rejects_path_traversal(self):
+        """Rejects domain with path traversal after valid domain."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_shop_domain("mystore.myshopify.com/../../etc/passwd")
+        assert exc_info.value.status_code == 400
+
+    def test_rejects_bare_myshopify_com(self):
+        """Rejects bare myshopify.com without a subdomain."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_shop_domain(".myshopify.com")
+        assert exc_info.value.status_code == 400
+
+    def test_rejects_non_shopify_tld(self):
+        """Rejects domains that look like shopify but aren't."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_shop_domain("store.notshopify.com")
+        assert exc_info.value.status_code == 400
+
+    def test_build_auth_url_rejects_invalid_domain(self, monkeypatch):
+        """build_auth_url rejects invalid shop_domain (defense in depth)."""
+        monkeypatch.setenv("SHOPIFY_API_KEY", "shopify-key")
+        with pytest.raises(HTTPException) as exc_info:
+            build_auth_url(
+                "shopify",
+                state="csrf",
+                redirect_uri="https://app.example.com/callback",
+                shop_domain="attacker.com",
+            )
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_exchange_code_rejects_invalid_domain(self, monkeypatch):
+        """exchange_code_for_tokens rejects invalid shop_domain (defense in depth)."""
+        monkeypatch.setenv("SHOPIFY_API_KEY", "shopify-key")
+        monkeypatch.setenv("SHOPIFY_API_SECRET", "shopify-secret")
+        with pytest.raises(HTTPException) as exc_info:
+            await exchange_code_for_tokens(
+                "shopify",
+                code="auth-code",
+                redirect_uri="https://app.example.com/callback",
+                shop_domain="attacker.com",
+            )
+        assert exc_info.value.status_code == 400
