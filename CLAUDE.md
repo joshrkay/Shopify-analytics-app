@@ -196,6 +196,41 @@ Platform gate tests (`src/tests/platform/test_platform_gate.py`) are **deploymen
 2. **Scope guards to Clerk org_ids only** — The only non-UUID values that cause production `DataError` are unresolved Clerk org_ids (prefixed with `org_`). Guards should check for the `org_` prefix, not `_is_uuid_format()`, to avoid breaking tests.
 3. **Always run platform tests** before pushing auth/middleware changes: `PYTHONPATH=. pytest src/tests/platform/ -v --tb=short`
 
+### Module Import Verification (MANDATORY)
+
+**After every change to a route module in `backend/src/api/routes/`, verify the module actually loads.** Route modules are imported at module scope by `main.py` — a missing import doesn't fail silently at runtime, it **crashes the entire FastAPI app on startup**. No routes serve, not just the broken one.
+
+This has caused production outages. The failure mode:
+
+1. Branch A adds new symbols to a route file (e.g., `ApiKeyConnectRequest` in `sources.py`)
+2. Branch B rewrites the same route file's import block (e.g., Cloud→OSS refactor)
+3. Branch B merges to `main`, then Branch A merges — or vice versa
+4. The merge silently drops Branch A's imports because Branch B replaced the whole block
+5. The route file now **uses** symbols it never **imports** → `NameError` at load time
+6. `main.py` does `from src.api.routes import sources` → app crashes before serving any request
+
+**Required verification after any route file change:**
+
+```bash
+# From backend/ directory — must complete with no errors
+PYTHONPATH=. python -c "from src.api.routes import sources"  # or whichever module you changed
+```
+
+**Required verification after any merge that touches route files:**
+
+```bash
+# Smoke-test that the full app can import all routes
+PYTHONPATH=. python -c "import backend.main" 2>&1 || PYTHONPATH=. python -c "
+from src.api.routes import (
+    sources, billing, health, webhooks_clerk, webhooks_shopify,
+    insights, recommendations, actions, dashboards_allowed
+)
+print('All route modules loaded successfully')
+"
+```
+
+**Why tests don't catch this:** Tests that import from `src.integrations.*` or `src.services.*` never touch `src.api.routes`, so they pass even when the app is completely broken. Only tests that import through `src.api.routes.__init__` (e.g., `test_clerk_webhooks.py`, `test_sources_routes.py`) will fail — and those failures are easy to mistake for "pre-existing issues" and ignore.
+
 ### Frontend-Backend Contract Verification
 
 When adding or modifying frontend API service functions (`frontend/src/services/`), you MUST verify that a corresponding backend route exists in `backend/src/api/routes/` before marking the work as complete. Specifically:
