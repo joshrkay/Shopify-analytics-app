@@ -46,6 +46,7 @@ from src.integrations.airbyte.oauth_registry import (
     build_auth_url,
     build_source_config,
     exchange_code_for_tokens,
+    validate_shop_domain,
 )
 from src.api.schemas.sources import (
     SourceSummary,
@@ -334,11 +335,13 @@ async def initiate_oauth(
     shop_domain = body.shop_domain if body else None
 
     # Shopify requires shop domain for URL interpolation
-    if platform in ("shopify", "shopify_email") and not shop_domain:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="shop_domain is required for Shopify OAuth",
-        )
+    if platform in ("shopify", "shopify_email"):
+        if not shop_domain:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="shop_domain is required for Shopify OAuth",
+            )
+        shop_domain = validate_shop_domain(shop_domain)
 
     # Ensure the tenant has an isolated Airbyte workspace (lazy provision)
     tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
@@ -723,11 +726,11 @@ async def _create_airbyte_connection(
 
     destinations = await airbyte_client.list_destinations(workspace_id=workspace_id)
     if not destinations:
-        from src.services.airbyte_workspace import _parse_db_connection_config
+        from src.services.airbyte_workspace import parse_db_connection_config
         dest_request = DestinationCreationRequest(
             name=f"PostgreSQL - {tenant_ctx.tenant_id[:8]}",
             destination_type="destination-postgres",
-            configuration=_parse_db_connection_config(),
+            configuration=parse_db_connection_config(),
         )
         dest = await airbyte_client.create_destination(dest_request, workspace_id=workspace_id)
         destinations = [dest]

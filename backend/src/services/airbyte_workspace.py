@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 _DESTINATION_SCHEMA = os.getenv("AIRBYTE_DESTINATION_SCHEMA", "airbyte_raw")
 
 
-def _parse_db_connection_config() -> dict:
+def parse_db_connection_config() -> dict:
     """
     Build the Airbyte PostgreSQL destination configuration dict.
 
@@ -139,7 +139,7 @@ async def ensure_tenant_workspace(
 
     # Provision the PostgreSQL destination — non-fatal if it fails
     try:
-        db_config = _parse_db_connection_config()
+        db_config = parse_db_connection_config()
         dest_request = DestinationCreationRequest(
             name=f"PostgreSQL - {tenant_id[:8]}",
             destination_type="destination-postgres",
