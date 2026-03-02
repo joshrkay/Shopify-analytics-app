@@ -8,12 +8,11 @@ export async function getAIConfiguration(): Promise<AIConfiguration> {
 }
 
 export async function updateAIProvider(provider: AIProvider): Promise<AIConfiguration> {
-  // Backend route not yet implemented — update org config instead
   const headers = await createHeadersAsync();
   const response = await fetch(`${API_BASE_URL}/api/llm/config`, {
     method: 'PUT',
     headers,
-    body: JSON.stringify({ default_provider: provider }),
+    body: JSON.stringify({ primary_model_id: provider }),
   });
   return handleResponse<AIConfiguration>(response);
 }

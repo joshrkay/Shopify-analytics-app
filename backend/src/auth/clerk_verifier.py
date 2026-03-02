@@ -106,14 +106,6 @@ class ClerkJWTVerifier:
         self._clerk_publishable_key = os.getenv("CLERK_PUBLISHABLE_KEY")
 
         if not self._clerk_issuer:
-            # Try to construct from publishable key
-            if self._clerk_publishable_key:
-                # Format: pk_test_xxx or pk_live_xxx
-                # Extract the domain part after the prefix
-                parts = self._clerk_publishable_key.split("_")
-                if len(parts) >= 3:
-                    # Clerk domains are like: https://xxx.clerk.accounts.dev
-                    pass
             raise ClerkVerificationError(
                 "CLERK_ISSUER_URL environment variable is required",
                 error_code="config_error",

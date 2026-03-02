@@ -13,17 +13,22 @@ SECURITY:
 Story 8.5 - Action Execution (Scoped & Reversible)
 """
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional, Union
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.models.connector_credential import ConnectorCredential, CredentialStatus
+from src.models.connector_credential import (
+    ConnectorCredential,
+    CredentialStatus,
+    HARD_DELETE_AFTER_DAYS,
+)
 from src.platform.secrets import encrypt_secret, decrypt_secret
 from src.services.platform_executors import (
     MetaCredentials,
@@ -48,12 +53,16 @@ class Platform(str, Enum):
     SHOPIFY = "shopify"
 
 
-# Maps Platform enum value to ConnectorCredential.source_type stored in DB
-_PLATFORM_TO_SOURCE_TYPE: dict[str, str] = {
-    "meta": "meta_ads",
-    "google": "google_ads",
-    "shopify": "shopify",
+# Source type strings used in ConnectorCredential.source_type
+_PLATFORM_SOURCE_TYPES = {
+    Platform.META: "meta",
+    Platform.GOOGLE: "google_ads",
+    Platform.SHOPIFY: "shopify",
 }
+
+
+# CredentialStatus is imported from src.models.connector_credential
+# (canonical source of truth for credential lifecycle status)
 
 
 @dataclass
@@ -102,6 +111,25 @@ class PlatformCredentialsService:
         self.encryption_key = encryption_key
 
     # =========================================================================
+    # Internal Helpers
+    # =========================================================================
+
+    def _find_active_credential(
+        self,
+        tenant_id: str,
+        source_type: str,
+    ) -> Optional[ConnectorCredential]:
+        """Query the database for an active, non-deleted credential."""
+        stmt = (
+            select(ConnectorCredential)
+            .where(ConnectorCredential.tenant_id == tenant_id)
+            .where(ConnectorCredential.source_type == source_type)
+            .where(ConnectorCredential.status == CredentialStatus.ACTIVE)
+            .where(ConnectorCredential.soft_deleted_at.is_(None))
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    # =========================================================================
     # Credential Retrieval
     # =========================================================================
 
@@ -115,19 +143,22 @@ class PlatformCredentialsService:
         Returns:
             MetaCredentials if found and valid, None otherwise
         """
-        record = await self._fetch_active_credential(tenant_id, "meta_ads")
-        if record is None:
+        credential = self._find_active_credential(
+            tenant_id, _PLATFORM_SOURCE_TYPES[Platform.META]
+        )
+        if not credential or not credential.encrypted_payload:
             return None
+
         try:
-            data = await self._decrypt_credentials(record.encrypted_payload)
+            decrypted = self._decrypt_credentials(credential.encrypted_payload)
             return MetaCredentials(
-                access_token=data["access_token"],
-                ad_account_id=data["ad_account_id"],
+                access_token=decrypted["access_token"],
+                ad_account_id=decrypted.get("ad_account_id", ""),
             )
-        except (KeyError, Exception) as exc:
+        except Exception as e:
             logger.error(
-                "Failed to decode Meta credentials",
-                extra={"tenant_id": tenant_id, "error": str(exc)},
+                "Failed to decrypt Meta credentials",
+                extra={"tenant_id": tenant_id, "error": str(e)},
             )
             return None
 
@@ -141,24 +172,27 @@ class PlatformCredentialsService:
         Returns:
             GoogleAdsCredentials if found and valid, None otherwise
         """
-        record = await self._fetch_active_credential(tenant_id, "google_ads")
-        if record is None:
+        credential = self._find_active_credential(
+            tenant_id, _PLATFORM_SOURCE_TYPES[Platform.GOOGLE]
+        )
+        if not credential or not credential.encrypted_payload:
             return None
+
         try:
-            data = await self._decrypt_credentials(record.encrypted_payload)
+            decrypted = self._decrypt_credentials(credential.encrypted_payload)
             return GoogleAdsCredentials(
-                access_token=data["access_token"],
-                refresh_token=data["refresh_token"],
-                client_id=data["client_id"],
-                client_secret=data["client_secret"],
-                developer_token=data["developer_token"],
-                customer_id=data["customer_id"],
-                login_customer_id=data.get("login_customer_id"),
+                access_token=decrypted["access_token"],
+                refresh_token=decrypted.get("refresh_token", ""),
+                client_id=decrypted.get("client_id", ""),
+                client_secret=decrypted.get("client_secret", ""),
+                developer_token=decrypted.get("developer_token", ""),
+                customer_id=decrypted.get("customer_id", ""),
+                login_customer_id=decrypted.get("login_customer_id"),
             )
-        except (KeyError, Exception) as exc:
+        except Exception as e:
             logger.error(
-                "Failed to decode Google credentials",
-                extra={"tenant_id": tenant_id, "error": str(exc)},
+                "Failed to decrypt Google Ads credentials",
+                extra={"tenant_id": tenant_id, "error": str(e)},
             )
             return None
 
@@ -182,7 +216,10 @@ class PlatformCredentialsService:
         elif platform == Platform.GOOGLE:
             return await self.get_google_credentials(tenant_id)
         else:
-            logger.error(f"Unsupported platform: {platform}")
+            logger.error(
+                "Unsupported platform for credential retrieval",
+                extra={"platform": platform.value},
+            )
             return None
 
     # =========================================================================
@@ -229,7 +266,10 @@ class PlatformCredentialsService:
                 retry_config=retry_config,
             )
         else:
-            logger.error(f"No executor available for platform: {platform}")
+            logger.error(
+                "No executor available for platform",
+                extra={"platform": platform.value},
+            )
             return None
 
     # =========================================================================
@@ -317,46 +357,59 @@ class PlatformCredentialsService:
         tenant_id: str,
         platform: Platform,
         credentials: dict,
+        credential_name: Optional[str] = None,
         created_by: str = "system",
     ) -> bool:
         """
         Store encrypted credentials for a tenant.
 
+        Upserts: if an active credential exists for the tenant+platform,
+        updates it in place. Otherwise creates a new record.
+
         Args:
             tenant_id: Tenant identifier (from JWT only)
             platform: Target platform
             credentials: Credential data to encrypt and store
-            created_by: Clerk user ID of the storing user
+            credential_name: Human-readable label
+            created_by: clerk_user_id of the user storing credentials
 
         Returns:
             True if stored successfully, False otherwise
         """
-        source_type = _PLATFORM_TO_SOURCE_TYPE.get(platform.value, platform.value)
+        source_type = _PLATFORM_SOURCE_TYPES.get(platform, platform.value)
+        encrypted_payload = self._encrypt_credentials(credentials)
+
+        existing = self._find_active_credential(tenant_id, source_type)
+
         try:
-            encrypted_payload = await self._encrypt_credentials(credentials)
-            record = ConnectorCredential(
-                tenant_id=tenant_id,
-                credential_name=f"{platform.value.title()} Ads Credentials",
-                source_type=source_type,
-                encrypted_payload=encrypted_payload,
-                credential_metadata={"platform": platform.value},
-                status=CredentialStatus.ACTIVE,
-                created_by=created_by,
-                soft_deleted_at=None,
-                hard_delete_after=None,
-            )
-            self.db.add(record)
+            if existing:
+                existing.encrypted_payload = encrypted_payload
+                if credential_name:
+                    existing.credential_name = credential_name
+            else:
+                record = ConnectorCredential(
+                    tenant_id=tenant_id,
+                    credential_name=credential_name or f"{platform.value} credentials",
+                    source_type=source_type,
+                    encrypted_payload=encrypted_payload,
+                    status=CredentialStatus.ACTIVE,
+                    created_by=created_by,
+                    credential_metadata={},
+                )
+                self.db.add(record)
+
+            self.db.flush()
             self.db.commit()
             logger.info(
-                "Stored platform credentials",
+                "Credentials stored",
                 extra={"tenant_id": tenant_id, "platform": platform.value},
             )
             return True
-        except Exception as exc:
+        except Exception as e:
             self.db.rollback()
             logger.error(
                 "Failed to store credentials",
-                extra={"tenant_id": tenant_id, "platform": platform.value, "error": str(exc)},
+                extra={"tenant_id": tenant_id, "platform": platform.value, "error": str(e)},
             )
             return False
 
@@ -368,7 +421,8 @@ class PlatformCredentialsService:
         """
         Revoke/deactivate credentials for a tenant.
 
-        Sets status to REVOKED and records soft_deleted_at timestamp.
+        Soft-deletes the credential with a 5-day restoration window
+        and schedules permanent wipe after 20 days.
 
         Args:
             tenant_id: Tenant identifier (from JWT only)
@@ -377,35 +431,33 @@ class PlatformCredentialsService:
         Returns:
             True if revoked successfully, False otherwise
         """
-        source_type = _PLATFORM_TO_SOURCE_TYPE.get(platform.value, platform.value)
-        try:
-            stmt = (
-                select(ConnectorCredential)
-                .where(ConnectorCredential.tenant_id == tenant_id)
-                .where(ConnectorCredential.source_type == source_type)
-                .where(ConnectorCredential.soft_deleted_at.is_(None))
-                .where(ConnectorCredential.status == CredentialStatus.ACTIVE)
+        source_type = _PLATFORM_SOURCE_TYPES.get(platform, platform.value)
+        credential = self._find_active_credential(tenant_id, source_type)
+
+        if not credential:
+            logger.warning(
+                "No active credential to revoke",
+                extra={"tenant_id": tenant_id, "platform": platform.value},
             )
-            record = self.db.execute(stmt).scalar_one_or_none()
-            if record is None:
-                logger.warning(
-                    "No active credentials found to revoke",
-                    extra={"tenant_id": tenant_id, "platform": platform.value},
-                )
-                return False
-            record.status = CredentialStatus.REVOKED
-            record.soft_deleted_at = datetime.now(timezone.utc)
-            self.db.commit()
+            return False
+
+        try:
+            now = datetime.now(timezone.utc)
+            credential.status = CredentialStatus.REVOKED
+            credential.soft_deleted_at = now
+            credential.hard_delete_after = now + timedelta(days=HARD_DELETE_AFTER_DAYS)
+            self.db.flush()
+
             logger.info(
-                "Revoked platform credentials",
+                "Credentials revoked",
                 extra={"tenant_id": tenant_id, "platform": platform.value},
             )
             return True
-        except Exception as exc:
+        except Exception as e:
             self.db.rollback()
             logger.error(
                 "Failed to revoke credentials",
-                extra={"tenant_id": tenant_id, "platform": platform.value, "error": str(exc)},
+                extra={"tenant_id": tenant_id, "platform": platform.value, "error": str(e)},
             )
             return False
 
@@ -430,25 +482,50 @@ class PlatformCredentialsService:
         """
         Encrypt credential data for storage using Fernet via src.platform.secrets.
 
+        Uses the platform.secrets module (Fernet encryption via ENCRYPTION_KEY).
+
         Args:
             data: Credential dictionary to encrypt
 
         Returns:
-            Fernet-encrypted string safe for DB storage
+            Encrypted string safe for database storage
         """
-        return await encrypt_secret(json.dumps(data))
+        plaintext = json.dumps(data)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
-    async def _decrypt_credentials(self, encrypted_data: str) -> dict:
+        if loop is not None and loop.is_running():
+            raise RuntimeError(
+                "Cannot call _encrypt_credentials from running async loop; "
+                "use await encrypt_secret() directly"
+            )
+        return asyncio.run(encrypt_secret(plaintext))
+
+    def _decrypt_credentials(self, encrypted_data: str) -> dict:
         """
         Decrypt credential data from storage.
 
+        Uses the platform.secrets module (Fernet encryption via ENCRYPTION_KEY).
+
         Args:
-            encrypted_data: Fernet-encrypted credential string
+            encrypted_data: Encrypted credential string from database
 
         Returns:
             Decrypted credential dictionary
         """
-        plaintext = await decrypt_secret(encrypted_data)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None and loop.is_running():
+            raise RuntimeError(
+                "Cannot call _decrypt_credentials from running async loop; "
+                "use await decrypt_secret() directly"
+            )
+        plaintext = asyncio.run(decrypt_secret(encrypted_data))
         return json.loads(plaintext)
 
 

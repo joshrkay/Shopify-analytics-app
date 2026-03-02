@@ -720,8 +720,11 @@ class TenantContextMiddleware:
             # will also fail with DataError.
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as rollback_err:
+                logger.debug(
+                    "Rollback failed during _resolve_tenant_from_db fallback",
+                    extra={"rollback_error": str(rollback_err)},
+                )
             logger.warning(
                 "DB lookup failed in _resolve_tenant_from_db, falling back to JWT",
                 extra={"error": str(db_err), "error_type": type(db_err).__name__},

@@ -95,7 +95,7 @@ describe('useDataSources', () => {
     const { result } = renderHook(() => useDataSources());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(mocked.getConnections).toHaveBeenCalled();
-    expect(result.current.connections).toEqual([mockSource]);
+    expect(result.current.sources).toEqual([mockSource]);
   });
 
   it('returns hasConnectedSources: true when connections exist', async () => {

@@ -14,7 +14,7 @@
  * Phase 1 — Dashboard Home
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Page,
   Card,
@@ -56,65 +56,71 @@ export function DashboardHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      let cancelled = false;
-
-      const [
-        unreadCount,
-        activeRecCount,
-        health,
-        insightsResponse,
-        recsResponse,
-      ] = await Promise.all([
-        getUnreadInsightsCount().catch(() => 0),
-        getActiveRecommendationsCount().catch(() => 0),
-        getCompactHealth().catch((): CompactHealth => ({
-          overall_status: 'healthy',
-          health_score: 100,
-          stale_count: 0,
-          critical_count: 0,
-          has_blocking_issues: false,
-          oldest_sync_minutes: null,
-          last_checked_at: new Date().toISOString(),
-        })),
-        listInsights({ limit: 5, include_dismissed: false }).catch(() => ({
-          insights: [],
-          total: 0,
-          has_more: false,
-        })),
-        listRecommendations({ limit: 5, include_dismissed: false }).catch(() => ({
-          recommendations: [],
-          total: 0,
-          has_more: false,
-        })),
-      ]);
-
-      if (cancelled) return;
-
-      setMetrics({
-        unreadInsights: unreadCount,
-        activeRecommendations: activeRecCount,
-        healthScore: health.health_score,
-        healthStatus: health.overall_status,
-      });
-      setInsights(insightsResponse.insights);
-      setRecommendations(recsResponse.recommendations);
-
-      return () => { cancelled = true; };
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const [
+          unreadCount,
+          activeRecCount,
+          health,
+          insightsResponse,
+          recsResponse,
+        ] = await Promise.all([
+          getUnreadInsightsCount().catch(() => 0),
+          getActiveRecommendationsCount().catch(() => 0),
+          getCompactHealth().catch((): CompactHealth => ({
+            overall_status: 'healthy',
+            health_score: 100,
+            stale_count: 0,
+            critical_count: 0,
+            has_blocking_issues: false,
+            oldest_sync_minutes: null,
+            last_checked_at: new Date().toISOString(),
+          })),
+          listInsights({ limit: 5, include_dismissed: false }).catch(() => ({
+            insights: [],
+            total: 0,
+            has_more: false,
+          })),
+          listRecommendations({ limit: 5, include_dismissed: false }).catch(() => ({
+            recommendations: [],
+            total: 0,
+            has_more: false,
+          })),
+        ]);
+
+        if (cancelled) return;
+
+        setMetrics({
+          unreadInsights: unreadCount,
+          activeRecommendations: activeRecCount,
+          healthScore: health.health_score,
+          healthStatus: health.overall_status,
+        });
+        setInsights(insightsResponse.insights);
+        setRecommendations(recsResponse.recommendations);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
     loadData();
-  }, [loadData]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (loading) {
     return (

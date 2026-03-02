@@ -55,8 +55,6 @@ export { SOURCES_KEY, CATALOG_KEY, GLOBAL_SETTINGS_KEY };
 // =============================================================================
 
 interface UseDataSourcesResult {
-  /** @deprecated Use `sources` instead */
-  connections: Source[];
   sources: Source[];
   isLoading: boolean;
   error: unknown;
@@ -84,7 +82,6 @@ export function useDataSources(): UseDataSourcesResult {
   const sources = query.data ?? [];
 
   return {
-    connections: sources,
     sources,
     isLoading: query.isLoading,
     error: query.error,
