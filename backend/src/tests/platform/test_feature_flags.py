@@ -6,15 +6,13 @@ especially AI write-back features (kill switch requirement).
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from fastapi import FastAPI, Request, status, HTTPException
+from unittest.mock import patch, MagicMock
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.testclient import TestClient
 
 from src.platform.feature_flags import (
     FeatureFlag,
     FeatureFlagClient,
-    FronteggFeatureFlagClient,  # Backwards compatibility alias
-    get_feature_flag_client,
     is_feature_enabled,
     is_kill_switch_active,
     require_feature_flag,

@@ -21,9 +21,8 @@ Two sources of tenant membership:
 
 import logging
 from typing import List, Optional
-from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request, HTTPException, status, Depends
+from fastapi import APIRouter, Request, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.platform.tenant_context import TenantContext, get_tenant_context
@@ -35,7 +34,6 @@ from src.services.tenant_members_service import (
     TenantNotFoundError,
     UserNotFoundError,
     DuplicateRoleError,
-    PermissionDeniedError,
     LastAdminError,
 )
 

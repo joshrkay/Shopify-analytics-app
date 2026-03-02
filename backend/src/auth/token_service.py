@@ -23,10 +23,9 @@ Since JWTs are stateless, we maintain a revocation list to:
 import os
 import time
 import logging
-import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Set, List, Any
+from typing import Optional, Dict, List, Any
 from threading import Lock
 from enum import Enum
 

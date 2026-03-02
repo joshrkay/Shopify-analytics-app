@@ -10,13 +10,11 @@ SECURITY:
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
 
-from src.models.changelog_entry import ChangelogEntry, ReleaseType, FEATURE_AREAS
+from src.models.changelog_entry import ChangelogEntry, FEATURE_AREAS
 from src.models.changelog_read_status import ChangelogReadStatus
 
 
@@ -79,7 +77,7 @@ class ChangelogService:
         """
         # Build base query for published entries
         query = self.db.query(ChangelogEntry).filter(
-            ChangelogEntry.is_published == True
+            ChangelogEntry.is_published
         )
 
         if release_type:
@@ -154,7 +152,7 @@ class ChangelogService:
             self.db.query(ChangelogEntry)
             .filter(
                 ChangelogEntry.id == entry_id,
-                ChangelogEntry.is_published == True,
+                ChangelogEntry.is_published,
             )
             .first()
         )
@@ -208,7 +206,7 @@ class ChangelogService:
 
         # Build base query for published entries
         base_query = self.db.query(ChangelogEntry).filter(
-            ChangelogEntry.is_published == True
+            ChangelogEntry.is_published
         )
 
         if read_entry_ids:
@@ -265,7 +263,7 @@ class ChangelogService:
 
         # Query unread entries for feature area
         query = self.db.query(ChangelogEntry).filter(
-            ChangelogEntry.is_published == True,
+            ChangelogEntry.is_published,
             ChangelogEntry.feature_areas.contains([feature_area]),
         )
 
@@ -307,7 +305,7 @@ class ChangelogService:
             self.db.query(ChangelogEntry)
             .filter(
                 ChangelogEntry.id == entry_id,
-                ChangelogEntry.is_published == True,
+                ChangelogEntry.is_published,
             )
             .first()
         )
@@ -368,7 +366,7 @@ class ChangelogService:
 
         # Get all published entry IDs that haven't been read
         unread_query = self.db.query(ChangelogEntry.id).filter(
-            ChangelogEntry.is_published == True
+            ChangelogEntry.is_published
         )
 
         if read_entry_ids:
@@ -621,7 +619,7 @@ class ChangelogService:
         query = self.db.query(ChangelogEntry)
 
         if not include_unpublished:
-            query = query.filter(ChangelogEntry.is_published == True)
+            query = query.filter(ChangelogEntry.is_published)
 
         total = query.count()
 

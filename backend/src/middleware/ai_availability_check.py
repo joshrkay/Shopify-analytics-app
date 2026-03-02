@@ -41,10 +41,9 @@ from sqlalchemy.orm import Session
 
 from src.models.data_availability import AvailabilityState
 from src.services.data_availability_service import (
-    DataAvailabilityResult,
     DataAvailabilityService,
 )
-from src.services.freshness_service import FreshnessService, FreshnessGateResult
+from src.services.freshness_service import FreshnessService
 
 logger = logging.getLogger(__name__)
 

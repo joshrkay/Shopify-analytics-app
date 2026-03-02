@@ -9,19 +9,14 @@ Tests cover:
 - Reconciliation job
 """
 
-import os
-import json
 import hmac
 import hashlib
 import base64
 import uuid
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 # Test fixtures and helpers
 
@@ -100,8 +95,7 @@ class TestShopifyBillingClient:
         """Test successful subscription creation."""
         from src.integrations.shopify.billing_client import (
             ShopifyBillingClient,
-            BillingInterval,
-            CreateSubscriptionResult
+            BillingInterval
         )
 
         # Mock the HTTP response

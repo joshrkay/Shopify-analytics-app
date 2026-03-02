@@ -13,11 +13,9 @@ Story 3.2 - Tenant-to-Source Mapping
 import os
 import uuid
 import pytest
-from datetime import datetime, timezone
 
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.orm import sessionmaker
 
 # Set test environment
 os.environ["ENV"] = "test"
@@ -26,8 +24,6 @@ from src.db_base import Base
 from src.repositories.base_repo import TenantIsolationError
 from src.repositories.airbyte_connections import (
     AirbyteConnectionsRepository,
-    ConnectionNotFoundError,
-    ConnectionAlreadyExistsError,
 )
 from src.services.airbyte_service import (
     AirbyteService,
@@ -82,7 +78,6 @@ def db_engine():
         engine = create_engine(database_url, pool_pre_ping=True)
 
     # Import model to register with Base
-    from src.models import airbyte_connection
 
     # Create tables
     Base.metadata.create_all(bind=engine)

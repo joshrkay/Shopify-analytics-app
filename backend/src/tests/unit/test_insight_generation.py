@@ -14,7 +14,7 @@ Story 8.1 - AI Insight Generation (Read-Only Analytics)
 import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from src.models.ai_insight import InsightType, InsightSeverity
 from src.services.insight_thresholds import (

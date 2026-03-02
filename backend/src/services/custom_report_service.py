@@ -9,7 +9,7 @@ Phase: Custom Reports & Dashboard Builder
 
 import logging
 import uuid
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError

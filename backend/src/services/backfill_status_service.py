@@ -175,7 +175,7 @@ class BackfillStatusService:
             else 0.0
         )
 
-        status_val = (
+        (
             request.status.value
             if isinstance(request.status, HistoricalBackfillStatus)
             else request.status

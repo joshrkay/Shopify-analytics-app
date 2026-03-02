@@ -18,7 +18,7 @@ import os
 import sys
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional
+from typing import Dict
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -31,10 +31,8 @@ from src.config.retention import (
     get_retention_days,
     DELETION_BATCH_SIZE,
     RETENTION_DRY_RUN,
-    DEFAULT_RETENTION_DAYS,
 )
 from src.platform.audit import (
-    AuditLog,
     AuditAction,
     AuditOutcome,
     log_system_audit_event_sync,

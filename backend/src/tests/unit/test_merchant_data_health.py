@@ -12,20 +12,16 @@ Story 4.3 - Merchant Data Health Trust Layer
 """
 
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import Mock, MagicMock, patch
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 
-from src.models.data_availability import AvailabilityState
-from src.models.dq_models import DataQualityState
 from src.models.merchant_data_health import (
     FEATURE_FLAGS,
-    MERCHANT_MESSAGES,
     MerchantDataHealthResponse,
     MerchantHealthState,
     get_merchant_message,
 )
 from src.services.merchant_data_health import (
-    MerchantDataHealthResult,
     MerchantDataHealthService,
 )
 

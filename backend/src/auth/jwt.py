@@ -22,10 +22,10 @@ JWT Claims Used:
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, FrozenSet
+from typing import Optional, List, Dict, Any
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ClerkOrgRole(str, Enum):

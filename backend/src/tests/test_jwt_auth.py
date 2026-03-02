@@ -13,24 +13,19 @@ import pytest
 import time
 import jwt
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 
-from starlette.testclient import TestClient
-from starlette.requests import Request
 from fastapi import FastAPI, Depends
-from fastapi.testclient import TestClient as FastAPITestClient
 
 from src.auth.clerk_verifier import (
-    ClerkJWTVerifier,
     ClerkVerificationError,
 )
 from src.auth.jwt import (
     ClerkJWTClaims,
     ExtractedClaims,
-    extract_claims,
     TokenInfo,
 )
 from src.auth.context_resolver import AuthContext, TenantAccess
@@ -39,12 +34,10 @@ from src.auth.token_service import (
     RevocationReason,
 )
 from src.auth.middleware import (
-    ClerkAuthMiddleware,
     get_auth_context,
     require_auth,
     require_tenant,
     require_permission,
-    get_current_user,
 )
 from src.constants.permissions import Permission
 
@@ -257,7 +250,7 @@ class TestSessionRevocation:
         """Test revoking user sessions with timestamp check."""
         user_id = "user_123"
         old_token_time = datetime.now(timezone.utc) - timedelta(hours=1)
-        new_token_time = datetime.now(timezone.utc) + timedelta(minutes=1)
+        datetime.now(timezone.utc) + timedelta(minutes=1)
 
         # Revoke all sessions issued before now
         token_service.revoke_all_user_sessions(

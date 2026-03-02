@@ -8,7 +8,7 @@ CRITICAL: These tests verify that:
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.testclient import TestClient
 

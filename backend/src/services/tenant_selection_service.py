@@ -107,7 +107,7 @@ class TenantSelectionService:
 
         roles = self.session.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).all()
 
         tenants = []
@@ -218,7 +218,7 @@ class TenantSelectionService:
         has_access = self.session.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == tenant_id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).first() is not None
 
         if not has_access:
@@ -362,7 +362,7 @@ class TenantSelectionService:
         has_access = self.session.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == tenant_id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).first() is not None
 
         if not has_access:
@@ -384,7 +384,7 @@ class TenantSelectionService:
         """Get user by Clerk user ID."""
         return self.session.query(User).filter(
             User.clerk_user_id == clerk_user_id,
-            User.is_active == True,
+            User.is_active,
         ).first()
 
     def _emit_cross_tenant_attempt(

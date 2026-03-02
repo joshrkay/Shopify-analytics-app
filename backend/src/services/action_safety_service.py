@@ -241,7 +241,7 @@ class ActionSafetyService:
             )
             return SafetyCheckResult(
                 allowed=False,
-                reason=f"Operation not available on your plan",
+                reason="Operation not available on your plan",
             )
 
         # Get current count

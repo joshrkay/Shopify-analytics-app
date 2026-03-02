@@ -12,10 +12,6 @@ Test Coverage:
 """
 
 import pytest
-import json
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List
-from unittest.mock import patch, MagicMock
 
 from .fixtures.test_data import (
     TestDataProvider,
@@ -716,7 +712,7 @@ class TestFullPipelineE2E:
         Tests that data from all channels can be processed.
         """
         provider = TestDataProvider()
-        all_channels = provider.get_all_channels()
+        provider.get_all_channels()
 
         # Verify each channel's data can be retrieved
         for channel in ["shopify_orders", "meta_ads", "google_ads", "klaviyo_campaigns"]:

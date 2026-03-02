@@ -5,7 +5,6 @@ Provides deterministic responses without making real Shopify API calls.
 Supports configuring mock state for different test scenarios.
 """
 
-import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List
 from dataclasses import dataclass, field

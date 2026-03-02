@@ -18,7 +18,6 @@ from typing import Any
 from src.models.action_proposal import (
     ActionType,
     ActionStatus,
-    TargetPlatform,
     TargetEntityType,
     MAX_SCOPE_RULES,
 )
@@ -170,8 +169,8 @@ class ActionProposalValidationService:
                 return ValidationResult(
                     is_valid=False,
                     error_message=(
-                        f"Bulk or account-level actions are not allowed. "
-                        f"Actions must target individual campaigns or ad sets."
+                        "Bulk or account-level actions are not allowed. "
+                        "Actions must target individual campaigns or ad sets."
                     ),
                 )
 

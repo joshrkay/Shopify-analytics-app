@@ -7,7 +7,7 @@ Used for audit trail and reconciliation with Shopify Billing API.
 
 import uuid
 import enum
-from sqlalchemy import Column, String, Integer, Numeric, DateTime, ForeignKey, Index, func, JSON
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Index, func, JSON
 from sqlalchemy.orm import relationship
 
 from src.db_base import Base

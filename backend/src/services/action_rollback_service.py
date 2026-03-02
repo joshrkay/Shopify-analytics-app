@@ -27,7 +27,6 @@ Story 8.5 - Action Execution (Scoped & Reversible)
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -40,8 +39,6 @@ from src.services.platform_credentials_service import (
 )
 from src.services.platform_executors import (
     BasePlatformExecutor,
-    ExecutionResult,
-    StateCapture,
     RetryConfig,
 )
 
@@ -151,7 +148,7 @@ class ActionRollbackService:
             executor = await self._get_executor(action)
 
             # 4. Capture current state
-            current_state = await executor.capture_before_state(
+            await executor.capture_before_state(
                 entity_id=action.target_entity_id,
                 entity_type=action.target_entity_type.value,
             )

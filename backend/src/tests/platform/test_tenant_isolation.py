@@ -8,14 +8,12 @@ import pytest
 from fastapi import FastAPI, Request, status
 from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-import json
+from unittest.mock import patch, MagicMock
 
 from src.platform.tenant_context import (
     TenantContext,
     TenantContextMiddleware,
     get_tenant_context,
-    ClerkJWKSClient,
 )
 from src.repositories.base_repo import BaseRepository, TenantIsolationError
 from src.db_base import Base
@@ -69,7 +67,6 @@ def mock_jwks():
 @pytest.fixture
 def app_with_middleware(monkeypatch):
     """Create FastAPI app with tenant context middleware."""
-    import os
     # Set environment variables for middleware initialization
     monkeypatch.setenv("FRONTEGG_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("CLERK_FRONTEND_API", "test.clerk.accounts.dev")
@@ -162,7 +159,7 @@ class TestJWTVerification:
     async def test_invalid_token_returns_403(self, mock_jwt_decode, mock_get_signing_key, app_with_middleware):
         """Test that invalid tokens return 403."""
         from fastapi import HTTPException
-        from jwt.exceptions import InvalidTokenError, PyJWKClientError
+        from jwt.exceptions import PyJWKClientError
         
         # Mock JWKS client to raise JWT exception for invalid token
         # This should be caught by middleware and converted to 403
@@ -213,7 +210,6 @@ class TestCrossTenantProtection:
         tenant_id in request body/query, they can only access their own data.
         """
         # Setup mocks
-        from unittest.mock import MagicMock
         mock_signing_key = MagicMock()
         mock_signing_key.key = "mock-key"
         mock_get_signing_key.return_value = mock_signing_key
@@ -267,7 +263,6 @@ class TestCrossTenantProtection:
         CRITICAL TEST: Tenant B cannot access Tenant A's data.
         """
         # Setup mocks
-        from unittest.mock import MagicMock
         mock_signing_key = MagicMock()
         mock_signing_key.key = "mock-key"
         mock_get_signing_key.return_value = mock_signing_key
@@ -421,7 +416,6 @@ class TestPropertyBasedTenantIsolation:
         This test runs with multiple tenant ID formats to ensure
         isolation works regardless of ID format.
         """
-        from unittest.mock import MagicMock
         with patch('src.platform.tenant_context.jwt.decode') as mock_decode, \
              patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key') as mock_key:
             

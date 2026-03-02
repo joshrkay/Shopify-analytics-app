@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from src.integrations.shopify.billing_client import (
-    ShopifyBillingClient,
     BillingInterval,
     ShopifyAPIError,
     get_billing_client
@@ -121,7 +120,7 @@ class BillingService:
         """Get plan by ID."""
         plan = self.db.query(Plan).filter(
             Plan.id == plan_id,
-            Plan.is_active == True
+            Plan.is_active
         ).first()
 
         if not plan:

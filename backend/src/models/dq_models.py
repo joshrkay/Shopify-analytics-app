@@ -11,10 +11,8 @@ Provides SQLAlchemy models for:
 SECURITY: All tables are tenant-scoped via tenant_id from JWT.
 """
 
-import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List, Any
 
 from sqlalchemy import (
     Column, String, Integer, Boolean, Text, DateTime,

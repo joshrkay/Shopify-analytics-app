@@ -84,7 +84,10 @@ describe('AnalyticsHealthBanner', () => {
     );
 
     const button = screen.getByRole('button');
-    expect(button).toHaveProperty('disabled', true);
+    // Polaris v12 Button uses aria-disabled instead of the HTML disabled attribute
+    expect(
+      button.hasAttribute('disabled') || button.getAttribute('aria-disabled') === 'true'
+    ).toBe(true);
   });
 
   it('reports health incident on mount via fetch', () => {

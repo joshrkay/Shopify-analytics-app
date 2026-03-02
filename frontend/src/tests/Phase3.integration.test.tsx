@@ -28,6 +28,7 @@ vi.mock('../services/apiUtils', () => ({
     Authorization: 'Bearer test-token',
   }),
   handleResponse: vi.fn(async (res: Response) => res.json()),
+  fetchWithRetry: vi.fn((...args: unknown[]) => (globalThis.fetch as any)(...args)),
   isApiError: vi.fn().mockReturnValue(false),
   getErrorMessage: vi.fn((_err: unknown, fallback: string) => fallback),
 }));

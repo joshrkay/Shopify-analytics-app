@@ -29,10 +29,10 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional, FrozenSet
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 
 from fastapi import Request
-from sqlalchemy import Column, String, DateTime, Text, Index, Enum as SAEnum, JSON, Boolean
+from sqlalchemy import Column, String, DateTime, Text, Index, JSON, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 
 # Use JSON with PostgreSQL variant for JSONB - allows SQLite in tests

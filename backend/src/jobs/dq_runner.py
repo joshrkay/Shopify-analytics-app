@@ -19,12 +19,11 @@ import os
 import sys
 import logging
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import List, Optional, Dict
 import uuid
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 # Add the backend directory to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,7 +32,7 @@ from src.database.session import get_db_session_sync
 from src.api.dq.service import DQService, DQEvent, DQEventType
 from src.api.dq.alerts.router import get_alert_router
 from src.models.dq_models import (
-    DQCheck, DQResult, DQIncident,
+    DQCheck, DQIncident,
     DQCheckType, DQSeverity, DQResultStatus, DQIncidentStatus,
     ConnectorSourceType, is_critical_source,
 )
@@ -82,7 +81,7 @@ class DQRunner:
     def _get_all_tenants(self) -> List[str]:
         """Get all unique tenant IDs with active connectors."""
         result = self.db.query(TenantAirbyteConnection.tenant_id).filter(
-            TenantAirbyteConnection.is_enabled == True,
+            TenantAirbyteConnection.is_enabled,
             TenantAirbyteConnection.status != "deleted",
         ).distinct().all()
 
@@ -92,7 +91,7 @@ class DQRunner:
         """Get all enabled freshness checks."""
         return self.db.query(DQCheck).filter(
             DQCheck.check_type == DQCheckType.FRESHNESS.value,
-            DQCheck.is_enabled == True,
+            DQCheck.is_enabled,
         ).all()
 
     def _should_block_dashboard(

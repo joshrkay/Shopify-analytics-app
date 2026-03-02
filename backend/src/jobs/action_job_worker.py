@@ -32,7 +32,7 @@ import sys
 import logging
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 import uuid
 
 from sqlalchemy.orm import Session
@@ -41,11 +41,9 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.database.session import get_db_session_sync
-from src.models.ai_action import AIAction, ActionStatus
 from src.models.action_job import ActionJob, ActionJobStatus
 from src.services.action_job_runner import ActionJobRunner
-from src.services.action_job_dispatcher import ActionJobDispatcher, dispatch_action_jobs
-from src.services.billing_entitlements import BillingEntitlementsService, BillingFeature
+from src.services.action_job_dispatcher import dispatch_action_jobs
 from src.jobs.job_entitlements import (
     JobEntitlementChecker,
     JobType,

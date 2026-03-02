@@ -23,7 +23,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
+from typing import Dict, Any
 
 from sqlalchemy import (
     Column,
@@ -41,7 +41,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 from src.db_base import Base
-from src.models.base import TimestampMixin, TenantScopedMixin
+from src.models.base import TimestampMixin
 
 # Use JSON for SQLite (tests) and JSONB for PostgreSQL (production)
 JSONType = JSON().with_variant(JSONB(), "postgresql")

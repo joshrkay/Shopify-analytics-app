@@ -12,13 +12,9 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timezone, timedelta
-from fastapi.testclient import TestClient
+from unittest.mock import Mock
+from datetime import datetime, timezone
 
-from src.api.routes.changelog import router as changelog_router
-from src.api.routes.admin_changelog import router as admin_changelog_router
-from src.api.routes.what_changed import router as what_changed_router
 
 
 # =============================================================================

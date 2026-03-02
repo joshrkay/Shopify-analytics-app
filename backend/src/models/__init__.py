@@ -116,10 +116,6 @@ from src.models.explore_guardrail_exception import (
     ExploreGuardrailException,
     GuardrailExceptionStatus,
 )
-from src.models.report_template import (
-    ReportTemplate,
-    TemplateCategory,
-)
 try:
     from .merchant_data_health import (
         MerchantHealthState,

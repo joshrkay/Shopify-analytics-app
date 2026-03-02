@@ -14,15 +14,13 @@ Story 8.3 - AI Recommendations (No Actions)
 import pytest
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
-from decimal import Decimal
+from unittest.mock import MagicMock
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from src.models.ai_insight import AIInsight, InsightType, InsightSeverity
 from src.models.ai_recommendation import (
-    AIRecommendation,
     RecommendationType,
     RecommendationPriority,
     EstimatedImpact,

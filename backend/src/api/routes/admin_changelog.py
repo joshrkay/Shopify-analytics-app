@@ -13,7 +13,6 @@ Story 9.7 - In-App Changelog & Release Notes
 """
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 

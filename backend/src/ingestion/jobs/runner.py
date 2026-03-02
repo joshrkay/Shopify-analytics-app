@@ -12,9 +12,7 @@ Designed to run as Render managed worker with cron triggers.
 SECURITY: All operations are tenant-isolated.
 """
 
-import asyncio
 import logging
-from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -29,7 +27,6 @@ from src.ingestion.jobs.retry import (
     RetryPolicy,
     ErrorCategory,
     should_retry,
-    categorize_error,
     log_retry_decision,
 )
 from src.ingestion.airbyte.client import IngestionAirbyteClient, SyncJobResult

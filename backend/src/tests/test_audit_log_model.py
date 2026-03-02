@@ -39,7 +39,7 @@ def sample_event():
         user_id="user-456",
         access_surface=AccessSurface.EXTERNAL_APP,
         success=True,
-        metadata={"ip_address": "192.168.1.1"},
+        event_metadata={"ip_address": "192.168.1.1"},
     )
 
 
@@ -51,7 +51,7 @@ def sample_event_with_pii():
         tenant_id="tenant-123",
         user_id="user-456",
         success=False,
-        metadata={
+        event_metadata={
             "email": "user@example.com",
             "token": "secret-jwt-token",
             "reason": "invalid_credentials",
@@ -76,7 +76,7 @@ class TestGAAuditLogModel:
         assert hasattr(GAAuditLog, "dashboard_id")
         assert hasattr(GAAuditLog, "access_surface")
         assert hasattr(GAAuditLog, "success")
-        assert hasattr(GAAuditLog, "metadata")
+        assert hasattr(GAAuditLog, "event_metadata")
         assert hasattr(GAAuditLog, "correlation_id")
         assert hasattr(GAAuditLog, "created_at")
 
@@ -179,7 +179,7 @@ class TestGAAuditEvent:
         assert "dashboard_id" in d
         assert "access_surface" in d
         assert "success" in d
-        assert "metadata" in d
+        assert "event_metadata" in d
         assert "correlation_id" in d
         assert "created_at" in d
 
@@ -198,7 +198,7 @@ class TestGAAuditEvent:
     def test_to_dict_sanitizes_pii(self, sample_event_with_pii):
         """CRITICAL: PII is sanitized when converting to dict."""
         d = sample_event_with_pii.to_dict()
-        metadata = d["metadata"]
+        metadata = d["event_metadata"]
 
         assert metadata["email"] == "***@example.com"
         assert metadata["token"] == "[REDACTED]"
@@ -223,7 +223,7 @@ class TestGAAuditEvent:
         event = GAAuditEvent(
             event_type=AuditEventType.AUTH_LOGIN_FAILED,
             success=False,
-            metadata={"reason": "invalid_token"},
+            event_metadata={"reason": "invalid_token"},
         )
         d = event.to_dict()
         assert d["success"] is False
@@ -421,7 +421,7 @@ class TestEventScenarios:
             user_id="u-1",
             access_surface=AccessSurface.SHOPIFY_EMBED,
             success=True,
-            metadata={"ip_address": "10.0.0.1", "user_agent": "Chrome"},
+            event_metadata={"ip_address": "10.0.0.1", "user_agent": "Chrome"},
         )
         d = event.to_dict()
         assert d["event_type"] == "auth.login_success"
@@ -436,13 +436,13 @@ class TestEventScenarios:
             user_id="u-1",
             dashboard_id="sales",
             success=False,
-            metadata={"reason": "plan_not_allowed"},
+            event_metadata={"reason": "plan_not_allowed"},
         )
         d = event.to_dict()
         assert d["event_type"] == "dashboard.access_denied"
         assert d["dashboard_id"] == "sales"
         assert d["success"] is False
-        assert d["metadata"]["reason"] == "plan_not_allowed"
+        assert d["event_metadata"]["reason"] == "plan_not_allowed"
 
     def test_jwt_refresh_failed_event(self):
         """JWT refresh failure includes reason code."""
@@ -451,12 +451,12 @@ class TestEventScenarios:
             tenant_id="t-1",
             user_id="u-1",
             success=False,
-            metadata={"reason": "token_expired"},
+            event_metadata={"reason": "token_expired"},
         )
         d = event.to_dict()
         assert d["event_type"] == "auth.jwt_refresh"
         assert d["success"] is False
-        assert d["metadata"]["reason"] == "token_expired"
+        assert d["event_metadata"]["reason"] == "token_expired"
 
     def test_pre_auth_failure_nullable_fields(self):
         """Pre-auth failures can have null user_id and tenant_id."""
@@ -465,7 +465,7 @@ class TestEventScenarios:
             tenant_id=None,
             user_id=None,
             success=False,
-            metadata={"reason": "missing_token", "ip_address": "10.0.0.1"},
+            event_metadata={"reason": "missing_token", "ip_address": "10.0.0.1"},
         )
         d = event.to_dict()
         assert d["user_id"] is None

@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from src.models.ai_action import AIAction, ActionType, ActionStatus, ActionTargetEntityType
 from src.models.ai_recommendation import AIRecommendation, RecommendationType
-from src.models.action_execution_log import ActionExecutionLog, ActionLogEventType
+from src.models.action_execution_log import ActionExecutionLog
 from src.services.billing_entitlements import BillingEntitlementsService, BillingFeature
 
 

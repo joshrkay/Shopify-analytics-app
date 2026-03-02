@@ -11,14 +11,11 @@ Story 8.6 - Safety, Limits & Guardrails
 """
 
 import pytest
-import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from src.services.action_safety_service import (
     ActionSafetyService,
-    SafetyCheckResult,
-    RateLimitStatus,
     AIRateLimit,
     AICooldown,
     AISafetyEvent,

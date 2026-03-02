@@ -21,10 +21,8 @@ from sqlalchemy.orm import Session
 import os
 import httpx
 
-from src.integrations.airbyte.client import AirbyteClient, get_airbyte_client
+from src.integrations.airbyte.client import get_airbyte_client
 from src.integrations.airbyte.models import (
-    AirbyteSyncResult,
-    AirbyteJobStatus,
     SourceCreationRequest,
     ConnectionCreationRequest,
     ScheduleType,
@@ -32,11 +30,10 @@ from src.integrations.airbyte.models import (
 from src.integrations.airbyte.exceptions import (
     AirbyteError,
     AirbyteSyncError,
-    AirbyteConnectionError,
 )
 from src.services.airbyte_service import AirbyteService
 from src.models.store import ShopifyStore
-from src.platform.secrets import encrypt_secret, decrypt_secret, redact_secrets
+from src.platform.secrets import decrypt_secret, redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +166,7 @@ class ShopifyIngestionService:
 
         # Decrypt access token for Airbyte source configuration
         try:
-            access_token = await decrypt_secret(store.access_token_encrypted)
+            await decrypt_secret(store.access_token_encrypted)
         except Exception as e:
             logger.error(
                 "Failed to decrypt store access token",

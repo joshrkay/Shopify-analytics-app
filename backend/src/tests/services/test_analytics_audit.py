@@ -10,10 +10,8 @@ Validates:
 Story 5.1.7 - Audit Logging
 """
 
-import logging
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import patch, MagicMock
 
-import pytest
 
 from src.platform.audit import AuditAction, AuditOutcome
 from src.platform.audit_events import AUDITABLE_EVENTS

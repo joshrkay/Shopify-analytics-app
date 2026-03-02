@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 import redis
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 
 from src.platform.tenant_context import get_tenant_context
 

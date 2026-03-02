@@ -14,7 +14,7 @@ Run with: pytest src/tests/test_admin_backfills.py -v
 import hashlib
 import pytest
 from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 from src.api.schemas.backfill_request import (
     CreateBackfillRequest,
@@ -1248,7 +1248,6 @@ class TestBackfillWorkerStats:
 from src.services.backfill_state_guard import (
     BackfillStateGuard,
     BackfillGuardStatus,
-    BACKFILL_DASHBOARD_MODE,
 )
 from src.models.data_availability import AvailabilityState, AvailabilityReason
 
@@ -1546,7 +1545,7 @@ class TestDataAvailabilityBackfillOverride:
 
         mock_db = MagicMock()
         service = DataAvailabilityService(mock_db, "tenant_1")
-        result = service.get_data_availability("shopify_orders")
+        service.get_data_availability("shopify_orders")
 
         mock_override.assert_called_once_with("shopify_orders")
 

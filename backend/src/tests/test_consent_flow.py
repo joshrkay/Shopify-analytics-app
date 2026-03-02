@@ -188,7 +188,7 @@ class TestConsentServiceRequest:
         session.execute.return_value = mock_result
 
         service = ConsentService(db_session=session, tenant_id=TENANT_ID)
-        consent = service.request_consent(
+        service.request_consent(
             connection_id=CONNECTION_ID,
             connection_name="Shopify Prod",
             source_type="shopify",

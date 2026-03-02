@@ -12,8 +12,8 @@ Run with: pytest -m regression src/tests/regression/test_billing_regression.py -
 
 import json
 import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock, AsyncMock
+from datetime import datetime, timezone
+from unittest.mock import patch
 
 # NOTE: Imports of src.models and src.services are done inside tests
 # to avoid circular import issues. Use helper functions below.
@@ -589,7 +589,6 @@ class TestTenantIsolation:
         SubscriptionStatus = get_subscription_status()
 
         # Arrange: Record initial state for both tenants
-        initial_status_a = active_subscription.status
         initial_status_b = active_subscription_b.status
         initial_plan_b = active_subscription_b.plan_id
 

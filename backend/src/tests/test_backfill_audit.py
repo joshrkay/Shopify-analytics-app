@@ -12,9 +12,8 @@ Run with: pytest src/tests/test_backfill_audit.py -v
 """
 
 from datetime import date, datetime, timezone
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from src.models.historical_backfill import HistoricalBackfillStatus
 

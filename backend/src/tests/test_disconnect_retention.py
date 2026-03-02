@@ -11,9 +11,8 @@ Validates:
 Story: Secure Credential Vault - Disconnect & Retention
 """
 
-import json
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -48,7 +47,6 @@ def _mock_session():
 
 def _make_job(job_id, status, connector_id=CONNECTION_ID, **kwargs):
     """Create a mock IngestionJob."""
-    from src.ingestion.jobs.models import JobStatus
 
     job = MagicMock()
     job.job_id = job_id
@@ -355,7 +353,6 @@ class TestCancelActiveJobs:
         service = DisconnectService(db_session=session, tenant_id=TENANT_ID)
 
         # Reset execute after first call fails for job cancellation
-        original_side_effect = session.execute.side_effect
 
         call_count = [0]
 
@@ -941,7 +938,6 @@ class TestCredentialCleanupJob:
         """Dry run must count but not delete."""
         from src.workers.credential_cleanup_job import (
             run_cleanup,
-            count_eligible_credentials,
         )
 
         session = MagicMock()

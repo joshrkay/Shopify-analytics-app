@@ -12,9 +12,9 @@ Story 5.2.10 — Audit Logging
 """
 
 import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
-from src.platform.audit import AuditAction, AuditOutcome, AUDITABLE_EVENTS
+from src.platform.audit import AuditAction, AUDITABLE_EVENTS
 from src.services.audit_logger import (
     emit_dataset_sync_started,
     emit_dataset_sync_completed,

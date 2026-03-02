@@ -21,7 +21,7 @@ SECURITY:
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Set, FrozenSet
+from typing import Optional, List, Dict, Any, FrozenSet
 
 from sqlalchemy.orm import Session
 
@@ -32,11 +32,7 @@ from src.models.user_tenant_roles import UserTenantRole
 from src.services.clerk_sync_service import ClerkSyncService
 from src.constants.permissions import (
     Permission,
-    Role,
     get_permissions_for_roles,
-    has_multi_tenant_access,
-    get_role_category,
-    RoleCategory,
 )
 
 logger = logging.getLogger(__name__)
@@ -404,7 +400,7 @@ class AuthContextResolver:
             self.session.query(UserTenantRole)
             .filter(
                 UserTenantRole.user_id == user.id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             )
             .all()
         )

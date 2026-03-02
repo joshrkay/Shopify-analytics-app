@@ -10,7 +10,7 @@ ACCEPTANCE CRITERIA:
 """
 
 import pytest
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, Mock, patch
 from fastapi import Request
 
 from src.middleware.audit_middleware import GAAuditMiddleware

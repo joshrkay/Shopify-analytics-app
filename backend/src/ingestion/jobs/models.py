@@ -23,7 +23,6 @@ from sqlalchemy import (
     Text,
     Index,
     JSON,
-    Boolean,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 

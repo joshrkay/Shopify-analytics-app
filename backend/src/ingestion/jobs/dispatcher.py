@@ -15,12 +15,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from src.ingestion.jobs.models import IngestionJob, JobStatus
-from src.platform.audit import AuditAction
 
 logger = logging.getLogger(__name__)
 

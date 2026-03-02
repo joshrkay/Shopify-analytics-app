@@ -7,7 +7,7 @@ UI permission gating is NOT security - server-side enforcement is security.
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from fastapi import FastAPI, Request, status, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.testclient import TestClient
 
 from src.platform.tenant_context import TenantContext, TenantContextMiddleware

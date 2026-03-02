@@ -29,7 +29,7 @@ import {
   type ActiveIncidentBanner,
   type MerchantDataHealthResponse,
 } from '../services/syncHealthApi';
-import { isBackendDown, resetCircuitBreaker, isProvisioningError } from '../services/apiUtils';
+import { isBackendDown, isProvisioningError } from '../services/apiUtils';
 import { useProvisioningRetry } from '../hooks/useProvisioningRetry';
 import type { MerchantHealthState } from '../utils/data_health_copy';
 

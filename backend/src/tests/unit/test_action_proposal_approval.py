@@ -13,7 +13,7 @@ Story 8.4 - Action Proposals (Approval Required)
 import pytest
 import uuid
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from sqlalchemy.orm import Session
 

@@ -45,7 +45,7 @@ import type { DataSourceDefinition, UpdateSyncConfigRequest } from '../types/sou
 
 export default function DataSources() {
   const {
-    connections: sources,
+    sources,
     isLoading: loading,
     error,
     hasConnectedSources,

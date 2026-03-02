@@ -12,7 +12,7 @@ from enum import Enum as PyEnum
 
 from sqlalchemy import (
     Column, String, DateTime, ForeignKey,
-    Index, UniqueConstraint, JSON,
+    Index, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 

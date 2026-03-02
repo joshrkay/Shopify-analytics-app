@@ -18,10 +18,9 @@ from typing import Optional, List
 from datetime import datetime
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from src.platform.tenant_context import get_tenant_context
-from src.database.session import get_db_session
 from src.models.ai_insight import AIInsight, InsightType, InsightSeverity
 from src.api.dependencies.entitlements import check_ai_insights_entitlement
 

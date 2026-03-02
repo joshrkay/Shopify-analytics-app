@@ -14,7 +14,7 @@ Story 8.5 - Action Execution (Scoped & Reversible)
 import pytest
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from src.models.ai_action import AIAction, ActionStatus, ActionType, ActionTargetEntityType
 from src.models.action_job import ActionJob, ActionJobStatus

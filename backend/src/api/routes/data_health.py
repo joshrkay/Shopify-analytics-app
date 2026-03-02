@@ -13,9 +13,8 @@ Health data is tenant-scoped - users can only see their own connections.
 Story 3.6 - Data Freshness & Health Monitoring
 """
 
-import os
 import logging
-from typing import Any, Dict, Optional, List
+from typing import Dict, Optional, List
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, Field

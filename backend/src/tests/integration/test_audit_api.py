@@ -306,7 +306,6 @@ class TestSafetyEvents:
 
     def test_returns_safety_events(self, client, mock_tenant_context, tenant_id):
         """Should return safety events."""
-        from src.services.action_safety_service import AISafetyEvent
 
         mock_event = Mock()
         mock_event.id = uuid.uuid4()

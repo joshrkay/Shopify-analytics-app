@@ -9,13 +9,10 @@ Tests cover:
 - Audit events on invalid access
 """
 
-import uuid
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
-from fastapi import HTTPException
 
 from src.services.tenant_selection_service import (
     TenantSelectionService,
@@ -27,7 +24,6 @@ from src.services.tenant_selection_service import (
 from src.platform.tenant_context import (
     TenantSelectionRequiredException,
     NoTenantAccessException,
-    TenantViolationType,
 )
 from src.models.user import User
 from src.models.tenant import Tenant, TenantStatus

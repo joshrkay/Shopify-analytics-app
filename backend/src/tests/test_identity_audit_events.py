@@ -10,25 +10,20 @@ Tests cover:
 - Integration with ClerkSyncService sync methods
 """
 
-import uuid
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timezone
+from unittest.mock import patch, MagicMock
 
 from sqlalchemy.orm import Session
 
 from src.services.clerk_sync_service import ClerkSyncService
 from src.platform.audit import (
     AuditAction,
-    AuditEvent,
     AuditLog,
-    AuditOutcome,
 )
 from src.platform.audit_events import (
     AUDITABLE_EVENTS,
     EVENT_CATEGORIES,
     EVENT_SEVERITY,
-    validate_event_metadata,
 )
 
 
@@ -580,7 +575,7 @@ class TestEndToEndTenantLifecycle:
         with patch('src.services.clerk_sync_service.Tenant') as MockTenant:
             MockTenant.return_value = mock_tenant
 
-            tenant = clerk_sync_service_mocked.sync_tenant_from_org(
+            clerk_sync_service_mocked.sync_tenant_from_org(
                 clerk_org_id="org_clerk_e2e_456",
                 name="E2E Test Org",
                 billing_tier="free",
@@ -689,7 +684,7 @@ class TestEndToEndUserLifecycle:
         with patch('src.services.clerk_sync_service.User') as MockUser:
             MockUser.return_value = mock_user
 
-            user = clerk_sync_service_for_user.sync_user(
+            clerk_sync_service_for_user.sync_user(
                 clerk_user_id="user_clerk_e2e_789",
                 email="test@example.com",
                 first_name="Test",
@@ -715,7 +710,7 @@ class TestEndToEndUserLifecycle:
         mock_query = clerk_sync_service_for_user.session.query.return_value
         mock_query.filter.return_value.first.return_value = mock_user
 
-        user = clerk_sync_service_for_user.sync_user(
+        clerk_sync_service_for_user.sync_user(
             clerk_user_id="user_clerk_e2e_789",
             email="updated@example.com",
             source="webhook",
@@ -749,7 +744,7 @@ class TestEndToEndUserLifecycle:
         with patch('src.services.clerk_sync_service.UserTenantRole') as MockRole:
             MockRole.create_from_clerk.return_value = mock_user_tenant_role
 
-            role = clerk_sync_service_for_user.sync_membership(
+            clerk_sync_service_for_user.sync_membership(
                 clerk_user_id="user_clerk_e2e_789",
                 clerk_org_id="org_clerk_e2e_def",
                 role="org:admin",

@@ -11,7 +11,7 @@ Phase: Custom Reports & Dashboard Builder
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request, HTTPException, Depends, status
+from fastapi import APIRouter, Request, HTTPException, Depends
 
 from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session

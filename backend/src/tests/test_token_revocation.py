@@ -33,7 +33,6 @@ from src.services.token_manager import (
     RefreshOutcome,
     RefreshStats,
     RevocationReason,
-    PROACTIVE_REFRESH_HOURS,
     MAX_REFRESH_ATTEMPTS,
     REFRESH_BACKOFF_MINUTES,
 )

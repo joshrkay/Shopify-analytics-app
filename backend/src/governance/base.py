@@ -7,7 +7,7 @@ and serialization to reduce duplication across governance modules.
 
 import logging
 import uuid
-from dataclasses import asdict, fields, is_dataclass
+from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path

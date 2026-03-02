@@ -11,10 +11,9 @@ Story 4.2 - Data Quality Root Cause Signals
 SECURITY: All tables are tenant-scoped via tenant_id from JWT.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy import (
     Column, String, Integer, Boolean, DateTime,

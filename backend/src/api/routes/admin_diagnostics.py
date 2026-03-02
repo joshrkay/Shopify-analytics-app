@@ -13,7 +13,7 @@ Story 4.2 - Data Quality Root Cause Signals (Prompt 4.2.7)
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query

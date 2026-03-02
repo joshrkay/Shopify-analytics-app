@@ -8,7 +8,6 @@ Admin operations do not require tenant context.
 import uuid
 import logging
 from typing import Optional, List
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import IntegrityError
@@ -99,7 +98,7 @@ class PlansRepository:
             query = query.options(selectinload(Plan.features))
 
         if not include_inactive:
-            query = query.filter(Plan.is_active == True)
+            query = query.filter(Plan.is_active)
 
         return query.order_by(Plan.price_monthly_cents.asc().nullsfirst()).offset(offset).limit(limit).all()
 
@@ -116,7 +115,7 @@ class PlansRepository:
         query = self.db.query(Plan)
 
         if not include_inactive:
-            query = query.filter(Plan.is_active == True)
+            query = query.filter(Plan.is_active)
 
         return query.count()
 

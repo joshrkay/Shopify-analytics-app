@@ -9,17 +9,15 @@ ACCEPTANCE CRITERIA:
 - No legal hold support (GA scope)
 """
 
-import uuid
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import MagicMock
 
 from src.workers.audit_retention_job import (
     GAAuditRetentionJob,
     RETENTION_DAYS,
     BATCH_SIZE,
 )
-from src.models.audit_log import GAAuditLog
 
 
 # ============================================================================

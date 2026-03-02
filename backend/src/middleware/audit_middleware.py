@@ -17,7 +17,6 @@ the authenticated request state.
 """
 
 import logging
-import uuid
 from typing import Optional
 
 from fastapi import Request, Response

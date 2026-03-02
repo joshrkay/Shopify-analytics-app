@@ -11,7 +11,7 @@ SECURITY: All operations are tenant-scoped via tenant_id from JWT.
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -19,19 +19,15 @@ from sqlalchemy.orm import Session
 
 from src.diagnostics.ingestion_diagnostics import (
     diagnose_ingestion_failure,
-    IngestionDiagnosticResult,
 )
 from src.diagnostics.schema_drift import (
     diagnose_schema_drift,
-    SchemaDriftResult,
 )
 from src.diagnostics.transformation_regression import (
     diagnose_transformation_regression,
-    TransformationRegressionResult,
 )
 from src.diagnostics.upstream_shift import (
     diagnose_upstream_shift,
-    UpstreamShiftResult,
 )
 from src.ingestion.dbt_artifact_parser import (
     DbtRunSummary,

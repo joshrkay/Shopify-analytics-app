@@ -27,7 +27,6 @@ from src.services.recommendation_templates import (
     RECOMMENDATION_TEMPLATES,
     RATIONALE_TEMPLATES,
     FORBIDDEN_PHRASES,
-    CONDITIONAL_PHRASES,
     CURRENCY_SYMBOLS,
 )
 from src.services.recommendation_generation_service import DetectedRecommendation

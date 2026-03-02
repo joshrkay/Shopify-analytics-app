@@ -16,13 +16,13 @@ import logging
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Request, HTTPException, status, Depends
+from fastapi import APIRouter, Request, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.platform.tenant_context import TenantContext, get_tenant_context
-from src.platform.rbac import require_any_permission, has_permission
-from src.constants.permissions import Permission, Role, has_multi_tenant_access
+from src.platform.rbac import require_any_permission
+from src.constants.permissions import Permission
 from src.services.billing_entitlements import (
     BillingEntitlementsService,
     BillingFeature,

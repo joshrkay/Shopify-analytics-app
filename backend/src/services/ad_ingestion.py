@@ -597,7 +597,6 @@ class AdIngestionService:
         if connection.source_type not in AIRBYTE_SOURCE_TYPES.values():
             return None
 
-        config = connection.source_type
         platform = None
         for p, source in AIRBYTE_SOURCE_TYPES.items():
             if source == connection.source_type:
@@ -907,7 +906,7 @@ class AdIngestionService:
             AccountNotFoundError: If account not found
         """
         try:
-            connection = self._airbyte_service.disable_connection(connection_id)
+            self._airbyte_service.disable_connection(connection_id)
         except ConnectionNotFoundServiceError:
             raise AccountNotFoundError(f"Ad account {connection_id} not found")
 
@@ -935,7 +934,7 @@ class AdIngestionService:
             AccountNotFoundError: If account not found
         """
         try:
-            connection = self._airbyte_service.enable_connection(connection_id)
+            self._airbyte_service.enable_connection(connection_id)
         except ConnectionNotFoundServiceError:
             raise AccountNotFoundError(f"Ad account {connection_id} not found")
 

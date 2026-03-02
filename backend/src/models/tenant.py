@@ -17,7 +17,7 @@ import uuid
 import enum
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Column, String, Boolean, Enum, Index, ForeignKey
+from sqlalchemy import Column, String, Enum, Index, ForeignKey
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import relationship
 
@@ -25,8 +25,7 @@ from src.db_base import Base
 from src.models.base import TimestampMixin
 
 if TYPE_CHECKING:
-    from src.models.organization import Organization
-    from src.models.user_tenant_roles import UserTenantRole
+    pass
 
 
 class TenantStatus(str, enum.Enum):

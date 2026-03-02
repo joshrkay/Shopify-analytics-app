@@ -196,7 +196,6 @@ def _reconcile_cached_entitlements(db, stats: ReconciliationStats) -> None:
     from src.entitlements.cache import get_entitlement_cache
     from src.entitlements.service import invalidate_entitlements
     from src.entitlements.models import BillingState
-    from src.models.plan import Plan
 
     cache = get_entitlement_cache()
 

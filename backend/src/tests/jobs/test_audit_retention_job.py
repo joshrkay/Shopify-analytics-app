@@ -6,7 +6,7 @@ Story 10.4 - Retention Enforcement
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from src.config.retention import get_retention_days, PLAN_RETENTION_DEFAULTS
 from src.jobs.audit_retention_job import AuditRetentionJob
@@ -247,6 +247,6 @@ class TestAuditRetentionJobIntegration:
             mock_db.execute.side_effect = execute_side_effect
 
             cutoff = datetime.now(timezone.utc) - timedelta(days=90)
-            deleted = job.delete_expired_logs("tenant-1", cutoff)
+            job.delete_expired_logs("tenant-1", cutoff)
 
             mock_metric.assert_called_with(50, "tenant-1")

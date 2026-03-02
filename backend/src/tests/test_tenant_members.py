@@ -11,11 +11,8 @@ Tests cover:
 """
 
 import pytest
-from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
 
-from src.models.organization import Organization
 from src.models.tenant import Tenant, TenantStatus
 from src.models.user import User
 from src.models.user_tenant_roles import UserTenantRole

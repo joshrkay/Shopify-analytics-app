@@ -11,11 +11,9 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse, parse_qs
 
-import httpx
 from fastapi import HTTPException
 
 from src.integrations.airbyte.oauth_registry import (
-    OAUTH_REGISTRY,
     build_auth_url,
     build_source_config,
     exchange_code_for_tokens,

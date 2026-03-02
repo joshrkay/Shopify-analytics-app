@@ -9,10 +9,9 @@ import logging
 from typing import Optional, List
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
-from src.repositories.base_repo import BaseRepository, TenantIsolationError
+from src.repositories.base_repo import BaseRepository
 from src.models.airbyte_connection import (
     TenantAirbyteConnection,
     ConnectionStatus,

@@ -22,7 +22,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Request, HTTPException, status
 from pydantic import BaseModel, Field
 
-from src.platform.tenant_context import TenantContext, get_tenant_context
+from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session_sync
 from src.services.tenant_members_service import TenantMembersService
 from src.services.tenant_selection_service import (
@@ -361,7 +361,7 @@ async def set_active_tenant(request: Request, body: SetActiveTenantRequest):
             previous_tenant_id=result.get("previous_tenant_id"),
         )
 
-    except TenantNotFoundError as e:
+    except TenantNotFoundError:
         logger.warning(
             "Attempt to set non-existent tenant as active",
             extra={
@@ -374,7 +374,7 @@ async def set_active_tenant(request: Request, body: SetActiveTenantRequest):
             detail=f"Tenant not found: {body.tenant_id}"
         )
 
-    except TenantAccessDeniedError as e:
+    except TenantAccessDeniedError:
         logger.warning(
             "Attempt to set unauthorized tenant as active",
             extra={

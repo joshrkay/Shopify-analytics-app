@@ -9,7 +9,7 @@ Provides deterministic AI responses for testing:
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Callable
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 
 import httpx

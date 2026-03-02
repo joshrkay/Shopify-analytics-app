@@ -22,15 +22,14 @@ import enum
 from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Column, String, Boolean, DateTime, Index, ForeignKey, Enum as SAEnum
+from sqlalchemy import Column, String, DateTime, Index, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import relationship
 
 from src.db_base import Base
 from src.models.base import TimestampMixin
 
 if TYPE_CHECKING:
-    from src.models.user import User
-    from src.models.tenant import Tenant
+    pass
 
 
 class InviteStatus(str, enum.Enum):

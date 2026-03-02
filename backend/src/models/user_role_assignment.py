@@ -31,9 +31,7 @@ from src.db_base import Base
 from src.models.base import TimestampMixin
 
 if TYPE_CHECKING:
-    from src.models.user import User
-    from src.models.tenant import Tenant
-    from src.models.role import Role
+    pass
 
 
 class UserRoleAssignment(Base, TimestampMixin):

@@ -19,7 +19,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.ingestion.jobs.models import IngestionJob, JobStatus
 from src.ingestion.jobs.retry import (
     RetryPolicy,
-    RetryDecision,
     ErrorCategory,
     categorize_error,
     calculate_backoff,
@@ -450,7 +449,7 @@ class TestDeadLetterQueueQueries:
         dispatcher = JobDispatcher(db_session, test_tenant_id)
 
         # Create jobs in various states
-        job_queued = dispatcher.dispatch(
+        dispatcher.dispatch(
             connector_id="connector-1",
             external_account_id="shop-1",
         )

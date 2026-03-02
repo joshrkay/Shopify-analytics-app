@@ -20,7 +20,7 @@ Story 5.5.5 — RBAC Enforcement Middleware
 import logging
 from typing import Optional
 
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response, JSONResponse
 

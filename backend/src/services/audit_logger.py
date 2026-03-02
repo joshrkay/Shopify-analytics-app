@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 _RESOURCE_TYPE = "historical_backfill_request"
 _JWT_RESOURCE_TYPE = "jwt"
 _DASHBOARD_RESOURCE_TYPE = "dashboard"
+_REVOCATION_RESOURCE_TYPE = "agency_access_revocation"
 
 
 def _build_base_metadata(request) -> dict:
@@ -1482,7 +1483,7 @@ def emit_jwt_revoked(
         )
 
 
-def emit_dashboard_viewed(
+def emit_custom_dashboard_viewed(
     db: Session,
     tenant_id: str,
     user_id: str,
@@ -1491,7 +1492,7 @@ def emit_dashboard_viewed(
     *,
     correlation_id: str | None = None,
 ) -> None:
-    """Emit dashboard.viewed when a dashboard is accessed."""
+    """Emit dashboard.viewed when a custom dashboard is accessed."""
     try:
         from src.platform.audit import (
             AuditAction,
@@ -1674,6 +1675,46 @@ def emit_rbac_denied(
         )
 
 
+def emit_agency_access_revoked(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    revocation_id: str | None = None,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit agency_access.revoked when agency access is revoked for a user."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.AGENCY_ACCESS_REVOKED,
+            resource_type=_REVOCATION_RESOURCE_TYPE,
+            resource_id=revocation_id,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "revocation_id": revocation_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+            correlation_id=correlation_id,
+            source="worker",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_agency_access_revoked_failed",
+            extra={"user_id": user_id, "tenant_id": tenant_id},
+            exc_info=True,
+        )
+
+
 def emit_agency_access_expired(
     db: Session,
     tenant_id: str,
@@ -1731,7 +1772,7 @@ def _write_ga_audit_event(db: Session, event) -> None:
 
     Never raises — falls back to structured logging on DB failure.
     """
-    from src.models.audit_log import GAAuditLog, PIISanitizer
+    from src.models.audit_log import GAAuditLog
 
     try:
         import uuid as _uuid

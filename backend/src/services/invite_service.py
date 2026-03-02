@@ -15,14 +15,13 @@ Two sources of invitations:
 
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 from src.models.tenant_invite import TenantInvite, InviteStatus
-from src.models.tenant import Tenant, TenantStatus
+from src.models.tenant import Tenant
 from src.models.user import User
 from src.models.user_tenant_roles import UserTenantRole
 from src.platform.audit import (
@@ -177,7 +176,7 @@ class InviteService:
             existing_role = self.session.query(UserTenantRole).filter(
                 UserTenantRole.user_id == user.id,
                 UserTenantRole.tenant_id == tenant_id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             ).first()
 
             if existing_role:
@@ -278,7 +277,7 @@ class InviteService:
 
             existing_user_with_email = self.session.query(User).filter(
                 User.email == email_to_check,
-                User.is_active == True,
+                User.is_active,
             ).first()
 
             if existing_user_with_email:

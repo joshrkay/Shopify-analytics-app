@@ -12,7 +12,7 @@ Story 8.1 - AI Insight Generation (Read-Only Analytics)
 
 import uuid
 import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from src.models.ai_insight import (
     AIInsight,

@@ -21,9 +21,7 @@ or technical error codes to the merchant.
 Story 4.3 - Merchant Data Health Trust Layer
 """
 
-from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 

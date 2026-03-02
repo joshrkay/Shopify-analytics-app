@@ -12,17 +12,14 @@ Story 9.1 - Notification Framework (Events → Channels)
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timezone
+from unittest.mock import Mock, MagicMock
 from sqlalchemy.exc import IntegrityError
 
 from src.models.notification import (
-    Notification,
     NotificationEventType,
     NotificationImportance,
     NotificationStatus,
 )
-from src.models.notification_preference import NotificationPreference
 from src.services.notification_service import NotificationService
 
 

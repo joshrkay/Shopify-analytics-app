@@ -12,10 +12,9 @@ config/data_freshness_sla.yml — never set manually.
 SECURITY: All rows are tenant-scoped via tenant_id from JWT.
 """
 
-import uuid
 from enum import Enum
 
-from sqlalchemy import Column, String, Integer, DateTime, Text, Index
+from sqlalchemy import Column, String, Integer, DateTime, Index
 
 from src.db_base import Base
 from src.models.base import TimestampMixin, TenantScopedMixin, generate_uuid

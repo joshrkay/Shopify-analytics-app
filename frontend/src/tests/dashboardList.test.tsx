@@ -12,7 +12,7 @@ import { MemoryRouter } from 'react-router-dom';
 import '@shopify/polaris/build/esm/styles.css';
 
 import { DashboardList } from '../pages/DashboardList';
-import { listDashboards } from '../services/customDashboardsApi';
+import { listDashboards, getDashboardCount } from '../services/customDashboardsApi';
 import { fetchEntitlements, isFeatureEntitled } from '../services/entitlementsApi';
 import type { Dashboard } from '../types/customDashboards';
 import type { EntitlementsResponse } from '../services/entitlementsApi';
@@ -111,6 +111,7 @@ describe('DashboardList', () => {
     });
     vi.mocked(fetchEntitlements).mockResolvedValue(createMockEntitlements());
     vi.mocked(isFeatureEntitled).mockReturnValue(true);
+    vi.mocked(getDashboardCount).mockResolvedValue({ count: 1, limit: 10, can_create: true });
   });
 
   it("renders 'Dashboards' page title", () => {

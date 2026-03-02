@@ -17,7 +17,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.models.audit_log import GAAuditLog, AuditEventType
+from src.models.audit_log import GAAuditLog
 
 logger = logging.getLogger(__name__)
 

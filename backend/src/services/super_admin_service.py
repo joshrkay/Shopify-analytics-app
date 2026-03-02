@@ -122,7 +122,7 @@ class SuperAdminService:
         if self._actor_user is None and self.actor_clerk_user_id:
             self._actor_user = self.session.query(User).filter(
                 User.clerk_user_id == self.actor_clerk_user_id,
-                User.is_active == True,
+                User.is_active,
             ).first()
         return self._actor_user
 
@@ -144,7 +144,7 @@ class SuperAdminService:
 
         user = self.session.query(User).filter(
             User.clerk_user_id == check_id,
-            User.is_active == True,
+            User.is_active,
         ).first()
 
         return user is not None and user.is_super_admin is True
@@ -225,7 +225,7 @@ class SuperAdminService:
             AlreadySuperAdminError: If target is already a super admin
         """
         # Verify actor is super admin
-        actor = self._verify_actor_is_super_admin()
+        self._verify_actor_is_super_admin()
 
         # Get target user
         target = self._get_user_by_clerk_id(target_clerk_user_id)
@@ -309,8 +309,8 @@ class SuperAdminService:
 
         # Check if this is the last super admin
         super_admin_count = self.session.query(User).filter(
-            User.is_super_admin == True,
-            User.is_active == True,
+            User.is_super_admin,
+            User.is_active,
         ).count()
 
         if super_admin_count <= 1:
@@ -365,8 +365,8 @@ class SuperAdminService:
         self._verify_actor_is_super_admin()
 
         users = self.session.query(User).filter(
-            User.is_super_admin == True,
-            User.is_active == True,
+            User.is_super_admin,
+            User.is_active,
         ).all()
 
         return [

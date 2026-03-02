@@ -18,7 +18,6 @@ CRITICAL: All access denials MUST be logged for SOC2/Shopify compliance.
 
 import json
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from dataclasses import dataclass, asdict, field
@@ -175,7 +174,7 @@ class DatabaseAuditWriter:
         try:
             session = self._db_session_factory()
             try:
-                from src.models.billing_event import BillingEvent, BillingEventType
+                from src.models.billing_event import BillingEvent
 
                 audit_entry = BillingEvent(
                     id=event.event_id,

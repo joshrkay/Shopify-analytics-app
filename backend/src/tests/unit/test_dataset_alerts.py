@@ -12,14 +12,11 @@ Tests cover:
 Story 5.2.9 — Operator Alerting
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.monitoring.dataset_alerts import (
     DatasetAlertType,
     DatasetAlertSeverity,
-    DatasetAlert,
     dispatch_alert,
     alert_sync_failure,
     alert_compatibility_failure,

@@ -25,7 +25,7 @@ import hashlib
 import logging
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request, HTTPException, status
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ async def shopify_app_entry(request: Request):
     embedded = query_params.get("embedded", "0")
 
     # Get Clerk publishable key for frontend auth initialization
-    clerk_publishable_key = os.getenv("VITE_CLERK_PUBLISHABLE_KEY", "")
+    os.getenv("VITE_CLERK_PUBLISHABLE_KEY", "")
     api_url = os.getenv("API_URL", request.base_url.scheme + "://" + request.base_url.netloc)
 
     logger.info(

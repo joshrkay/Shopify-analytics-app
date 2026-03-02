@@ -18,7 +18,6 @@ from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Header
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from src.database.session import get_db_session_sync
 from src.services.clerk_webhook_handler import ClerkWebhookHandler

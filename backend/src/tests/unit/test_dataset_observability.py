@@ -14,9 +14,8 @@ Tests cover:
 Story 5.2.8 — Dataset Observability & Metrics
 """
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 from src.models.dataset_metrics import DatasetMetrics, DatasetSyncStatus
 from src.services.dataset_observability import DatasetObservabilityService
@@ -259,7 +258,7 @@ class TestGetUnhealthyDatasets:
 
     def test_returns_only_non_ok(self):
         svc, db = _make_service()
-        ok = _make_existing_metrics("ds_ok", sync_status="ok")
+        _make_existing_metrics("ds_ok", sync_status="ok")
         failed = _make_existing_metrics("ds_failed", sync_status="failed")
         blocked = _make_existing_metrics("ds_blocked", sync_status="blocked")
 

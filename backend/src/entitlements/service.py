@@ -38,13 +38,11 @@ from src.entitlements.models import (
 )
 from src.entitlements.loader import (
     EntitlementLoader,
-    PlanEntitlements,
     get_entitlement_loader,
 )
 from src.entitlements.cache import (
     EntitlementCache,
     get_entitlement_cache,
-    INVALIDATION_CHANNEL,
 )
 from src.entitlements.audit import (
     EntitlementAuditLogger,

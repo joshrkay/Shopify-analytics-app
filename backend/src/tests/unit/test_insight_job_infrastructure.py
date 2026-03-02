@@ -11,8 +11,7 @@ Story 8.1 - AI Insight Generation (Read-Only Analytics)
 """
 
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 from src.models.insight_job import InsightJob, InsightJobStatus, InsightJobCadence
 from src.services.insight_job_dispatcher import InsightJobDispatcher
@@ -455,7 +454,7 @@ class TestMonthlyLimitEnforcement:
         dispatcher = InsightJobDispatcher(mock_db_session, "test-tenant")
 
         # Call the internal method to verify it queries correctly
-        count = dispatcher._get_monthly_insight_count()
+        dispatcher._get_monthly_insight_count()
 
         # Verify query was made with filter
         mock_db_session.query.assert_called()

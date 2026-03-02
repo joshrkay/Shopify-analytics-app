@@ -13,9 +13,7 @@ import hashlib
 import hmac
 import json
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock
 
 import httpx
 

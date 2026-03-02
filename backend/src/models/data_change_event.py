@@ -11,9 +11,7 @@ SECURITY:
 - All data is aggregated into human-readable summaries
 """
 
-from datetime import datetime
 from enum import Enum
-from typing import Optional, List
 
 from sqlalchemy import (
     Column, String, Text, DateTime,
@@ -199,7 +197,7 @@ class DataChangeEvent(Base, TimestampMixin, TenantScopedMixin):
         Index(
             "ix_data_change_events_connector",
             "tenant_id", "affected_connector_id",
-            postgresql_where=(affected_connector_id != None)
+            postgresql_where=(affected_connector_id is not None)
         ),
     )
 

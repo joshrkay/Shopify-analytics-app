@@ -12,10 +12,10 @@ ACCEPTANCE CRITERIA:
 import uuid
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, MagicMock
 
 from src.services.audit_query_service import AuditQueryService, AuditQueryResult
-from src.models.audit_log import GAAuditLog, AuditEventType, AccessSurface
+from src.models.audit_log import GAAuditLog
 
 
 # ============================================================================

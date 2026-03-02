@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import (
     Column,
     String,
-    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -35,9 +34,7 @@ from src.db_base import Base
 from src.models.base import TimestampMixin
 
 if TYPE_CHECKING:
-    from src.models.user import User
-    from src.models.tenant import Tenant
-    from src.models.organization import Organization
+    pass
 
 
 class AgencyAccessRequestStatus(str, enum.Enum):

@@ -6,17 +6,12 @@ all breaking changes (column removal, type change, view removal). Property-based
 tests prove no edge case bypasses the checker.
 """
 
-from datetime import datetime, timezone
 
 import pytest
 
 from src.services.schema_compatibility_checker import (
     SchemaCompatibilityChecker,
     DatasetSchemaSnapshot,
-    DatasetViewSchema,
-    ColumnSchema,
-    BreakingChange,
-    CompatibilityResult,
     build_snapshot_from_manifest,
     _is_semantic_view,
 )

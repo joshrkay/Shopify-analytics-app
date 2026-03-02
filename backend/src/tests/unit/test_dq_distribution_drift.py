@@ -9,7 +9,6 @@ Tests cover:
 """
 
 import pytest
-from decimal import Decimal
 from unittest.mock import Mock, patch
 
 from src.api.dq.service import DQService

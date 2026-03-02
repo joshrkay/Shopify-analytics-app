@@ -12,12 +12,12 @@ Phase: Custom Reports & Dashboard Builder
 
 import uuid
 import pytest
+from unittest.mock import patch
 from datetime import datetime, timezone, timedelta
 
 from src.models.custom_dashboard import CustomDashboard, DashboardStatus
 from src.models.custom_report import CustomReport, ChartType
 from src.models.dashboard_version import DashboardVersion, MAX_DASHBOARD_VERSIONS
-from src.models.dashboard_share import DashboardShare, SharePermission
 from src.models.dashboard_audit import DashboardAudit, DashboardAuditAction
 from src.models.report_template import ReportTemplate, TemplateCategory
 from src.services.custom_dashboard_service import (
@@ -25,7 +25,6 @@ from src.services.custom_dashboard_service import (
     DashboardNotFoundError,
     DashboardLimitExceededError,
     DashboardConflictError,
-    DashboardNameConflictError,
 )
 from src.services.custom_report_service import (
     CustomReportService,
@@ -40,7 +39,6 @@ from src.services.dashboard_share_service import (
 )
 from src.services.report_template_service import (
     ReportTemplateService,
-    TemplateNotFoundError,
     TemplateRequirementsError,
 )
 
@@ -289,7 +287,8 @@ class TestCustomDashboardService:
         with pytest.raises(DashboardNotFoundError):
             other_service.archive_dashboard(dashboard.id)
 
-    def test_duplicate_dashboard_clones_reports(self, db_session):
+    @patch.object(CustomReportService, "_validate_dataset_access", return_value=None)
+    def test_duplicate_dashboard_clones_reports(self, _mock_validate, db_session):
         service = self._service(db_session)
         dashboard = service.create_dashboard(name="Original")
 
@@ -378,6 +377,14 @@ class TestVersionManagement:
 
 class TestCustomReportService:
     """Test CustomReportService business logic."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_dataset_validation(self):
+        """Skip dataset validation (requires Superset connection)."""
+        with patch.object(
+            CustomReportService, "_validate_dataset_access", return_value=None
+        ):
+            yield
 
     def _setup(self, db_session):
         dash_service = CustomDashboardService(db_session, TENANT_ID, USER_ID)
@@ -517,6 +524,16 @@ class TestCustomReportService:
 
 class TestDashboardShareService:
     """Test DashboardShareService business logic."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_share_validations(self):
+        """Skip share validations that require external state (User records, billing)."""
+        with patch.object(
+            DashboardShareService, "_validate_recipient_tenant_access", return_value=None
+        ), patch.object(
+            DashboardShareService, "_check_share_limit", return_value=None
+        ):
+            yield
 
     def _setup(self, db_session):
         dash_service = CustomDashboardService(db_session, TENANT_ID, USER_ID)

@@ -16,12 +16,10 @@ from unittest.mock import Mock, MagicMock, patch
 from src.api.dq.service import DataQualityVerdict
 from src.models.dq_models import DataQualityState
 from src.middleware.data_quality_guard import (
-    DataQualityCheckResult,
     DataQualityGuard,
     check_data_quality,
 )
 from src.middleware.superset_quality_hook import (
-    QueryQualityResult,
     SupersetQualityHook,
 )
 

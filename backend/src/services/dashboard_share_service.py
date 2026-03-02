@@ -283,7 +283,7 @@ class DashboardShareService:
         has_tenant_access = self.db.query(UserTenantRole).filter(
             UserTenantRole.user_id == recipient.id,
             UserTenantRole.tenant_id == self.tenant_id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).first() is not None
 
         if not has_tenant_access:

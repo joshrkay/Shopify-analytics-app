@@ -18,12 +18,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from src.constants.permissions import (
-    Role,
-    Permission,
-    BILLING_TIER_ALLOWED_ROLES,
     is_role_allowed_for_billing_tier,
     get_allowed_roles_for_billing_tier,
-    has_multi_tenant_access,
 )
 from src.models.subscription import Subscription, SubscriptionStatus
 from src.models.plan import Plan, PlanFeature
@@ -264,7 +260,7 @@ class BillingEntitlementsService:
             RoleValidationResult with validation status for all roles
         """
         billing_tier = self.get_billing_tier()
-        allowed_roles = get_allowed_roles_for_billing_tier(billing_tier)
+        get_allowed_roles_for_billing_tier(billing_tier)
 
         valid_roles = []
         revoked_roles = []

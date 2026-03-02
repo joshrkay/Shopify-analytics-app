@@ -21,7 +21,6 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from src.services.airbyte_service import AirbyteService
-from src.models.airbyte_connection import ConnectionStatus
 
 logger = logging.getLogger(__name__)
 

@@ -1,11 +1,23 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Mock AgencyContext (useTeamMembers calls useAgency for activeTenantId)
+vi.mock('../contexts/AgencyContext', () => ({
+  useAgency: vi.fn().mockReturnValue({
+    activeTenantId: 'test-tenant-id',
+    getActiveStore: vi.fn().mockReturnValue(null),
+    isAgencyUser: false,
+    tenants: [],
+    switchTenant: vi.fn(),
+  }),
+}));
+
 vi.mock('../services/tenantMembersApi', () => ({
   getTeamMembers: vi.fn(),
   inviteMember: vi.fn(),
   updateMemberRole: vi.fn(),
   removeMember: vi.fn(),
+  resendInvite: vi.fn(),
 }));
 
 import {

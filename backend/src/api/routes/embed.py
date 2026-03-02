@@ -20,12 +20,11 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Response
 from pydantic import BaseModel, Field
 
-from src.platform.tenant_context import get_tenant_context, TenantContext
+from src.platform.tenant_context import get_tenant_context
 from src.platform.rbac import require_permission
 from src.constants.permissions import Permission
 from src.services.embed_token_service import (
     EmbedTokenService,
-    EmbedTokenResult,
     EmbedTokenError,
     TokenExpiredError,
     TokenValidationError,

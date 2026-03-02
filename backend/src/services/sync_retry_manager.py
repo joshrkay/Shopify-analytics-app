@@ -42,7 +42,6 @@ from src.ingestion.jobs.retry import (
     ErrorCategory,
     RetryDecision,
     RetryPolicy,
-    calculate_backoff,
     categorize_error,
     log_retry_decision,
     should_retry,

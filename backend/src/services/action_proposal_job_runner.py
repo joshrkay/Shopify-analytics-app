@@ -14,7 +14,6 @@ Story 8.4 - Action Proposals (Approval Required)
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session

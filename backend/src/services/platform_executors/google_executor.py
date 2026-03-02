@@ -16,15 +16,13 @@ Story 8.5 - Action Execution (Scoped & Reversible)
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional, Any
+from typing import Optional
 
 import httpx
 
 from src.services.platform_executors.base_executor import (
     BasePlatformExecutor,
     ExecutionResult,
-    ExecutionResultStatus,
     StateCapture,
     RetryConfig,
     PlatformAPIError,

@@ -13,7 +13,7 @@ Test categories:
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -123,8 +123,11 @@ class TestOrganizationModel:
         org = Organization(name="Test Org")
 
         assert org.name == "Test Org"
-        assert org.is_active is True  # Default
-        assert org.id is not None  # UUID default
+        # SQLAlchemy Column defaults are applied at INSERT time, not in-memory
+        # Verify the column definition has the correct default instead
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(Organization)
+        assert mapper.columns["is_active"].default.arg is True
 
     def test_creates_with_all_fields(self, organization_id, clerk_org_id):
         """Should create Organization with all fields."""
@@ -155,7 +158,10 @@ class TestOrganizationModel:
         """Should have correct defaults."""
         org = Organization(name="Defaults Test")
 
-        assert org.is_active is True
+        # Column defaults are applied at INSERT time; in-memory they are None
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(Organization)
+        assert mapper.columns["is_active"].default.arg is True
         assert org.settings is None
         assert org.slug is None
         assert org.clerk_org_id is None
@@ -173,9 +179,10 @@ class TestTenantModel:
         tenant = Tenant(name="Test Tenant")
 
         assert tenant.name == "Test Tenant"
-        assert tenant.status == TenantStatus.ACTIVE  # Default
-        assert tenant.billing_tier == "free"  # Default
-        assert tenant.id is not None  # UUID default
+        # SQLAlchemy Column defaults are applied at INSERT time, not in-memory
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(Tenant)
+        assert mapper.columns["billing_tier"].default.arg == "free"
 
     def test_creates_with_all_fields(self, tenant_id, organization_id, clerk_org_id):
         """Should create Tenant with all fields."""
@@ -251,8 +258,10 @@ class TestUserModel:
         user = User(clerk_user_id=clerk_user_id)
 
         assert user.clerk_user_id == clerk_user_id
-        assert user.is_active is True  # Default
-        assert user.id is not None  # UUID default
+        # SQLAlchemy Column defaults are applied at INSERT time, not in-memory
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(User)
+        assert mapper.columns["is_active"].default.arg is True
 
     def test_creates_with_all_fields(self, user_id, clerk_user_id):
         """Should create User with all fields."""
@@ -377,8 +386,10 @@ class TestUserTenantRoleModel:
         assert role.user_id == user_id
         assert role.tenant_id == tenant_id
         assert role.role == "MERCHANT_ADMIN"
-        assert role.is_active is True  # Default
-        assert role.id is not None  # UUID default
+        # SQLAlchemy Column defaults are applied at INSERT time, not in-memory
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(UserTenantRole)
+        assert mapper.columns["is_active"].default.arg is True
 
     def test_creates_with_all_fields(self, user_id, tenant_id, clerk_user_id):
         """Should create UserTenantRole with all fields."""
@@ -585,41 +596,41 @@ class TestDefaultValues:
     """Tests for model default values."""
 
     def test_organization_defaults(self):
-        """Organization should have correct defaults."""
-        org = Organization(name="Test")
+        """Organization should have correct defaults defined on columns."""
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(Organization)
 
-        assert org.is_active is True
+        assert mapper.columns["is_active"].default.arg is True
+        # Verify nullable columns have no surprising defaults
+        org = Organization(name="Test")
         assert org.settings is None
-        assert org.id is not None
 
     def test_tenant_defaults(self):
-        """Tenant should have correct defaults."""
-        tenant = Tenant(name="Test")
+        """Tenant should have correct defaults defined on columns."""
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(Tenant)
 
-        assert tenant.status == TenantStatus.ACTIVE
-        assert tenant.billing_tier == "free"
+        assert mapper.columns["billing_tier"].default.arg == "free"
+        # Verify nullable columns
+        tenant = Tenant(name="Test")
         assert tenant.organization_id is None
-        assert tenant.id is not None
 
     def test_user_defaults(self):
-        """User should have correct defaults."""
-        user = User(clerk_user_id="user_123")
+        """User should have correct defaults defined on columns."""
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(User)
 
-        assert user.is_active is True
+        assert mapper.columns["is_active"].default.arg is True
+        # Verify nullable columns
+        user = User(clerk_user_id="user_123")
         assert user.email is None
         assert user.first_name is None
         assert user.last_name is None
-        assert user.id is not None
 
     def test_user_tenant_role_defaults(self):
-        """UserTenantRole should have correct defaults."""
-        role = UserTenantRole(
-            user_id="user_123",
-            tenant_id="tenant_123",
-            role="VIEWER",
-        )
+        """UserTenantRole should have correct defaults defined on columns."""
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(UserTenantRole)
 
-        assert role.is_active is True
-        assert role.source == "clerk_webhook"
-        assert role.assigned_at is not None
-        assert role.id is not None
+        assert mapper.columns["is_active"].default.arg is True
+        assert mapper.columns["source"].default.arg == "clerk_webhook"

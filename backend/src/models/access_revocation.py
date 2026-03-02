@@ -11,8 +11,7 @@ Story 5.5.4 - Grace-Period Access Removal
 
 import uuid
 import enum
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column,

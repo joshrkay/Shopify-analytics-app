@@ -14,10 +14,9 @@ Test classes:
 """
 
 import uuid
-import os
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
@@ -25,7 +24,6 @@ from src.models.user import User
 from src.models.tenant import Tenant
 from src.models.user_tenant_roles import UserTenantRole
 from src.models.access_revocation import AccessRevocation, RevocationStatus
-from src.models.user_role_assignment import UserRoleAssignment
 
 
 @pytest.fixture(autouse=True)

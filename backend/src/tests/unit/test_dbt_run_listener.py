@@ -10,9 +10,8 @@ Story 5.2 — Prompt 5.2.4
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from src.services.dbt_run_listener import DbtRunListener
 from src.services.superset_dataset_sync import SyncResult
@@ -87,7 +86,7 @@ class TestOnDbtRunCompleteTriggersSyncWhenCompatible:
             json.dump(_minimal_manifest(), f)
             path = f.name
         try:
-            result = listener.on_dbt_run_complete(path, run_results=None)
+            listener.on_dbt_run_complete(path, run_results=None)
         finally:
             Path(path).unlink(missing_ok=True)
         listener.sync_service.sync.assert_called_once()

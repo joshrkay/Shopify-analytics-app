@@ -24,9 +24,6 @@ if TYPE_CHECKING:
 from src.models.ai_insight import InsightType, InsightSeverity
 from src.models.ai_recommendation import (
     RecommendationType,
-    RecommendationPriority,
-    EstimatedImpact,
-    RiskLevel,
 )
 
 

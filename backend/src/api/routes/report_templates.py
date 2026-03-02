@@ -21,7 +21,6 @@ from src.services.report_template_service import (
 )
 from src.services.custom_dashboard_service import (
     CustomDashboardService,
-    DashboardLimitExceededError,
 )
 from src.api.schemas.custom_dashboards import (
     TemplateResponse,

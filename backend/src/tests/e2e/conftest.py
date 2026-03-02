@@ -10,12 +10,10 @@ Provides:
 
 import os
 import uuid
-import json
 import pytest
-import asyncio
-from datetime import datetime, timezone, timedelta
-from typing import Generator, AsyncGenerator, Dict, Any
-from unittest.mock import patch, MagicMock
+from datetime import datetime, timezone
+from typing import Generator, AsyncGenerator, Dict
+from unittest.mock import patch
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
@@ -40,15 +38,11 @@ from .mocks import (
     ShopifyWebhookSimulator,
     MockAirbyteServer,
     MockOpenRouterServer,
-    MockClerkServer,
-    MockFronteggServer,  # Backwards compatibility alias
+    MockClerkServer,  # Backwards compatibility alias
 )
 
 # Import helpers
 from .helpers import (
-    setup_test_tenant,
-    setup_test_airbyte_connection,
-    setup_tenant_with_data,
     generate_test_orders,
 )
 
@@ -103,9 +97,6 @@ def db_engine():
 
     # Import and create all tables
     from src.db_base import Base
-    from src.models import subscription, plan, store, billing_event, airbyte_connection
-    from src.models import user, tenant, organization, user_tenant_roles, tenant_invite
-    from src.ingestion.jobs import models as ingestion_job_models
 
     Base.metadata.create_all(bind=engine)
 

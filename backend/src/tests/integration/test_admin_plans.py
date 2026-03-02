@@ -276,7 +276,7 @@ class TestPlansRepository:
             is_enabled=False
         )
 
-        assert result.is_enabled == False
+        assert not result.is_enabled
         mock_db_session.flush.assert_called()
 
     def test_remove_feature(self, mock_db_session, mock_plan_feature):
@@ -445,7 +445,7 @@ class TestPlanService:
             is_enabled=False
         )
 
-        assert result["is_enabled"] == False
+        assert not result["is_enabled"]
         mock_db_session.commit.assert_called()
 
     def test_delete_plan(self, mock_db_session, mock_plan):

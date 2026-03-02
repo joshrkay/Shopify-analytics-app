@@ -14,10 +14,9 @@ Story 3.4 - Ad Platform Ingestion
 import os
 import uuid
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -26,27 +25,16 @@ os.environ["ENV"] = "test"
 os.environ["ENCRYPTION_KEY"] = "test-encryption-key-for-ad-ingestion"
 
 from src.db_base import Base
-from src.models.airbyte_connection import (
-    TenantAirbyteConnection,
-    ConnectionStatus,
-    ConnectionType,
-)
 from src.integrations.airbyte.models import (
-    AirbyteJob,
     AirbyteJobStatus,
-    AirbyteJobAttempt,
     AirbyteSyncResult,
 )
 from src.services.ad_ingestion import (
     AdIngestionService,
     AdPlatform,
     AdAccountCredentials,
-    AdAccountInfo,
-    SyncStatus,
-    AdIngestionError,
     InvalidCredentialsError,
     AccountNotFoundError,
-    SyncError,
     AIRBYTE_SOURCE_TYPES,
 )
 from src.services.airbyte_service import DuplicateConnectionError
@@ -81,7 +69,6 @@ def db_engine():
     else:
         engine = create_engine(database_url, pool_pre_ping=True)
 
-    from src.models import airbyte_connection
 
     Base.metadata.create_all(bind=engine)
 
@@ -756,7 +743,7 @@ class TestDisconnectAccount:
 
         # Deleted accounts should not appear in list (depends on implementation)
         accounts = service.list_ad_accounts()
-        account_ids = [a.id for a in accounts]
+        [a.id for a in accounts]
         # The account may still appear but with deleted status
 
 

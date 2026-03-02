@@ -24,7 +24,6 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError

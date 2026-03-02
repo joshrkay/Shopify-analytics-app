@@ -14,7 +14,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 from pydantic import BaseModel, Field, field_validator
 
-from src.platform.tenant_context import get_tenant_context, TenantContext
+from src.platform.tenant_context import get_tenant_context
 from src.services.backfill_service import (
     BackfillService,
     BackfillServiceError,

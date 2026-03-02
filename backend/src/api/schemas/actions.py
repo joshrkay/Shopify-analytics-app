@@ -6,7 +6,7 @@ Request and response models for action execution endpoints.
 Story 8.5 - Action Execution (Scoped & Reversible)
 """
 
-from typing import Optional, List, Any
+from typing import Optional, List
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field

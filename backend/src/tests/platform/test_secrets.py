@@ -10,13 +10,10 @@ CRITICAL: These tests verify that:
 import pytest
 import logging
 from io import StringIO
-from unittest.mock import patch, MagicMock
 
 from src.platform.secrets import (
     SecretsManager,
     EncryptionError,
-    encrypt_secret,
-    decrypt_secret,
     redact_secrets,
     redact_value,
     mask_secret,
