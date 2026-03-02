@@ -7,9 +7,14 @@ export default defineConfig({
   plugins: [tailwindcss(), react()],
   root: resolve(__dirname),
   resolve: {
-    alias: {
-      '@clerk/clerk-react': resolve(__dirname, 'clerk-mock.ts'),
-    },
+    alias: [
+      // Package-level alias — matches import '@clerk/clerk-react'
+      { find: '@clerk/clerk-react', replacement: resolve(__dirname, 'clerk-mock.ts') },
+      // Full-specifier regex aliases — match the entire import path, not just a suffix
+      { find: /^.*contexts\/AgencyContext$/, replacement: resolve(__dirname, 'context-mocks.ts') },
+      { find: /^.*contexts\/DataHealthContext$/, replacement: resolve(__dirname, 'context-mocks.ts') },
+      { find: /^.*services\/apiUtils$/, replacement: resolve(__dirname, 'apiUtils-mock.ts') },
+    ],
   },
   server: {
     port: 4174,
