@@ -215,7 +215,7 @@ class TestConnectorCredentialModelContract:
     def test_is_payload_wiped_logic(self):
         """is_payload_wiped: None payload → True, present → False."""
         assert (None is None) is True   # wiped
-        assert ("data" == None) is False  # not wiped
+        assert ("data" is None) is False  # not wiped
 
     def test_safe_metadata_method_exists(self):
         """ConnectorCredential must have safe_metadata method."""
