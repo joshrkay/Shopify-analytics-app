@@ -39,7 +39,6 @@ from src.integrations.airbyte.models import (
     AirbyteHealth,
     AirbyteConnection,
     AirbyteJob,
-    AirbyteJobStatus,
     AirbyteSyncResult,
     AirbyteSource,
     AirbyteDestination,
