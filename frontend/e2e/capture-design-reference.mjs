@@ -9,7 +9,7 @@
  *   2. npx playwright install chromium  (one-time browser install)
  *
  * Usage:
- *   1. Start test harness:  npx vite --config e2e/vite.config.ts
+ *   1. Start test harness:  npx vite --config e2e/vite.config.mjs
  *   2. Run comparison:      node e2e/capture-design-reference.mjs
  *
  * Output:
@@ -100,7 +100,7 @@ async function captureImplementation(browser) {
     await testPage.goto(HARNESS_BASE, { timeout: 5000 });
   } catch {
     console.log('⚠ Test harness not running on port 4174.');
-    console.log('  Start it with: npx vite --config e2e/vite.config.ts');
+    console.log('  Start it with: npx vite --config e2e/vite.config.mjs');
     console.log('  Skipping implementation screenshots.\n');
     await testPage.close();
     return;
