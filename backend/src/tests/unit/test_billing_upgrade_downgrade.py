@@ -11,14 +11,11 @@ Tests cover:
 import uuid
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 from src.services.billing_service import (
     BillingService,
-    BillingServiceError,
-    PlanNotFoundError,
-    SubscriptionError,
-    CheckoutResult
+    SubscriptionError
 )
 from src.models.subscription import SubscriptionStatus
 

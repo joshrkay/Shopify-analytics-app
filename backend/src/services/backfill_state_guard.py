@@ -22,14 +22,12 @@ Story 3.4 - Backfill Execution
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 from src.models.data_availability import AvailabilityState
 from src.services.data_availability_service import (
-    CONNECTION_SOURCE_TO_SLA_KEY,
     resolve_sla_key,
 )
 

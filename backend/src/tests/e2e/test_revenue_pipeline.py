@@ -11,14 +11,11 @@ Uses API-driven data flow (no direct database seeding).
 """
 
 import pytest
-from datetime import datetime, timezone
 
 from .fixtures.test_data import TEST_DATA_SETS, EXPECTED_OUTCOMES
 from .helpers import (
-    wait_for_sync_completion,
     setup_tenant_with_data,
     validate_fact_tables,
-    run_dbt_models_sync,
 )
 
 
@@ -94,7 +91,7 @@ class TestRevenuePipeline:
         - Cancellations: $50.00
         - Net revenue: $450.00
         """
-        expected = EXPECTED_OUTCOMES["revenue_scenario_complex"]
+        EXPECTED_OUTCOMES["revenue_scenario_complex"]
 
         # Setup tenant with complex revenue scenario
         await setup_tenant_with_data(

@@ -14,11 +14,10 @@ SECURITY:
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List
 
 from sqlalchemy import (
     Column, String, Text, Boolean, DateTime,
-    Index, func
+    Index
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import JSON
@@ -148,7 +147,7 @@ class ChangelogEntry(Base, TimestampMixin):
         Index(
             "ix_changelog_entries_published",
             "is_published", "published_at",
-            postgresql_where=(is_published == True)
+            postgresql_where=(is_published)
         ),
         # Note: release_type already has index=True on the column
     )

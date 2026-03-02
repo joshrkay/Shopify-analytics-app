@@ -31,10 +31,8 @@ import time
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
-from functools import lru_cache
 from threading import Lock
 
-import httpx
 import jwt
 from jwt import PyJWKClient, PyJWKClientError
 from jwt.exceptions import (

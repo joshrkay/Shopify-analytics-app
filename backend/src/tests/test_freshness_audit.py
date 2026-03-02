@@ -15,14 +15,12 @@ from unittest.mock import patch, MagicMock
 
 from src.platform.audit import (
     AuditAction,
-    AuditOutcome,
     AUDITABLE_EVENTS as AUDIT_PY_EVENTS,
     AuditableEventMetadata,
 )
 from src.platform.audit_events import (
     AUDITABLE_EVENTS,
     EVENT_CATEGORIES,
-    EVENT_SEVERITY,
     validate_event_metadata,
     get_event_category,
     get_event_severity,

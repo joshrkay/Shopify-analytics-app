@@ -20,7 +20,7 @@ from src.db_base import Base
 from src.models.base import TimestampMixin
 
 if TYPE_CHECKING:
-    from src.models.tenant import Tenant
+    pass
 
 
 class Organization(Base, TimestampMixin):

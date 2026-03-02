@@ -15,11 +15,11 @@ import subprocess
 import time
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from httpx import AsyncClient, Response
+from httpx import AsyncClient
 
 
 # =============================================================================

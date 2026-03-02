@@ -17,7 +17,7 @@ Story 5.2.7 — Fail-Safe Dataset Versioning
 import json
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from hypothesis import given, settings, assume
 from hypothesis import strategies as st

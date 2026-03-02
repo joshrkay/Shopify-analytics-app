@@ -15,7 +15,6 @@ Phase 2B - Chart Preview Backend
 """
 
 import logging
-from decimal import Decimal
 from typing import Any, Optional, List
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
@@ -32,7 +31,6 @@ from src.services.dataset_discovery_service import (
 from src.services.chart_query_service import (
     ChartConfig,
     ChartQueryService,
-    ChartPreviewResult,
     validate_viz_type,
 )
 

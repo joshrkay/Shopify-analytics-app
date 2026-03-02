@@ -12,15 +12,13 @@ Story 5.5.1 - Data Model: Custom Roles Per Tenant
 """
 
 import logging
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from src.models.role import Role, RolePermission
+from src.models.role import Role
 from src.models.user_role_assignment import UserRoleAssignment
 from src.models.user_tenant_roles import UserTenantRole
 from src.constants.permissions import (
-    Permission,
     Role as LegacyRole,
     ROLE_PERMISSIONS,
 )

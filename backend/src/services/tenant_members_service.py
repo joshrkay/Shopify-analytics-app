@@ -19,7 +19,6 @@ import logging
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 from src.models.tenant import Tenant, TenantStatus
 from src.models.user import User
@@ -106,7 +105,7 @@ class TenantMembersService:
         )
 
         if not include_inactive:
-            query = query.filter(UserTenantRole.is_active == True)
+            query = query.filter(UserTenantRole.is_active)
 
         roles = query.all()
 
@@ -261,7 +260,7 @@ class TenantMembersService:
         roles = self.session.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == tenant.id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).all()
 
         if not roles:
@@ -333,7 +332,7 @@ class TenantMembersService:
         current_roles = self.session.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == tenant.id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).all()
 
         # Check if downgrading from admin and is last admin
@@ -409,7 +408,7 @@ class TenantMembersService:
         )
 
         if not include_inactive:
-            query = query.filter(UserTenantRole.is_active == True)
+            query = query.filter(UserTenantRole.is_active)
 
         roles = query.all()
 
@@ -475,7 +474,7 @@ class TenantMembersService:
         query = self.session.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == tenant_id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         )
 
         if required_role:
@@ -502,7 +501,7 @@ class TenantMembersService:
         role = self.session.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == tenant_id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
             UserTenantRole.role.in_(self.ADMIN_ROLES),
         ).first()
 
@@ -617,7 +616,7 @@ class TenantMembersService:
         other_admin_count = self.session.query(UserTenantRole).filter(
             UserTenantRole.tenant_id == tenant_id,
             UserTenantRole.user_id != user_id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
             UserTenantRole.role.in_(self.ADMIN_ROLES),
         ).count()
 

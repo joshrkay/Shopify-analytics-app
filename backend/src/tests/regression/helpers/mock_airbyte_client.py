@@ -7,8 +7,7 @@ Supports configuring mock state for different test scenarios.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Dict, List, Any
-from dataclasses import dataclass, field
+from typing import Optional, Dict, List
 
 from src.integrations.airbyte.models import (
     AirbyteHealth,
@@ -26,9 +25,7 @@ from src.integrations.airbyte.models import (
 )
 from src.integrations.airbyte.exceptions import (
     AirbyteError,
-    AirbyteAuthenticationError,
     AirbyteNotFoundError,
-    AirbyteSyncError,
 )
 
 

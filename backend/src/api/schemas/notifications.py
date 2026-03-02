@@ -6,7 +6,7 @@ Request and response models for notification endpoints.
 Story 9.1 - Notification Framework (Events → Channels)
 """
 
-from typing import Optional, List, Any
+from typing import Optional, List
 from datetime import datetime
 
 from pydantic import BaseModel, Field

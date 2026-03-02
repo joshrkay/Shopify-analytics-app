@@ -18,7 +18,6 @@ Usage:
 import pytest
 import uuid
 import time
-from datetime import datetime, timezone
 
 from .sample_data_generator import SampleDataGenerator, AD_PLATFORMS
 from src.models.airbyte_connection import TenantAirbyteConnection
@@ -90,7 +89,7 @@ class TestDashboardSampleData:
             assert summary.db_verification.get("other_tenant_connections", 0) == 0, \
                 "Found connections from other tenants - isolation broken!"
 
-        print(f"\n✅ Sample data creation completed successfully!")
+        print("\n✅ Sample data creation completed successfully!")
         print(f"Tenant ID: {summary.tenant_id}")
         print(f"Total Operations: {summary.total_operations}")
         print(f"Success Rate: {success_rate:.1%}\n")
@@ -196,7 +195,7 @@ class TestDashboardSampleData:
         assert data2["total_count"] == tenant2_connections, \
             f"Tenant 2 API returned {data2['total_count']} connections, DB has {tenant2_connections}"
 
-        print(f"\n✅ Tenant isolation verified successfully!")
+        print("\n✅ Tenant isolation verified successfully!")
         print(f"   Tenant 1: {tenant1_connections} connections (isolated)")
         print(f"   Tenant 2: {tenant2_connections} connections (isolated)\n")
 
@@ -218,13 +217,13 @@ class TestDashboardSampleData:
         Verifies data flows correctly through webhook processing.
         """
         print(f"\n{'='*60}")
-        print(f"Testing Shopify Operations")
+        print("Testing Shopify Operations")
         print(f"{'='*60}\n")
 
         # Process Shopify data
         shopify_results = await sample_data_generator.process_shopify_data()
 
-        print(f"\nShopify Results:")
+        print("\nShopify Results:")
         print(f"  Orders: {shopify_results.get('orders_processed', 0)}")
         print(f"  Refunds: {shopify_results.get('refunds_processed', 0)}")
         print(f"  Cancellations: {shopify_results.get('cancellations_processed', 0)}")
@@ -244,7 +243,7 @@ class TestDashboardSampleData:
         assert error_rate < 0.25, \
             f"Too many errors: {error_rate:.1%}. Expected < 25%"
 
-        print(f"\n✅ Shopify operations completed successfully!\n")
+        print("\n✅ Shopify operations completed successfully!\n")
 
     @pytest.mark.asyncio
     async def test_platform_endpoint_sequence(
@@ -289,7 +288,7 @@ class TestDashboardSampleData:
         assert result.connection_id is not None, \
             "No connection_id was created"
 
-        print(f"\n✅ Endpoint sequence test passed!\n")
+        print("\n✅ Endpoint sequence test passed!\n")
 
     @pytest.mark.asyncio
     async def test_multiple_platforms_in_parallel_batches(
@@ -354,7 +353,7 @@ class TestDashboardSampleData:
             assert conn_data["platform"] == platform, \
                 f"Platform mismatch: expected {platform}, got {conn_data['platform']}"
 
-        print(f"\n✅ Multiple platforms test passed!\n")
+        print("\n✅ Multiple platforms test passed!\n")
 
     @pytest.mark.asyncio
     async def test_error_handling_invalid_platform(

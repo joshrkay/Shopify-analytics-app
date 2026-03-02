@@ -13,8 +13,7 @@ import os
 import uuid
 
 from sqlalchemy import (
-    Column, String, Integer, Text,
-    ForeignKey, Index, UniqueConstraint, JSON,
+    Column, String, Integer, ForeignKey, Index, UniqueConstraint, JSON,
 )
 from sqlalchemy.orm import relationship
 

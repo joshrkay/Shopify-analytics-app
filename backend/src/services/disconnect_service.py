@@ -325,7 +325,6 @@ class DisconnectService:
         try:
             from src.models.connector_credential import (
                 ConnectorCredential,
-                CredentialStatus,
             )
             from src.services.credential_vault import CredentialVault
             from sqlalchemy import select

@@ -14,11 +14,10 @@ Story 5.5.2 - Agency Access Request + Tenant Approval Workflow
 
 import uuid
 import pytest
-from datetime import datetime, timezone
 
 from src.models.user import User
 from src.models.tenant import Tenant, TenantStatus
-from src.models.role import Role, RolePermission, seed_roles_for_tenant
+from src.models.role import Role, seed_roles_for_tenant
 from src.models.user_role_assignment import UserRoleAssignment
 from src.models.user_tenant_roles import UserTenantRole
 from src.models.agency_access_request import (

@@ -13,7 +13,7 @@ Story 4.3 - Merchant Data Health Trust Layer
 
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import Mock, MagicMock, patch
 
 from fastapi import HTTPException
 
@@ -21,7 +21,6 @@ from src.models.merchant_data_health import MerchantHealthState
 from src.services.merchant_data_health import MerchantDataHealthResult
 from src.middleware.merchant_health_guard import (
     MerchantHealthGuard,
-    _evaluate_merchant_health,
 )
 
 

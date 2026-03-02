@@ -27,18 +27,18 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, date
 from decimal import Decimal
 from enum import Enum
 from typing import List, Optional, Dict, Any, Tuple, Union
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func, and_
 
 from src.models.dq_models import (
     DQCheck, DQResult, DQIncident, SyncRun,
     DQCheckType, DQSeverity, DataQualityState, DQResultStatus, DQIncidentStatus,
-    SyncRunStatus, ConnectorSourceType,
+    ConnectorSourceType,
     FRESHNESS_THRESHOLDS, get_freshness_threshold, is_critical_source,
 )
 from src.models.airbyte_connection import TenantAirbyteConnection
@@ -435,7 +435,7 @@ class DQService:
         # Get all active connectors for tenant
         connectors = self.db.query(TenantAirbyteConnection).filter(
             TenantAirbyteConnection.tenant_id == self.tenant_id,
-            TenantAirbyteConnection.is_enabled == True,
+            TenantAirbyteConnection.is_enabled,
             TenantAirbyteConnection.status != "deleted",
         ).all()
 
@@ -1508,7 +1508,7 @@ class DQService:
         """
         return self.db.query(DQIncident).filter(
             DQIncident.tenant_id == self.tenant_id,
-            DQIncident.is_blocking == True,
+            DQIncident.is_blocking,
             DQIncident.status.in_([
                 DQIncidentStatus.OPEN.value,
                 DQIncidentStatus.ACKNOWLEDGED.value,
@@ -1548,7 +1548,7 @@ class DQService:
         # Get all active connectors
         connectors = self.db.query(TenantAirbyteConnection).filter(
             TenantAirbyteConnection.tenant_id == self.tenant_id,
-            TenantAirbyteConnection.is_enabled == True,
+            TenantAirbyteConnection.is_enabled,
             TenantAirbyteConnection.status != "deleted",
         ).all()
 

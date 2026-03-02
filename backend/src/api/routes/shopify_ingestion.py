@@ -11,14 +11,12 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 
-from src.platform.tenant_context import get_tenant_context, TenantContext
+from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session
 from src.services.shopify_ingestion import (
     ShopifyIngestionService,
     validate_shopify_token,
     setup_shopify_airbyte_source,
-    ShopifyTokenValidationResult,
-    AutomaticSetupResult,
 )
 
 logger = logging.getLogger(__name__)

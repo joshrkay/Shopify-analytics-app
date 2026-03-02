@@ -263,7 +263,7 @@ class DataAvailabilityService:
             existing.state_changed_at if existing else now
         )
 
-        row = self._upsert(
+        self._upsert(
             source_type=source_type,
             state=state,
             reason=reason,
@@ -431,7 +431,6 @@ class DataAvailabilityService:
         """
         from src.models.data_availability import (
             AvailabilityState,
-            AvailabilityReason,
         )
 
         if last_sync_at is None:

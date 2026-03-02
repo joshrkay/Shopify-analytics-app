@@ -15,7 +15,6 @@ import os
 import uuid
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -34,10 +33,6 @@ from src.models.airbyte_connection import (
 from src.services.data_health_service import (
     DataHealthService,
     FreshnessStatus,
-    SourceHealthInfo,
-    DataHealthSummary,
-    DEFAULT_FRESHNESS_THRESHOLD_MINUTES,
-    DEFAULT_CRITICAL_THRESHOLD_MINUTES,
     DEFAULT_SYNC_FREQUENCY_MINUTES,
 )
 
@@ -71,7 +66,6 @@ def db_engine():
     else:
         engine = create_engine(database_url, pool_pre_ping=True)
 
-    from src.models import airbyte_connection
 
     Base.metadata.create_all(bind=engine)
 
@@ -540,7 +534,7 @@ class TestStaleSources:
 
     def test_returns_stale_sources(self, data_health_service, create_connection):
         """Returns stale sources."""
-        fresh = create_connection(
+        create_connection(
             last_sync_at=datetime.now(timezone.utc) - timedelta(minutes=10),
             last_sync_status="success",
         )

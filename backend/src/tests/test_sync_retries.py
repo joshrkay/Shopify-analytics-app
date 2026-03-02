@@ -14,8 +14,8 @@ Story 3.5 - Sync Orchestration & Retry Logic
 import os
 import uuid
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -42,11 +42,8 @@ from src.integrations.airbyte.exceptions import (
 )
 from src.services.sync_orchestrator import (
     SyncOrchestrator,
-    SyncResult,
     SyncOrchestratorError,
     ConnectionNotFoundError,
-    SyncFailedError,
-    DEFAULT_MAX_RETRIES,
 )
 
 
@@ -79,7 +76,6 @@ def db_engine():
     else:
         engine = create_engine(database_url, pool_pre_ping=True)
 
-    from src.models import airbyte_connection
 
     Base.metadata.create_all(bind=engine)
 
@@ -197,6 +193,29 @@ def create_connection(db_session, tenant_id):
         return connection
 
     return _create
+
+
+@pytest.fixture(autouse=True)
+def _mock_job_entitlements():
+    """Mock JobEntitlementChecker to always allow sync jobs in tests."""
+    from unittest.mock import patch, MagicMock
+    from src.jobs.job_entitlements import JobEntitlementResult
+
+    mock_result = JobEntitlementResult(
+        is_allowed=True,
+        billing_state=MagicMock(value="active"),
+        plan_id="free",
+        reason=None,
+    )
+
+    with patch(
+        "src.services.sync_orchestrator.JobEntitlementChecker"
+    ) as MockChecker:
+        instance = MockChecker.return_value
+        instance.check_job_entitlement.return_value = mock_result
+        instance.log_job_allowed = AsyncMock(return_value=None)
+        instance.log_job_skipped = AsyncMock(return_value=None)
+        yield
 
 
 @pytest.fixture

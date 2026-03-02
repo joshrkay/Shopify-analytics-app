@@ -1,12 +1,105 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Mock AgencyContext (useTeamMembers calls useAgency for activeTenantId)
+vi.mock('../contexts/AgencyContext', () => ({
+  useAgency: vi.fn().mockReturnValue({
+    activeTenantId: 'test-tenant-id',
+    getActiveStore: vi.fn().mockReturnValue(null),
+    isAgencyUser: false,
+    tenants: [],
+    switchTenant: vi.fn(),
+  }),
+}));
+
 vi.mock('../services/tenantMembersApi', () => ({
   getTeamMembers: vi.fn(),
   inviteMember: vi.fn(),
   updateMemberRole: vi.fn(),
   removeMember: vi.fn(),
+  resendInvite: vi.fn(),
 }));
+
+// Mock queryClientLite to provide stable hooks that don't infinite-loop in tests.
+// useQueryLite's useCallback([queryFn]) creates a new refetch on every render when
+// queryFn is an inline closure (as in useTeamMembers), causing an infinite re-fetch
+// cycle in the jsdom test environment. This mock provides a simple, stable version.
+vi.mock('../hooks/queryClientLite', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const React = require('react');
+
+  class MockQueryClientLite {
+    private versions = new Map<string, number>();
+    getVersion(queryKey: readonly unknown[]): number {
+      return this.versions.get(JSON.stringify(queryKey)) ?? 0;
+    }
+    invalidateQueries(queryKey: readonly unknown[]): void {
+      const key = JSON.stringify(queryKey);
+      const current = this.versions.get(key) ?? 0;
+      this.versions.set(key, current + 1);
+    }
+  }
+
+  const clientInstance = new MockQueryClientLite();
+
+  return {
+    useQueryClientLite: () => clientInstance,
+    useQueryLite: ({ queryFn }: { queryKey: readonly unknown[]; queryFn: () => Promise<any> }) => {
+      const [data, setData] = React.useState<any>(undefined);
+      const [isLoading, setIsLoading] = React.useState(true);
+      const [error, setError] = React.useState<unknown>(null);
+
+      // Use a ref to hold the latest queryFn to avoid dependency churn
+      const queryFnRef = React.useRef(queryFn);
+      queryFnRef.current = queryFn;
+
+      const refetch = React.useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+          const nextData = await queryFnRef.current();
+          setData(nextData);
+          return nextData;
+        } catch (err) {
+          setError(err);
+          throw err;
+        } finally {
+          setIsLoading(false);
+        }
+      }, []);
+
+      // Fire once on mount
+      React.useEffect(() => {
+        refetch().catch(() => undefined);
+      }, [refetch]);
+
+      return { data, isLoading, error, refetch };
+    },
+    useMutationLite: (options: { mutationFn: (vars: any) => Promise<any>; onSuccess?: (data: any, vars: any) => void | Promise<void>; onError?: (err: unknown, vars: any) => void }) => {
+      const { mutationFn, onSuccess, onError } = options;
+      const [isPending, setIsPending] = React.useState(false);
+      const [error, setError] = React.useState<unknown>(null);
+
+      const mutateAsync = React.useCallback(async (variables: any) => {
+        setIsPending(true);
+        setError(null);
+        try {
+          const result = await mutationFn(variables);
+          await onSuccess?.(result, variables);
+          return result;
+        } catch (err) {
+          setError(err);
+          onError?.(err, variables);
+          throw err;
+        } finally {
+          setIsPending(false);
+        }
+      }, [mutationFn, onError, onSuccess]);
+
+      return React.useMemo(() => ({ mutateAsync, isPending, error }), [error, isPending, mutateAsync]);
+    },
+  };
+});
 
 import {
   REMOVE_UNDO_WINDOW_MS,
@@ -58,7 +151,7 @@ describe('useTeamMembers', () => {
       await mutationPromise;
     });
 
-    await waitFor(() => expect(mocked.inviteMember).toHaveBeenCalledWith({ email: 'b@b.com', role: 'viewer' }));
+    await waitFor(() => expect(mocked.inviteMember).toHaveBeenCalledWith('test-tenant-id', { email: 'b@b.com', role: 'viewer' }));
   });
 
   it('useUpdateMemberRole optimistic role change', async () => {
@@ -83,7 +176,7 @@ describe('useTeamMembers', () => {
       await mutationPromise;
     });
 
-    expect(mocked.updateMemberRole).toHaveBeenCalledWith('1', 'editor');
+    expect(mocked.updateMemberRole).toHaveBeenCalledWith('test-tenant-id', '1', 'editor');
   });
 
   it('useRemoveMember supports undo within toast window', async () => {
@@ -123,6 +216,6 @@ describe('useTeamMembers', () => {
     });
 
     await expect(mutationPromise).resolves.toEqual({ success: true });
-    expect(mocked.removeMember).toHaveBeenCalledWith('1');
+    expect(mocked.removeMember).toHaveBeenCalledWith('test-tenant-id', '1');
   });
 });

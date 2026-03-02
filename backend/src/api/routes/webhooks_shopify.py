@@ -171,7 +171,7 @@ async def handle_subscription_update(
     # Extract subscription data
     subscription_gid = data.get("app_subscription", {}).get("admin_graphql_api_id")
     subscription_status = data.get("app_subscription", {}).get("status")
-    subscription_name = data.get("app_subscription", {}).get("name")
+    data.get("app_subscription", {}).get("name")
 
     if not subscription_gid:
         logger.warning("Webhook missing subscription ID", extra={

@@ -19,7 +19,6 @@ SECURITY:
 
 import json
 import uuid
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,7 +27,7 @@ from src.services.platform_credentials_service import (
     Platform,
     PlatformCredentialsService,
     CredentialValidation,
-    _PLATFORM_TO_SOURCE_TYPE,
+    _PLATFORM_SOURCE_TYPES,
 )
 from src.models.connector_credential import ConnectorCredential, CredentialStatus
 
@@ -74,19 +73,19 @@ def _service(session=None) -> PlatformCredentialsService:
 
 
 # =============================================================================
-# _PLATFORM_TO_SOURCE_TYPE mapping
+# _PLATFORM_SOURCE_TYPES mapping
 # =============================================================================
 
 class TestPlatformSourceTypeMapping:
 
     def test_meta_maps_to_meta_ads(self):
-        assert _PLATFORM_TO_SOURCE_TYPE["meta"] == "meta_ads"
+        assert _PLATFORM_SOURCE_TYPES[Platform.META] == "meta"
 
     def test_google_maps_to_google_ads(self):
-        assert _PLATFORM_TO_SOURCE_TYPE["google"] == "google_ads"
+        assert _PLATFORM_SOURCE_TYPES[Platform.GOOGLE] == "google_ads"
 
     def test_shopify_maps_to_shopify(self):
-        assert _PLATFORM_TO_SOURCE_TYPE["shopify"] == "shopify"
+        assert _PLATFORM_SOURCE_TYPES[Platform.SHOPIFY] == "shopify"
 
 
 # =============================================================================

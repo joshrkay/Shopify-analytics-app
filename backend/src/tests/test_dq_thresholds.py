@@ -18,13 +18,13 @@ Run with: pytest tests/test_dq_thresholds.py -v
 import pytest
 from datetime import datetime, timezone, timedelta, date
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from src.models.dq_models import (
     DQCheckType, DQSeverity, ConnectorSourceType,
     FRESHNESS_THRESHOLDS, get_freshness_threshold, is_critical_source,
 )
-from src.api.dq.service import DQService, DQEventType
+from src.api.dq.service import DQService
 
 
 class TestFreshnessThresholds:

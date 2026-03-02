@@ -7,11 +7,9 @@ Provides:
 - Multi-tenant token support (via Clerk Organizations)
 """
 
-import json
-import time
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 
 import httpx

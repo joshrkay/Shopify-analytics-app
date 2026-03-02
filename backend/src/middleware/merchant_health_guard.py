@@ -38,12 +38,12 @@ import logging
 from functools import wraps
 from typing import Callable, Optional
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from src.database.session import get_db_session
 from src.models.merchant_data_health import MerchantHealthState
 from src.platform.tenant_context import get_tenant_context
+from src.services.merchant_data_health import MerchantDataHealthResult
 
 logger = logging.getLogger(__name__)
 

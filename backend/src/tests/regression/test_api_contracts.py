@@ -11,7 +11,7 @@ Usage:
 import pytest
 import json
 from unittest.mock import Mock, MagicMock, patch
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 
@@ -349,7 +349,6 @@ class TestAuditEventContracts:
     def test_audit_event_serialization(self):
         """AuditEvent.to_dict() format must not change."""
         from src.platform.audit import AuditEvent, AuditAction
-        from datetime import datetime, timezone
 
         event = AuditEvent(
             tenant_id="t1",
@@ -510,7 +509,7 @@ class TestGovernanceContracts:
     def skip_if_no_governance(self):
         """Skip tests if governance module doesn't exist."""
         try:
-            from src.governance import ai_guardrails
+            from src.governance import ai_guardrails  # noqa: F401
             return True
         except ImportError:
             pytest.skip("Governance module not present")
@@ -545,7 +544,7 @@ class TestGovernanceContracts:
 
         result = check.to_dict()
 
-        assert result["allowed"] == True
+        assert result["allowed"]
         assert result["action_id"] == "test_action"
 
 

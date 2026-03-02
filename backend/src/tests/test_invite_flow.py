@@ -38,7 +38,7 @@ from src.services.invite_service import (
     InvalidStateError,
     UserNotFoundError,
 )
-from src.platform.audit import AuditAction, AuditLog, AuditOutcome
+from src.platform.audit import AuditAction, AuditLog
 
 
 # =============================================================================

@@ -14,9 +14,8 @@ import uuid
 import pytest
 from datetime import datetime, timezone
 
-from sqlalchemy.exc import IntegrityError
 
-from src.ingestion.jobs.models import IngestionJob, JobStatus
+from src.ingestion.jobs.models import JobStatus
 from src.ingestion.jobs.dispatcher import (
     JobDispatcher,
     JobIsolationError,

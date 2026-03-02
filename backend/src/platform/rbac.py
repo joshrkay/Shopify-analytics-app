@@ -28,7 +28,7 @@ Usage:
 
 import logging
 from functools import wraps
-from typing import Callable, Union
+from typing import Callable
 
 from fastapi import Request, HTTPException, status
 

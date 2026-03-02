@@ -16,13 +16,12 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.db_base import Base
 from src.models.user import User
 from src.models.tenant import Tenant, TenantStatus
-from src.models.user_tenant_roles import UserTenantRole
 from src.services.clerk_sync_service import ClerkSyncService
 
 

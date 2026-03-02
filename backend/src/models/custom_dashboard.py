@@ -12,8 +12,7 @@ import uuid
 from enum import Enum as PyEnum
 
 from sqlalchemy import (
-    Column, String, Integer, Boolean, Text, DateTime,
-    ForeignKey, Index, UniqueConstraint, JSON,
+    Column, String, Integer, Boolean, Text, ForeignKey, Index, UniqueConstraint, JSON,
 )
 from sqlalchemy.orm import relationship
 

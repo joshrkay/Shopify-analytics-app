@@ -10,15 +10,12 @@ Tests cover:
 
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime
 
 from src.integrations.shopify.billing_client import (
     ShopifyBillingClient,
     ShopifyAPIError,
     RetryConfig,
-    BillingInterval,
-    CreateSubscriptionResult,
-    ShopifySubscription
+    BillingInterval
 )
 
 

@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 from typing import Dict
 
-from sqlalchemy import delete, and_
+from sqlalchemy import delete
 
 # Add the backend directory to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

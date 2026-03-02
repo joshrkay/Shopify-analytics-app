@@ -38,7 +38,6 @@ from src.integrations.openrouter import (
     OpenRouterClient,
     get_openrouter_client,
     ChatMessage,
-    ChatCompletionResponse,
     OpenRouterError,
     OpenRouterRateLimitError,
     OpenRouterTimeoutError,
@@ -133,7 +132,7 @@ class LLMRoutingService:
         """Get model from registry by ID."""
         return self.db.query(LLMModelRegistry).filter(
             LLMModelRegistry.model_id == model_id,
-            LLMModelRegistry.is_enabled == True,
+            LLMModelRegistry.is_enabled,
         ).first()
 
     def _get_default_model(self) -> Optional[LLMModelRegistry]:
@@ -207,7 +206,7 @@ class LLMRoutingService:
         query = self.db.query(LLMPromptTemplate).filter(
             LLMPromptTemplate.template_key == template_key,
             LLMPromptTemplate.tenant_id == self.tenant_id,
-            LLMPromptTemplate.is_active == True,
+            LLMPromptTemplate.is_active,
         )
         if version is not None:
             query = query.filter(LLMPromptTemplate.version == version)
@@ -221,8 +220,8 @@ class LLMRoutingService:
         query = self.db.query(LLMPromptTemplate).filter(
             LLMPromptTemplate.template_key == template_key,
             LLMPromptTemplate.tenant_id.is_(None),
-            LLMPromptTemplate.is_system == True,
-            LLMPromptTemplate.is_active == True,
+            LLMPromptTemplate.is_system,
+            LLMPromptTemplate.is_active,
         )
         if version is not None:
             query = query.filter(LLMPromptTemplate.version == version)
@@ -603,7 +602,7 @@ class LLMRoutingService:
                 LLMUsageLog.response_status == LLMResponseStatus.SUCCESS.value
             ).label("success_count"),
             func.count(LLMUsageLog.id).filter(
-                LLMUsageLog.was_fallback == True
+                LLMUsageLog.was_fallback
             ).label("fallback_count"),
         ).filter(
             LLMUsageLog.tenant_id == self.tenant_id,

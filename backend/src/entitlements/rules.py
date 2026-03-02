@@ -17,7 +17,6 @@ from enum import Enum
 from typing import List, Optional, Set, Dict, Any
 
 from src.entitlements.loader import (
-    EntitlementLoader,
     PlanEntitlements,
     AccessRuleConfig,
     get_entitlement_loader,

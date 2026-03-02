@@ -31,7 +31,6 @@ from src.api.schemas.sources import (
     PLATFORM_DISPLAY_NAMES,
     PLATFORM_AUTH_TYPE,
     PLATFORM_CATEGORIES,
-    ApiKeyConnectRequest,
 )
 from src.database.session import get_db_session
 

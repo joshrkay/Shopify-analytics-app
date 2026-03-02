@@ -16,8 +16,7 @@ import os
 import pytest
 import tempfile
 from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
-from dataclasses import asdict
+from unittest.mock import Mock, MagicMock
 
 # Import test fixtures first
 import sys
@@ -824,7 +823,6 @@ class TestEntitlementCache:
     def test_in_memory_cache_ttl_expiration(self):
         """Test in-memory cache TTL expiration."""
         from src.entitlements.cache import InMemoryCache
-        import time
 
         cache = InMemoryCache()
         cache.set("key1", "value1")
@@ -1211,7 +1209,6 @@ class TestEntitlementMiddleware:
         from src.entitlements.loader import reset_entitlement_loader, EntitlementLoader
         from src.entitlements.middleware import BackgroundJobEntitlementChecker
         from src.entitlements.audit import reset_audit_logger
-        from unittest.mock import MagicMock
 
         reset_entitlement_loader()
         reset_audit_logger()
@@ -1245,11 +1242,8 @@ class TestEntitlementIntegration:
         from src.entitlements.loader import (
             EntitlementLoader,
             reset_entitlement_loader,
-            get_entitlement_loader,
         )
         from src.entitlements.rules import (
-            AccessRules,
-            BillingState,
             create_access_rules_from_subscription,
         )
         from src.entitlements.cache import (
@@ -1263,7 +1257,7 @@ class TestEntitlementIntegration:
         reset_audit_logger()
 
         # 1. Load entitlements
-        loader = EntitlementLoader(config_path=temp_plans_file)
+        EntitlementLoader(config_path=temp_plans_file)
 
         # 2. Create mock subscription
         subscription = Mock()

@@ -27,17 +27,14 @@ import os
 import logging
 import uuid
 from typing import Optional
-from datetime import datetime, timezone, timedelta
 from enum import Enum
 
-import httpx
 from fastapi import Request, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.responses import JSONResponse
 import jwt
 from jwt import PyJWKClient, PyJWKClientError
 from jwt.exceptions import InvalidTokenError, DecodeError
-import json
 from sqlalchemy.exc import SQLAlchemyError, DataError
 
 from src.constants.permissions import has_multi_tenant_access, RoleCategory, get_primary_role_category
@@ -449,7 +446,7 @@ class TenantContextMiddleware:
             # Find user by clerk_user_id
             user = db.query(User).filter(
                 User.clerk_user_id == user_id,
-                User.is_active == True,
+                User.is_active,
             ).first()
 
             if not user:
@@ -513,7 +510,7 @@ class TenantContextMiddleware:
                 # Re-query after sync attempt (success, duplicate, or failure)
                 user = db.query(User).filter(
                     User.clerk_user_id == user_id,
-                    User.is_active == True,
+                    User.is_active,
                 ).first()
 
                 if not user:
@@ -568,7 +565,7 @@ class TenantContextMiddleware:
                 elif not db.query(UserTenantRole).filter(
                     UserTenantRole.user_id == user.id,
                     UserTenantRole.tenant_id == org_tenant.id,
-                    UserTenantRole.is_active == True,
+                    UserTenantRole.is_active,
                 ).first():
                     # Tenant exists but role doesn't — create membership
                     try:
@@ -599,7 +596,7 @@ class TenantContextMiddleware:
             # Get all active tenant roles for this user
             roles = db.query(UserTenantRole).filter(
                 UserTenantRole.user_id == user.id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             ).all()
 
             # Get unique tenant IDs that are active
@@ -835,7 +832,7 @@ class TenantContextMiddleware:
             # Support both Clerk JWT v1 and v2 formats for role/permissions
             org_role = payload.get("org_role", "") or (payload.get("o") or {}).get("rol", "")
             _o = payload.get("o") or {}
-            org_permissions = payload.get("org_permissions", []) or (
+            payload.get("org_permissions", []) or (
                 _o.get("per", "").split(",") if _o.get("per") else []
             )
 
@@ -1435,7 +1432,7 @@ def get_db_allowed_tenants(session, clerk_user_id: str) -> list[str]:
     # Get user by clerk_user_id
     user = session.query(User).filter(
         User.clerk_user_id == clerk_user_id,
-        User.is_active == True,
+        User.is_active,
     ).first()
 
     if not user:
@@ -1444,7 +1441,7 @@ def get_db_allowed_tenants(session, clerk_user_id: str) -> list[str]:
     # Get all active tenant roles for this user
     roles = session.query(UserTenantRole).filter(
         UserTenantRole.user_id == user.id,
-        UserTenantRole.is_active == True,
+        UserTenantRole.is_active,
     ).all()
 
     # Filter to active tenants only

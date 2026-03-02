@@ -287,14 +287,6 @@ class AuditExporterService:
     ) -> None:
         """Log the export attempt itself as a GA audit event."""
         try:
-            from src.models.audit_log import (
-                GAAuditLog,
-                GAAuditEvent,
-                AuditEventType,
-                AccessSurface,
-                generate_correlation_id,
-            )
-            from src.services.audit_logger import _write_ga_audit_event
 
             # We use a special metadata entry to record export attempts.
             # The event_type doesn't exist in AuditEventType enum (GA scope),

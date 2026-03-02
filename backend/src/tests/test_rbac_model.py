@@ -15,7 +15,6 @@ Tests cover:
 
 import uuid
 import pytest
-from unittest.mock import MagicMock, patch
 
 from src.models.role import Role, RolePermission, ROLE_TEMPLATES, seed_roles_for_tenant, seed_global_super_admin_role
 from src.models.user_role_assignment import UserRoleAssignment

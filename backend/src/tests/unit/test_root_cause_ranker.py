@@ -4,7 +4,7 @@ Unit tests for the root cause ranking engine.
 Story 4.2 - Data Quality Root Cause Signals (Prompt 4.2.5)
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,7 +12,6 @@ import pytest
 from src.services.root_cause_ranker import (
     RootCauseRanker,
     RankedRootCause,
-    RootCauseAnalysis,
     _normalize_confidences,
     _apply_causal_ordering,
 )

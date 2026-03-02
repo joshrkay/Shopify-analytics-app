@@ -7,17 +7,15 @@ Syncs are tenant-scoped - users can only sync their own connections.
 Story 3.5 - Sync Orchestration & Retry Logic
 """
 
-import os
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 
-from src.platform.tenant_context import get_tenant_context, TenantContext
+from src.platform.tenant_context import get_tenant_context
 from src.services.sync_orchestrator import (
     SyncOrchestrator,
-    SyncResult,
     SyncOrchestratorError,
     ConnectionNotFoundError,
 )

@@ -23,7 +23,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 
 from src.models.action_proposal import ActionProposal, ActionStatus
 from src.models.action_approval_audit import ActionApprovalAudit, AuditAction

@@ -24,7 +24,6 @@ import pytest
 from src.ingestion.jobs.models import IngestionJob, JobStatus
 from src.ingestion.jobs.retry import (
     ErrorCategory,
-    RetryDecision,
     RetryPolicy,
     MAX_RETRIES,
 )

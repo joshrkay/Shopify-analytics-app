@@ -22,7 +22,6 @@ from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.platform.tenant_context import get_tenant_context
-from src.database.session import get_db_session
 from src.models.llm_routing import (
     LLMModelRegistry,
     LLMOrgConfig,
@@ -163,7 +162,7 @@ async def list_available_models(
 
     # Query enabled models
     models = db_session.query(LLMModelRegistry).filter(
-        LLMModelRegistry.is_enabled == True
+        LLMModelRegistry.is_enabled
     ).all()
 
     # Filter by tier restriction
@@ -266,7 +265,7 @@ async def update_org_config(
     if config_update.primary_model_id:
         model = db_session.query(LLMModelRegistry).filter(
             LLMModelRegistry.model_id == config_update.primary_model_id,
-            LLMModelRegistry.is_enabled == True,
+            LLMModelRegistry.is_enabled,
         ).first()
         if not model:
             raise HTTPException(
@@ -277,7 +276,7 @@ async def update_org_config(
     if config_update.fallback_model_id:
         model = db_session.query(LLMModelRegistry).filter(
             LLMModelRegistry.model_id == config_update.fallback_model_id,
-            LLMModelRegistry.is_enabled == True,
+            LLMModelRegistry.is_enabled,
         ).first()
         if not model:
             raise HTTPException(
@@ -354,7 +353,7 @@ async def list_prompt_templates(
 
     # Get tenant templates
     query = db_session.query(LLMPromptTemplate).filter(
-        LLMPromptTemplate.is_active == True,
+        LLMPromptTemplate.is_active,
     )
 
     if include_system:
@@ -412,7 +411,7 @@ async def get_prompt_template(
     query = db_session.query(LLMPromptTemplate).filter(
         LLMPromptTemplate.template_key == template_key,
         LLMPromptTemplate.tenant_id == tenant_ctx.tenant_id,
-        LLMPromptTemplate.is_active == True,
+        LLMPromptTemplate.is_active,
     )
     if version is not None:
         query = query.filter(LLMPromptTemplate.version == version)
@@ -424,8 +423,8 @@ async def get_prompt_template(
         query = db_session.query(LLMPromptTemplate).filter(
             LLMPromptTemplate.template_key == template_key,
             LLMPromptTemplate.tenant_id.is_(None),
-            LLMPromptTemplate.is_system == True,
-            LLMPromptTemplate.is_active == True,
+            LLMPromptTemplate.is_system,
+            LLMPromptTemplate.is_active,
         )
         if version is not None:
             query = query.filter(LLMPromptTemplate.version == version)

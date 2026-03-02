@@ -19,7 +19,7 @@ Queries:
 """
 
 import logging
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, Request, HTTPException, Query, Depends
 from pydantic import BaseModel, Field

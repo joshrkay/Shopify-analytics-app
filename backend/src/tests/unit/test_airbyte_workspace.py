@@ -7,7 +7,7 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 from src.integrations.airbyte.exceptions import AirbyteError
 from src.integrations.airbyte.models import (

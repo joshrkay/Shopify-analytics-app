@@ -15,15 +15,13 @@ Story 8.1 - AI Insight Generation (Read-Only Analytics)
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, MagicMock, patch
-from fastapi import FastAPI, Request, HTTPException, status
+from unittest.mock import MagicMock, patch
+from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
 from src.api.routes.insights import (
     router,
     InsightResponse,
-    InsightsListResponse,
-    InsightActionResponse,
     SupportingMetricResponse,
     _insight_to_response,
     check_ai_insights_entitlement,

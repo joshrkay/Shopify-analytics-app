@@ -14,9 +14,8 @@ import logging
 import os
 from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, List
 from threading import Lock
-import hashlib
 
 logger = logging.getLogger(__name__)
 

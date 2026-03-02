@@ -6,11 +6,9 @@ Subscription status is synced with Shopify via webhooks and reconciliation.
 """
 
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, String, Integer, DateTime, Enum, Text,
-    ForeignKey, Index, UniqueConstraint, text, JSON
+    Column, String, DateTime, ForeignKey, Index, UniqueConstraint, text, JSON
 )
 from sqlalchemy.orm import relationship
 

@@ -5,9 +5,8 @@ Story 4.2 - Data Quality Root Cause Signals (Prompts 4.2.2–4.2.4)
 """
 
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from src.diagnostics.ingestion_diagnostics import (
     diagnose_ingestion_failure,

@@ -43,8 +43,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from typing import Callable, List, Optional
 
-from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from fastapi import HTTPException, Request, status
 
 from src.api.dq.service import (
     AnomalyCheckResult,
@@ -52,7 +51,6 @@ from src.api.dq.service import (
     DataQualityVerdict,
     FreshnessCheckResult,
 )
-from src.database.session import get_db_session
 from src.models.dq_models import DataQualityState
 from src.platform.tenant_context import get_tenant_context
 

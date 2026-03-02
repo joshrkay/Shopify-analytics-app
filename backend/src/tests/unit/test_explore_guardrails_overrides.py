@@ -16,7 +16,6 @@ import sys
 import os
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch
 
 # Add docker/superset to path for import (tests run from backend/)
 _SUPERSET_DIR = os.path.join(
@@ -81,9 +80,6 @@ class TestGetEffectiveGuardrails:
             ExplorePermissionValidator,
             ExplorePersona,
             PERFORMANCE_GUARDRAILS,
-            DATASET_EXPLORE_CONFIGS,
-            DatasetExploreConfig,
-            DatasetGuardrailOverrides,
         )
         # fact_orders has overrides set to 90/20/50000/30 which matches global
         validator = ExplorePermissionValidator(ExplorePersona.MERCHANT)
@@ -99,9 +95,6 @@ class TestGetEffectiveGuardrails:
             ExplorePermissionValidator,
             ExplorePersona,
             PerformanceGuardrails,
-            DatasetGuardrailOverrides,
-            DATASET_EXPLORE_CONFIGS,
-            DatasetExploreConfig,
         )
         # Create a custom validator with very strict global guardrails
         strict_global = PerformanceGuardrails(

@@ -9,15 +9,12 @@ Tests cover:
 """
 
 import pytest
-from typing import List
 
 from src.constants.permissions import (
     Role,
     Permission,
     RoleCategory,
     ROLE_PERMISSIONS,
-    BILLING_TIER_ALLOWED_ROLES,
-    get_permissions_for_role,
     get_permissions_for_roles,
     role_has_permission,
     roles_have_permission,

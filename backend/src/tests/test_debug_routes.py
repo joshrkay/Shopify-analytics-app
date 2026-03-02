@@ -8,7 +8,6 @@ They MUST return 404 in production to prevent information leakage.
 import os
 from unittest.mock import patch
 
-import pytest
 
 
 def _get_client():

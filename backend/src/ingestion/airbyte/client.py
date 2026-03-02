@@ -10,7 +10,6 @@ Extends the base Airbyte client with:
 SECURITY: API token must be stored securely and never logged.
 """
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass

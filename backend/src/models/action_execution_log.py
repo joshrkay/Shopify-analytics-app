@@ -21,7 +21,7 @@ Story 8.5 - Action Execution (Scoped & Reversible)
 import enum
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Any
+from typing import Optional
 
 from sqlalchemy import (
     Column,

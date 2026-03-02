@@ -16,12 +16,12 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Tuple
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_, desc
+from sqlalchemy import func
 
 from src.models.data_change_event import DataChangeEvent, DataChangeEventType
 from src.models.dq_models import (
-    SyncRun, SyncRunStatus, DQIncident, DQIncidentStatus,
-    BackfillJob, BackfillJobStatus
+    SyncRun, DQIncident, DQIncidentStatus,
+    BackfillJob
 )
 from src.models.airbyte_connection import TenantAirbyteConnection, ConnectionStatus
 from src.models.action_approval_audit import ActionApprovalAudit, AuditAction
@@ -225,7 +225,7 @@ class DataChangeAggregator:
             title=f"AI action approved: {action_type}",
             description=f"{performed_by} approved {action_type} for {target_name}.",
             affected_metrics=AI_ACTION_AFFECTED_METRICS,
-            impact_summary=f"Action will be executed, which may affect metrics.",
+            impact_summary="Action will be executed, which may affect metrics.",
             source_entity_type="action_approval_audit",
             source_entity_id=audit.id,
             occurred_at=audit.performed_at,
@@ -259,7 +259,7 @@ class DataChangeAggregator:
             title=f"AI action executed: {action_type}",
             description=f"Executed {action_type} for {target_name}.",
             affected_metrics=AI_ACTION_AFFECTED_METRICS,
-            impact_summary=f"This action may cause changes in ad performance metrics.",
+            impact_summary="This action may cause changes in ad performance metrics.",
             source_entity_type="action_proposal",
             source_entity_id=action_proposal.id,
             occurred_at=datetime.now(timezone.utc),
@@ -485,7 +485,7 @@ class DataChangeAggregator:
             self.db.query(TenantAirbyteConnection)
             .filter(
                 TenantAirbyteConnection.tenant_id == self.tenant_id,
-                TenantAirbyteConnection.is_enabled == True,
+                TenantAirbyteConnection.is_enabled,
                 TenantAirbyteConnection.status.in_([
                     ConnectionStatus.ACTIVE,
                     ConnectionStatus.PENDING,

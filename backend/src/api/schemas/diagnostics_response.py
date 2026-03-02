@@ -6,7 +6,6 @@ Pydantic models for root cause diagnostics responses.
 Story 4.2 - Data Quality Root Cause Signals (Prompt 4.2.7)
 """
 
-from datetime import datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field

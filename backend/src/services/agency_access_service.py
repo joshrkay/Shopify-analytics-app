@@ -26,7 +26,7 @@ from src.models.agency_access_request import (
     AgencyAccessRequest,
     AgencyAccessRequestStatus,
 )
-from src.models.role import Role, ROLE_TEMPLATES, seed_roles_for_tenant
+from src.models.role import Role, seed_roles_for_tenant
 from src.models.user_role_assignment import UserRoleAssignment
 from src.models.user_tenant_roles import UserTenantRole
 from src.models.user import User

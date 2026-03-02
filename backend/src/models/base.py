@@ -9,8 +9,6 @@ Provides common functionality:
 """
 
 import uuid
-from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import Column, String, DateTime, func, TypeDecorator
 from sqlalchemy.types import CHAR

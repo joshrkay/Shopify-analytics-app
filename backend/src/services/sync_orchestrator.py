@@ -29,13 +29,11 @@ from src.integrations.airbyte.exceptions import (
 from src.integrations.airbyte.models import AirbyteJobStatus
 from src.services.airbyte_service import (
     AirbyteService,
-    ConnectionNotFoundServiceError,
 )
 from src.services.data_change_aggregator import DataChangeAggregator
 from src.jobs.job_entitlements import (
     JobEntitlementChecker,
     JobType,
-    JobEntitlementError,
 )
 
 logger = logging.getLogger(__name__)

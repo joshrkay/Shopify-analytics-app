@@ -21,7 +21,6 @@ from src.services.schema_compatibility_checker import (
 )
 from src.services.superset_dataset_sync import (
     SupersetDatasetSync,
-    SyncResult,
     _parse_manifest,
     _get_semantic_models_with_exposed_columns,
     _is_semantic_view,

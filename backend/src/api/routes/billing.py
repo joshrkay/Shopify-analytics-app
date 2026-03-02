@@ -4,14 +4,13 @@ Billing API routes for subscription management.
 All routes require JWT authentication with tenant context.
 """
 
-import os
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, Field
 
-from src.platform.tenant_context import get_tenant_context, TenantContext
+from src.platform.tenant_context import get_tenant_context
 from src.services.billing_service import (
     BillingService,
     BillingServiceError,
@@ -257,7 +256,7 @@ async def list_plans(
         "tenant_id": tenant_ctx.tenant_id
     })
 
-    plans = db_session.query(Plan).filter(Plan.is_active == True).all()
+    plans = db_session.query(Plan).filter(Plan.is_active).all()
 
     return PlansListResponse(
         plans=[

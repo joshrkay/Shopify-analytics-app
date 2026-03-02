@@ -36,7 +36,6 @@ from sqlalchemy.orm import Session
 
 from src.models.data_availability import AvailabilityState
 from src.services.data_availability_service import (
-    DataAvailabilityResult,
     DataAvailabilityService,
 )
 

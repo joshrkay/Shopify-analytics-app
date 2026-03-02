@@ -10,7 +10,7 @@ Story 9.1 - Notification Framework (Events → Channels)
 """
 
 import logging
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
 from sqlalchemy.orm import Session
@@ -21,7 +21,6 @@ from src.models.notification import (
     NotificationEventType,
     NotificationImportance,
     NotificationStatus,
-    EVENT_IMPORTANCE_MAP,
 )
 from src.models.notification_preference import NotificationPreference
 

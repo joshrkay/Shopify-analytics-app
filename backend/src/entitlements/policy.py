@@ -5,7 +5,6 @@ Determines billing_state from subscription and evaluates feature access.
 """
 
 import json
-import os
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -279,7 +278,7 @@ class EntitlementPolicy:
         plan_feature = self.db.query(PlanFeature).filter(
             PlanFeature.plan_id == plan_id,
             PlanFeature.feature_key == feature,
-            PlanFeature.is_enabled == True
+            PlanFeature.is_enabled
         ).first()
         
         return plan_feature is not None
@@ -296,9 +295,9 @@ class EntitlementPolicy:
         """
         plan_feature = self.db.query(PlanFeature).filter(
             PlanFeature.feature_key == feature,
-            PlanFeature.is_enabled == True
+            PlanFeature.is_enabled
         ).join(Plan).filter(
-            Plan.is_active == True
+            Plan.is_active
         ).order_by(Plan.price_monthly_cents.asc().nullslast()).first()
         
         if plan_feature:

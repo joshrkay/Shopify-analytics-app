@@ -26,13 +26,14 @@ let mockParams: Record<string, string> = { dashboardId: 'db-1' };
 // Module mocks
 // ---------------------------------------------------------------------------
 
-// Partial mock react-router-dom – keep MemoryRouter real
+// Partial mock react-router-dom – keep MemoryRouter real, add useBlocker stub
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
     useParams: () => mockParams,
+    useBlocker: () => ({ state: 'unblocked', proceed: vi.fn(), reset: vi.fn() }),
   };
 });
 

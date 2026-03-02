@@ -5,8 +5,8 @@ Covers all entitlement check paths and audit logging.
 """
 
 import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from datetime import datetime, timezone
+from unittest.mock import Mock, AsyncMock, patch
 from sqlalchemy.orm import Session
 
 from src.jobs.job_entitlements import (

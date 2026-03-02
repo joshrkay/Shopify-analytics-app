@@ -11,10 +11,8 @@ Story 2.3 shared fixtures:
 
 import os
 import tempfile
-import uuid
 import pytest
 import yaml
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator
 
@@ -98,7 +96,6 @@ def db_engine():
 
     # Import and create all tables
     from src.db_base import Base
-    from src.models import user, tenant, organization, user_tenant_roles, tenant_invite
     from src.models import dashboard_metric_binding  # noqa: F401 - Story 2.3
     from src.models import connector_credential  # noqa: F401 - Credential Vault
     from src.models import connection_consent  # noqa: F401 - Consent Flow

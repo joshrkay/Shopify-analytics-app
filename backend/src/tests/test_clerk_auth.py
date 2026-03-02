@@ -13,38 +13,27 @@ import pytest
 import time
 import jwt
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 
-from src.auth.clerk_verifier import (
-    ClerkJWTVerifier,
-    ClerkVerificationError,
-    verify_clerk_token,
-)
 from src.auth.jwt import (
     ClerkJWTClaims,
     ExtractedClaims,
     extract_claims,
-    parse_clerk_claims,
 )
 from src.auth.context_resolver import (
     AuthContext,
     AuthContextResolver,
     TenantAccess,
-    resolve_auth_context,
 )
 from src.auth.token_service import (
     TokenService,
     RevocationReason,
-    SessionInfo,
 )
 from src.auth.middleware import (
-    ClerkAuthMiddleware,
     is_exempt_path,
-    get_auth_context,
-    require_auth,
 )
 from src.constants.permissions import Permission
 

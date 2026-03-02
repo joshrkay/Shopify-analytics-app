@@ -15,9 +15,8 @@ Story: Secure Credential Vault - Regression
 """
 
 import json
-import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -227,8 +226,6 @@ class TestConnectorCredentialModelContract:
 
     def test_safe_metadata_keys(self):
         """safe_metadata output must include expected keys and exclude payload."""
-        expected_keys = {"id", "credential_name", "source_type", "status",
-                         "metadata", "created_at", "is_active"}
         from src.models.connector_credential import ConnectorCredential
 
         # Verify the method signature exists
@@ -347,7 +344,7 @@ class TestCredentialVaultContract:
         session.refresh = fake_refresh
 
         vault = CredentialVault(db_session=session, tenant_id=TENANT_ID)
-        result = await vault.store(
+        await vault.store(
             credential_name="Test",
             source_type="shopify",
             raw_credentials={"access_token": "tok"},
@@ -378,7 +375,6 @@ class TestCredentialVaultContract:
         """get_decrypted_payload() must return decrypted dict."""
         from src.models.connector_credential import (
             ConnectorCredential,
-            CredentialStatus,
         )
         from src.services.credential_vault import CredentialVault
 
@@ -766,7 +762,7 @@ class TestRevocationBlocksSyncs:
         scalars_mock.all.return_value = creds
 
         call_count = [0]
-        original_creds = {f"cred-{i}": creds[i] for i in range(3)}
+        {f"cred-{i}": creds[i] for i in range(3)}
 
         def mock_execute(stmt):
             result = MagicMock()

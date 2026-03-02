@@ -10,13 +10,12 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
 import uuid
 
 from src.services.shopify_ingestion import (
     ShopifyIngestionService,
-    ShopifyIngestionError,
     CredentialEncryptionError,
     SourceConfigurationError,
     SyncExecutionError,
@@ -25,13 +24,9 @@ from src.services.shopify_ingestion import (
 from src.services.airbyte_service import (
     AirbyteService,
     ConnectionInfo,
-    DuplicateConnectionError,
-    ConnectionNotFoundServiceError,
 )
 from src.integrations.airbyte.exceptions import (
-    AirbyteError,
     AirbyteSyncError,
-    AirbyteConnectionError,
 )
 from src.integrations.airbyte.models import AirbyteSyncResult, AirbyteJobStatus
 from src.models.store import ShopifyStore

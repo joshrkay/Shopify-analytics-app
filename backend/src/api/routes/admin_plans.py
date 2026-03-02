@@ -5,7 +5,6 @@ SECURITY: All routes require admin role verification.
 These endpoints allow creating, editing, and managing pricing plans.
 """
 
-import os
 import logging
 from typing import Optional, List
 
@@ -17,8 +16,7 @@ from src.services.plan_service import (
     PlanService,
     PlanServiceError,
     PlanNotFoundServiceError,
-    PlanValidationError,
-    ShopifyValidationError
+    PlanValidationError
 )
 
 logger = logging.getLogger(__name__)

@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
 import jwt
-from fastapi.testclient import TestClient
 
 # Set test environment variables before importing app
 os.environ.setdefault("SUPERSET_JWT_SECRET", "test-secret-key-for-testing-only")
@@ -25,7 +24,6 @@ os.environ.setdefault("SUPERSET_EMBED_URL", "https://analytics.test.com")
 from src.services.embed_token_service import (
     EmbedTokenService,
     EmbedTokenConfig,
-    EmbedTokenError,
     TokenExpiredError,
     TokenValidationError,
 )

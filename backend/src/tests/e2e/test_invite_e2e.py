@@ -15,7 +15,6 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
 
-from sqlalchemy.orm import Session
 
 from src.models.tenant import Tenant, TenantStatus
 from src.models.user import User
@@ -142,7 +141,7 @@ class TestCompleteInviteLifecycle:
             assert invite.status == InviteStatus.PENDING
 
             # Step 2: User accepts invite
-            result = invite_service.accept_invite(
+            invite_service.accept_invite(
                 invite_id=invite.id,
                 clerk_user_id=e2e_invitee_user.clerk_user_id,
             )
@@ -152,7 +151,7 @@ class TestCompleteInviteLifecycle:
         role = db_session.query(UserTenantRole).filter(
             UserTenantRole.user_id == e2e_invitee_user.id,
             UserTenantRole.tenant_id == e2e_tenant.id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).first()
 
         assert role is not None
@@ -308,7 +307,7 @@ class TestMultiTenantE2E:
         # Verify roles in both tenants
         roles = db_session.query(UserTenantRole).filter(
             UserTenantRole.user_id == e2e_invitee_user.id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).all()
 
         assert len(roles) == 2

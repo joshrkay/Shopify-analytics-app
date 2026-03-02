@@ -26,10 +26,6 @@ from src.platform.audit import (
     AuditAction,
     log_system_audit_event,
 )
-from src.jobs.job_entitlements import (
-    JobEntitlementChecker,
-    JobType,
-)
 
 logger = logging.getLogger(__name__)
 

@@ -10,12 +10,21 @@ CRITICAL: These tests verify that duplicate shop_domains cannot be created,
 preventing data leakage via DBT JOIN on shop_domain.
 """
 
+import os
+
 import pytest
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from src.services.airbyte_service import AirbyteService, DuplicateConnectionError
 from src.models.airbyte_connection import TenantAirbyteConnection, ConnectionStatus
+
+
+_HAS_POSTGRES = bool(os.environ.get("DATABASE_URL", "").startswith("postgresql"))
+
+requires_postgres = pytest.mark.skipif(
+    not _HAS_POSTGRES,
+    reason="Requires PostgreSQL (uses regexp_replace, JSONB, schema-qualified tables)",
+)
 
 
 class TestShopDomainNormalization:
@@ -86,6 +95,7 @@ class TestShopDomainNormalization:
             assert service._normalize_shop_domain(input_domain) == expected
 
 
+@requires_postgres
 class TestShopDomainValidation:
     """Test application-level shop_domain validation."""
 
@@ -289,6 +299,7 @@ class TestShopDomainValidation:
         )
 
 
+@requires_postgres
 class TestRegisterConnectionValidation:
     """Test that register_connection enforces shop_domain validation."""
 
@@ -340,6 +351,7 @@ class TestRegisterConnectionValidation:
         assert connection_info.connection_name == "Unique Shop Connection"
 
 
+@requires_postgres
 class TestDatabaseConstraintEnforcement:
     """
     Test that database constraint blocks duplicates as last line of defense.
@@ -463,6 +475,7 @@ def create_test_connection():
 # Integration Test Scenarios
 # =============================================================================
 
+@requires_postgres
 class TestEndToEndOAuthFlow:
     """
     End-to-end tests simulating complete OAuth flows.
@@ -556,6 +569,7 @@ class TestEndToEndOAuthFlow:
 # Performance Tests
 # =============================================================================
 
+@requires_postgres
 class TestValidationPerformance:
     """Test that validation doesn't significantly impact performance."""
 

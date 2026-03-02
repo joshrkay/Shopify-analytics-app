@@ -28,14 +28,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 
 from src.platform.tenant_context import get_tenant_context
-from src.database.session import get_db_session
 from src.models.ai_action import AIAction, ActionStatus, ActionType
 from src.models.action_execution_log import ActionExecutionLog
 from src.models.action_job import ActionJob, ActionJobStatus
 from src.api.dependencies.entitlements import check_ai_actions_entitlement
 from src.services.action_execution_service import ActionExecutionService
 from src.services.action_rollback_service import ActionRollbackService
-from src.services.action_job_dispatcher import ActionJobDispatcher
+from src.services.billing_entitlements import BillingEntitlementsService, BillingFeature
 from src.constants.permissions import (
     can_view_actions,
     can_execute_actions,

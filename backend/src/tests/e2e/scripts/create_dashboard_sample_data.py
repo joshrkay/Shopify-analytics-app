@@ -33,8 +33,6 @@ import json
 import time
 import uuid
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import Optional
 
 # Add backend to path for imports
 backend_dir = Path(__file__).parent.parent.parent.parent.parent
@@ -90,7 +88,6 @@ async def create_sample_data_local(
     logger.info("Setting up local test environment with mocks")
 
     # Import dependencies
-    from fastapi.testclient import TestClient
     from httpx import AsyncClient
     from src.tests.e2e.conftest import _get_async_database_url
     from src.tests.e2e.sample_data_generator import SampleDataGenerator

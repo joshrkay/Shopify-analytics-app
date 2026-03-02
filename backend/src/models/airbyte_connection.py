@@ -8,7 +8,7 @@ This ensures complete tenant isolation for data source connections.
 import uuid
 import enum
 
-from sqlalchemy import Column, String, Enum, DateTime, Text, Index, Boolean, JSON
+from sqlalchemy import Column, String, Enum, DateTime, Index, Boolean, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 
 # Use JSONB for PostgreSQL (optimized for queries), JSON for other databases (testing)

@@ -13,7 +13,7 @@ Story 8.4 - Action Proposals (Approval Required)
 
 import pytest
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient

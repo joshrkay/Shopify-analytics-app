@@ -37,7 +37,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, List, Any
+from typing import Optional, List
 
 from fastapi import Request, HTTPException, status, Depends
 from sqlalchemy.orm import Session
@@ -186,7 +186,7 @@ class TenantGuard:
         # Get user by clerk_user_id
         user = self.db.query(User).filter(
             User.clerk_user_id == clerk_user_id,
-            User.is_active == True,
+            User.is_active,
         ).first()
 
         if not user:
@@ -199,7 +199,7 @@ class TenantGuard:
         # Get all active tenant roles for this user
         roles = self.db.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).all()
 
         # Filter to active tenants only
@@ -243,7 +243,7 @@ class TenantGuard:
 
         user = self.db.query(User).filter(
             User.clerk_user_id == clerk_user_id,
-            User.is_active == True,
+            User.is_active,
         ).first()
 
         if not user:
@@ -252,7 +252,7 @@ class TenantGuard:
         roles = self.db.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == tenant_id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).all()
 
         return [role.role for role in roles]
@@ -379,7 +379,7 @@ class TenantGuard:
         user_tenant_roles = self.db.query(UserTenantRole).filter(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == active_tenant_id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).all()
 
         if not user_tenant_roles:
@@ -954,7 +954,7 @@ def get_user_tenants(
     # Get user
     user = db.query(User).filter(
         User.clerk_user_id == clerk_user_id,
-        User.is_active == True,
+        User.is_active,
     ).first()
 
     if not user:
@@ -963,7 +963,7 @@ def get_user_tenants(
     # Get all active tenant roles
     roles = db.query(UserTenantRole).filter(
         UserTenantRole.user_id == user.id,
-        UserTenantRole.is_active == True,
+        UserTenantRole.is_active,
     ).all()
 
     # Group roles by tenant

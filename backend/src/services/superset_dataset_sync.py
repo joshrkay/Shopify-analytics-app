@@ -13,14 +13,12 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import httpx
 from sqlalchemy.orm import Session
 
-from src.models.dataset_metrics import DatasetSyncStatus
 from src.monitoring.dataset_alerts import alert_compatibility_failure, alert_sync_failure
 from src.services.audit_logger import (
     emit_dataset_sync_completed,

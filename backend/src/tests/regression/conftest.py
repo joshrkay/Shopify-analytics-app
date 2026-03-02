@@ -15,11 +15,9 @@ import json
 import pytest
 from datetime import datetime, timezone, timedelta
 from typing import Generator, Optional
-from unittest.mock import MagicMock, patch
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
 # Set test environment before importing app modules
@@ -87,8 +85,6 @@ def db_engine():
     from src.db_base import Base
 
     # Import all models to ensure they're registered with Base
-    from src.models import subscription, plan, store, billing_event, airbyte_connection
-    from src.ingestion.jobs import models as ingestion_job_models
 
     # Create all tables
     Base.metadata.create_all(bind=engine)

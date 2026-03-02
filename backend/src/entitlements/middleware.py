@@ -18,9 +18,9 @@ Error responses use HTTP 402 (Payment Required) with clear error codes.
 import logging
 from functools import wraps
 from typing import Optional, Callable, List, Any, Dict
-from datetime import datetime, timezone
+from datetime import datetime
 
-from fastapi import Request, HTTPException, status, Depends
+from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -29,20 +29,16 @@ from src.entitlements.rules import (
     AccessRules,
     AccessDecision,
     BillingState,
-    AccessLevel,
     create_access_rules_from_subscription,
 )
 from src.entitlements.cache import (
-    EntitlementCache,
     CachedEntitlement,
     get_entitlement_cache,
 )
 from src.entitlements.audit import (
-    EntitlementAuditLogger,
     AccessDenialEvent,
     get_audit_logger,
 )
-from src.entitlements.loader import get_entitlement_loader
 
 logger = logging.getLogger(__name__)
 

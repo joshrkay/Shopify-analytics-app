@@ -6,11 +6,10 @@ No query can access data across tenants.
 """
 
 import logging
-from typing import TypeVar, Generic, Optional, List, Any
+from typing import TypeVar, Generic, Optional, List
 from abc import ABC, abstractmethod
 
-from sqlalchemy import create_engine, Column, String, text
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.db_base import Base

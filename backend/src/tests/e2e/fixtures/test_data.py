@@ -255,7 +255,6 @@ def generate_shopify_refunds(count: int = 25) -> List[Dict]:
 def generate_shopify_cancellations(count: int = 20) -> List[Dict]:
     """Generate cancelled orders."""
     orders = []
-    cancel_reasons = ["customer", "fraud", "inventory", "declined", "other"]
 
     for i in range(count):
         created_at = BASE_DATE + timedelta(days=i // 2, hours=random.randint(0, 23))
@@ -607,12 +606,6 @@ def create_klaviyo_event(
     """Create a Klaviyo event record."""
     event_id = event_id or f"klaviyo_evt_{uuid.uuid4().hex[:12]}"
 
-    event_types = [
-        "Opened Email", "Clicked Email", "Received Email",
-        "Unsubscribed", "Marked as Spam", "Bounced",
-        "Placed Order", "Started Checkout", "Added to Cart",
-        "Viewed Product", "Subscribed to List"
-    ]
 
     return {
         "id": event_id,

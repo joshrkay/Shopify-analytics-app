@@ -6,7 +6,6 @@ JWT verification. Any API route without the /api/ prefix bypasses auth entirely.
 This test catches that class of bug at CI time.
 """
 
-import pytest
 from starlette.routing import Mount
 
 

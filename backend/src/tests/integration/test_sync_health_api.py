@@ -20,7 +20,6 @@ from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
 from src.api.dq.routes import router, get_dq_service
-from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session
 
 
@@ -70,7 +69,7 @@ def mock_tenant_context(tenant_id, user_id):
 @pytest.fixture
 def sample_connector():
     """Create a sample connector health object."""
-    from src.api.dq.service import ConnectorSyncHealth, DQSeverity
+    from src.api.dq.service import ConnectorSyncHealth
 
     return ConnectorSyncHealth(
         connector_id="conn-123",

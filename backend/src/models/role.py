@@ -17,27 +17,24 @@ Story 5.5.1 - Data Model: Custom Roles Per Tenant
 """
 
 import uuid
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Column,
     String,
     Boolean,
-    DateTime,
     ForeignKey,
     Index,
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import relationship
 
 from src.db_base import Base
 from src.models.base import TimestampMixin
 
 if TYPE_CHECKING:
-    from src.models.tenant import Tenant
+    pass
 
 
 class Role(Base, TimestampMixin):

@@ -12,7 +12,6 @@ from typing import Optional, List
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
 
 from src.models.subscription import Subscription, SubscriptionStatus
 from src.models.billing_event import BillingEvent, BillingEventType

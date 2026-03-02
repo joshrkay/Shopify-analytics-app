@@ -187,8 +187,6 @@ class User(Base, TimestampMixin):
 
     def get_tenants(self) -> List["Tenant"]:
         """Get all tenants this user has access to."""
-        from src.models.tenant import Tenant
-        from src.models.user_tenant_roles import UserTenantRole
 
         return [role.tenant for role in self.tenant_roles.filter_by(is_active=True).all()]
 

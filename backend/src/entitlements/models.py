@@ -27,7 +27,7 @@ import json
 
 from sqlalchemy import (
     Column, String, Boolean, DateTime, Text, Index,
-    UniqueConstraint, text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSON
 

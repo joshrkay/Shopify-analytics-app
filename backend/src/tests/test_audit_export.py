@@ -12,13 +12,12 @@ ACCEPTANCE CRITERIA:
 import json
 import uuid
 import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from unittest.mock import Mock, MagicMock, patch
 
 from src.services.audit_exporter import (
     AuditExporterService,
     ExportFormat,
-    ExportResult,
 )
 from src.models.audit_log import GAAuditLog
 

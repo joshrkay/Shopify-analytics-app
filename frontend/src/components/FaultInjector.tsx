@@ -72,11 +72,6 @@ export function DevErrorPanel() {
   const [isVisible, setIsVisible] = useState(false);
   const [errorLevel, setErrorLevel] = useState<'none' | 'root' | 'page' | 'component'>('none');
 
-  // Only render in development
-  if (import.meta.env.PROD) {
-    return null;
-  }
-
   // Listen for keyboard shortcut
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -90,6 +85,11 @@ export function DevErrorPanel() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Only render in development
+  if (import.meta.env.PROD) {
+    return null;
+  }
 
   // Throw error at requested level
   if (errorLevel !== 'none') {

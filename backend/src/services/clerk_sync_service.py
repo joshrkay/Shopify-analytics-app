@@ -23,7 +23,6 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
 from src.platform.audit import (
     AuditAction,
@@ -692,7 +691,7 @@ class ClerkSyncService:
             return None
 
         old_app_role = self._map_clerk_role(old_role)
-        new_app_role = self._map_clerk_role(new_role)
+        self._map_clerk_role(new_role)
 
         # Find existing role
         existing = self.session.query(UserTenantRole).filter(

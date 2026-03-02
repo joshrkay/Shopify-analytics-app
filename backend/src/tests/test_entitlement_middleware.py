@@ -7,13 +7,13 @@ Target: >=90% coverage.
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from fastapi import FastAPI, Request, status
+from unittest.mock import Mock, patch
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from src.entitlements.middleware import EntitlementMiddleware, require_feature
-from src.entitlements.policy import EntitlementPolicy, BillingState, EntitlementCheckResult
+from src.entitlements.middleware import EntitlementMiddleware, require_entitlement
+from src.entitlements.policy import EntitlementPolicy, BillingState
 from src.entitlements.errors import EntitlementDeniedError
 from src.models.subscription import Subscription, SubscriptionStatus
 from src.models.plan import Plan, PlanFeature
@@ -340,7 +340,7 @@ class TestEntitlementMiddleware:
             return {"status": "ok"}
         
         @app.get("/premium")
-        @require_feature("premium_analytics")
+        @require_entitlement("premium_analytics")
         async def premium_endpoint(request: Request):
             return {"status": "premium"}
         
@@ -386,7 +386,7 @@ class TestEntitlementMiddleware:
         # Mock request with tenant context
         with patch('fastapi.Request') as mock_request:
             mock_request.state.tenant_context = mock_tenant_context
-            response = client.get("/premium")
+            client.get("/premium")
             # Should allow (though we need proper request mocking)
             # This is a simplified test - full integration test would be better
     
@@ -518,11 +518,11 @@ class TestEntitlementDeniedError:
 
 
 class TestRequireFeatureDecorator:
-    """Tests for @require_feature decorator."""
+    """Tests for @require_entitlement decorator."""
     
     def test_decorator_sets_metadata(self):
         """Test decorator sets __required_feature__ on function."""
-        @require_feature("premium_analytics")
+        @require_entitlement("premium_analytics")
         async def test_handler(request: Request):
             return {"ok": True}
         
@@ -583,7 +583,6 @@ class TestEntitlementPolicyConfig:
         """Test loading config when file doesn't exist."""
         # Temporarily change config path to non-existent file
         import src.entitlements.policy as policy_module
-        original_path = policy_module.Path
         
         # Mock Path to point to non-existent file
         with patch.object(policy_module.Path, 'exists', return_value=False):

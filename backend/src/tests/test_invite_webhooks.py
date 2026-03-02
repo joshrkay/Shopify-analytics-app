@@ -13,15 +13,13 @@ Following patterns from test_clerk_webhooks.py.
 
 import uuid
 import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from sqlalchemy.orm import Session
 
 from src.models.tenant import Tenant, TenantStatus
 from src.models.user import User
 from src.models.user_tenant_roles import UserTenantRole
-from src.models.tenant_invite import TenantInvite, InviteStatus
+from src.models.tenant_invite import InviteStatus
 from src.services.invite_service import InviteService
 
 
@@ -165,7 +163,7 @@ class TestOrganizationInvitationAccepted:
 
         # Simulate acceptance webhook
         with patch('src.services.invite_service.write_audit_log_sync'):
-            result = invite_service.accept_invite(
+            invite_service.accept_invite(
                 invite_id=invite.id,
                 clerk_user_id=sample_user.clerk_user_id,
             )
@@ -327,7 +325,7 @@ class TestCompleteWebhookFlow:
 
         # Step 2: organizationInvitation.accepted webhook
         with patch('src.services.invite_service.write_audit_log_sync'):
-            result = invite_service.accept_invite(
+            invite_service.accept_invite(
                 invite_id=invite.id,
                 clerk_user_id=sample_user.clerk_user_id,
             )
@@ -342,7 +340,7 @@ class TestCompleteWebhookFlow:
         role = db_session.query(UserTenantRole).filter(
             UserTenantRole.user_id == sample_user.id,
             UserTenantRole.tenant_id == sample_tenant.id,
-            UserTenantRole.is_active == True,
+            UserTenantRole.is_active,
         ).first()
         assert role is not None
         assert role.role == "MERCHANT_ADMIN"

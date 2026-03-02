@@ -16,11 +16,9 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from src.models.ai_action import AIAction, ActionStatus
 from src.models.action_job import ActionJob, ActionJobStatus
 from src.services.action_execution_service import (
     ActionExecutionService,
-    ActionExecutionResult,
 )
 from src.services.platform_credentials_service import PlatformCredentialsService
 from src.services.platform_executors import RetryConfig

@@ -23,9 +23,7 @@ from src.repositories.plans_repo import (
     PlanNotFoundError,
     PlanAlreadyExistsError
 )
-from src.models.plan import Plan, PlanFeature
 from src.integrations.shopify.billing_client import (
-    ShopifyBillingClient,
     ShopifyAPIError,
     get_billing_client
 )

@@ -12,7 +12,7 @@ Health data is tenant-scoped - users can only see their own data.
 """
 
 import logging
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone
 from typing import Optional, List
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends
@@ -20,12 +20,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session
-from src.api.dq.service import DQService, DQEventType
+from src.api.dq.service import DQService
 from src.models.dq_models import (
     DQIncidentStatus, BackfillJob, BackfillJobStatus,
     MAX_MERCHANT_BACKFILL_DAYS,
 )
-from src.platform.audit import AuditAction
 
 logger = logging.getLogger(__name__)
 
@@ -576,7 +575,7 @@ async def estimate_backfill(
     SECURITY: Only estimates for connectors belonging to
     the authenticated tenant.
     """
-    tenant_ctx = get_tenant_context(request)
+    get_tenant_context(request)
 
     # Parse dates
     try:

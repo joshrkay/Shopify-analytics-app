@@ -6,6 +6,12 @@ import {
   getWidgetPreview,
 } from '../services/widgetCatalogApi';
 
+// Helper to create mock headers object that satisfies handleResponse's
+// response.headers.get('content-type') call.
+const mockHeaders = (contentType = 'application/json') => ({
+  get: (name: string) => (name.toLowerCase() === 'content-type' ? contentType : null),
+});
+
 describe('widget catalog backend wiring integration', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -20,6 +26,7 @@ describe('widget catalog backend wiring integration', () => {
       if (url.endsWith('/api/v1/templates')) {
         return {
           ok: true,
+          headers: mockHeaders(),
           json: async () => ({
             templates: [
               {
@@ -78,6 +85,7 @@ describe('widget catalog backend wiring integration', () => {
       if (url.endsWith('/api/v1/templates')) {
         return {
           ok: true,
+          headers: mockHeaders(),
           json: async () => ({
             templates: [
               {
@@ -117,6 +125,7 @@ describe('widget catalog backend wiring integration', () => {
       if (url.endsWith('/api/datasets/preview')) {
         return {
           ok: true,
+          headers: mockHeaders(),
           json: async () => ({
             data: [
               { date: '2025-01-01', revenue: 100 },
@@ -157,6 +166,7 @@ describe('widget catalog backend wiring integration', () => {
       if (url.endsWith('/api/v1/templates')) {
         return {
           ok: true,
+          headers: mockHeaders(),
           json: async () => ({
             templates: [
               {
@@ -197,6 +207,7 @@ describe('widget catalog backend wiring integration', () => {
         return {
           ok: false,
           status: 500,
+          headers: mockHeaders(),
           json: async () => ({ detail: 'Server exploded' }),
         } as Response;
       }
@@ -226,6 +237,7 @@ describe('widget catalog backend wiring integration', () => {
       if (url.endsWith('/api/v1/templates')) {
         return {
           ok: true,
+          headers: mockHeaders(),
           json: async () => ({
             templates: [
               {
@@ -266,6 +278,7 @@ describe('widget catalog backend wiring integration', () => {
         return {
           ok: false,
           status: 403,
+          headers: mockHeaders(),
           json: async () => ({ detail: 'Forbidden' }),
         } as Response;
       }

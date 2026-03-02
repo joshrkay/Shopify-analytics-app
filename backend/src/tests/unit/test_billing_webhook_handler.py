@@ -10,12 +10,10 @@ Tests cover:
 
 import uuid
 import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 from src.services.billing_webhook_handler import (
     BillingWebhookHandler,
-    WebhookProcessingResult,
     get_webhook_handler
 )
 from src.models.subscription import SubscriptionStatus

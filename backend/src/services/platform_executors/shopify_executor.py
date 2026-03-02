@@ -18,14 +18,13 @@ Story 8.5 - Action Execution (Scoped & Reversible)
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional, Any
+from typing import Optional
 
 import httpx
 
 from src.services.platform_executors.base_executor import (
     BasePlatformExecutor,
     ExecutionResult,
-    ExecutionResultStatus,
     StateCapture,
     RetryConfig,
     PlatformAPIError,
@@ -572,7 +571,7 @@ class ShopifyExecutor(BasePlatformExecutor):
             verified_state = await self.get_entity_state(entity_id, "product")
 
             return ExecutionResult.success_result(
-                message=f"Successfully updated product",
+                message="Successfully updated product",
                 response_data=product,
                 confirmed_state=verified_state.state,
                 http_status_code=200,
@@ -907,7 +906,7 @@ class ShopifyExecutor(BasePlatformExecutor):
             deleted_id = result.get("deletedCodeDiscountId")
 
             return ExecutionResult.success_result(
-                message=f"Successfully deleted discount",
+                message="Successfully deleted discount",
                 response_data={"deletedId": deleted_id},
                 http_status_code=200,
             )

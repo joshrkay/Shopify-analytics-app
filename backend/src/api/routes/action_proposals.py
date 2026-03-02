@@ -26,14 +26,10 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 
 from src.platform.tenant_context import get_tenant_context
-from src.database.session import get_db_session
 from src.models.action_proposal import (
     ActionProposal,
-    ActionType,
     ActionStatus,
-    TargetPlatform,
 )
-from src.models.ai_recommendation import RiskLevel
 from src.api.dependencies.entitlements import check_ai_actions_entitlement
 from src.services.action_proposal_approval_service import (
     ActionProposalApprovalService,

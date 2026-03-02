@@ -10,9 +10,8 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from decimal import Decimal
-from datetime import datetime, timezone
 
 from src.models.llm_routing import (
     LLMModelRegistry,
@@ -24,7 +23,6 @@ from src.models.llm_routing import (
 from src.services.llm_routing_service import (
     LLMRoutingService,
     LLMRoutingError,
-    LLMCompletionResult,
 )
 from src.integrations.openrouter import (
     ChatMessage,
@@ -32,7 +30,6 @@ from src.integrations.openrouter import (
     TokenUsage,
     ChatChoice,
     OpenRouterRateLimitError,
-    OpenRouterTimeoutError,
 )
 
 

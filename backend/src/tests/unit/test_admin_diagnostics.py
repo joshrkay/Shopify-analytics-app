@@ -5,7 +5,7 @@ Story 4.2 - Data Quality Root Cause Signals (Prompts 4.2.7-4.2.8)
 """
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,10 +21,8 @@ from src.api.schemas.diagnostics_response import (
     EvidenceLink,
     RankedCauseResponse,
 )
-from src.models.root_cause_signal import RootCauseHypothesis
 from src.platform.audit import AuditAction, AUDITABLE_EVENTS
 from src.services.audit_logger import (
-    emit_root_cause_signal_generated,
     emit_root_cause_signal_updated,
 )
 

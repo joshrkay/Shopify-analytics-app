@@ -8,13 +8,10 @@ Usage:
     pytest backend/src/tests/regression/test_simplification_regression.py -v
 """
 
-import sys
 import pytest
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
-from datetime import datetime, timezone
+from unittest.mock import Mock
 
-from fastapi import Request, HTTPException, status
-from fastapi.testclient import TestClient
+from fastapi import Request
 from fastapi import FastAPI
 
 # Import directly from modules to avoid __init__.py import chain issues
@@ -600,7 +597,6 @@ class TestMiddlewareIntegration:
     def test_error_handler_middleware_exists(self):
         """ErrorHandlerMiddleware must exist and be usable."""
         from src.platform.errors import ErrorHandlerMiddleware
-        from fastapi import FastAPI
 
         app = FastAPI()
         middleware = ErrorHandlerMiddleware(app)

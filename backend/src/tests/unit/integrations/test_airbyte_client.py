@@ -14,14 +14,12 @@ Tests cover:
 import base64
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import datetime, timezone
 
 import httpx
 
 from src.integrations.airbyte.client import (
     AirbyteClient,
     get_airbyte_client,
-    DEFAULT_BASE_URL,
 )
 from src.integrations.airbyte.exceptions import (
     AirbyteError,
@@ -38,7 +36,6 @@ from src.integrations.airbyte.models import (
     AirbyteJobStatus,
     AirbyteSyncResult,
     AirbyteWorkspace,
-    AirbyteDestination,
     ConnectionStatus,
     DestinationCreationRequest,
     SourceCreationRequest,

@@ -8,16 +8,13 @@ Tests cover:
 - Diagnostics (failing_checks, counts, message)
 """
 
-import pytest
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import Mock
 
 from src.api.dq.service import (
     DQService,
     FreshnessCheckResult,
     AnomalyCheckResult,
-    DataQualityVerdict,
 )
 from src.models.dq_models import (
     DQCheckType,

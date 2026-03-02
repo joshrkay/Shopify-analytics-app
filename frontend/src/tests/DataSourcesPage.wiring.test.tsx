@@ -28,6 +28,7 @@ vi.mock('../services/apiUtils', () => ({
     Authorization: 'Bearer test-token',
   }),
   handleResponse: vi.fn(async (res: Response) => res.json()),
+  fetchWithRetry: vi.fn((...args: unknown[]) => (globalThis.fetch as any)(...args)),
   getErrorMessage: vi.fn((_err: unknown, fallback: string) => fallback),
 }));
 
@@ -207,11 +208,11 @@ describe('DataSources Page — API→UI Wiring', () => {
 
     renderPage();
 
-    // The empty state shows "Connect Source" primary action or the empty state heading
+    // The empty state shows "Connect Source" primary action and/or the empty state heading
     await waitFor(() => {
       expect(
-        screen.getByText(/Connect Source|No data sources connected yet|Connect Your First Source/),
-      ).toBeInTheDocument();
+        screen.getAllByText(/Connect Source|No data sources connected yet|Connect Your First Source/).length,
+      ).toBeGreaterThan(0);
     });
   });
 

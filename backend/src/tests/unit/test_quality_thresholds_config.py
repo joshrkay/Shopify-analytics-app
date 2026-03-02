@@ -11,12 +11,10 @@ Tests cover:
 import pytest
 import os
 import tempfile
-from unittest.mock import patch
 
 import yaml
 
 from src.config.quality_thresholds import (
-    QualityThresholdsLoader,
     get_quality_thresholds_loader,
     reset_quality_thresholds_loader,
 )

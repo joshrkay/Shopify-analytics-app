@@ -15,7 +15,6 @@ Story 8.3 - AI Recommendations (No Actions)
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text

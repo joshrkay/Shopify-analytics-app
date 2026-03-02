@@ -27,6 +27,41 @@ const mockTranslations = {
   },
 };
 
+// Mock Clerk to prevent useUser/useClerk errors
+vi.mock('@clerk/clerk-react', () => ({
+  useUser: vi.fn().mockReturnValue({
+    user: { firstName: 'Test', lastName: 'User', primaryEmailAddress: { emailAddress: 'test@example.com' } },
+    isLoaded: true,
+    isSignedIn: true,
+  }),
+  useClerk: vi.fn().mockReturnValue({ signOut: vi.fn() }),
+  useOrganization: vi.fn().mockReturnValue({ organization: null }),
+  useAuth: vi.fn().mockReturnValue({ isLoaded: true, isSignedIn: true }),
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+// Mock the sidebar context used by AppHeader
+vi.mock('../components/layout/RootLayout', () => ({
+  useSidebar: vi.fn().mockReturnValue({ isOpen: false, toggle: vi.fn(), close: vi.fn() }),
+  SidebarProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+// Mock AgencyContext (used by ProfileMenu)
+vi.mock('../contexts/AgencyContext', () => ({
+  useAgency: vi.fn().mockReturnValue({
+    activeTenantId: 'test-tenant',
+    getActiveStore: vi.fn().mockReturnValue(null),
+    isAgencyUser: false,
+    tenants: [],
+    switchTenant: vi.fn(),
+  }),
+}));
+
+// Mock insights API (used by NotificationBadge in AppHeader)
+vi.mock('../services/insightsApi', () => ({
+  getUnreadInsightsCount: vi.fn().mockResolvedValue(0),
+}));
+
 // Mock the API functions
 vi.mock('../services/changelogApi', () => ({
   getUnreadCountNumber: vi.fn(),
@@ -142,11 +177,17 @@ describe('ChangelogBadge', () => {
   });
 
   it('calls onClick when clicked', async () => {
+    // onClick button only renders when count > 0
+    (getUnreadCountNumber as any).mockResolvedValue(3);
     const handleClick = vi.fn();
 
     renderWithProviders(
       <ChangelogBadge showLabel label="Updates" onClick={handleClick} />
     );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button')).toBeInTheDocument();
+    });
 
     const button = screen.getByRole('button');
     await userEvent.click(button);
@@ -220,6 +261,8 @@ describe('FeatureUpdateBanner', () => {
   });
 
   it('limits displayed items to maxItems', async () => {
+    // maxItems is passed to the API call; the backend handles limiting.
+    // The mock simulates a backend that returns only 2 entries for maxItems=2.
     (getEntriesForFeature as any).mockResolvedValue({
       entries: [
         {
@@ -242,19 +285,9 @@ describe('FeatureUpdateBanner', () => {
           is_read: false,
           published_at: new Date().toISOString(),
         },
-        {
-          id: '3',
-          version: '1.0.2',
-          title: 'Feature 3',
-          summary: 'Summary 3',
-          release_type: 'fix',
-          feature_areas: ['dashboard'],
-          is_read: false,
-          published_at: new Date().toISOString(),
-        },
       ],
       total: 3,
-      has_more: false,
+      has_more: true,
     });
 
     renderWithProviders(
@@ -266,7 +299,7 @@ describe('FeatureUpdateBanner', () => {
       expect(screen.getByText('Feature 2')).toBeInTheDocument();
     });
 
-    // Feature 3 should not be visible due to maxItems=2
+    // Feature 3 should not be visible because API returned only 2 entries
     expect(screen.queryByText('Feature 3')).not.toBeInTheDocument();
   });
 

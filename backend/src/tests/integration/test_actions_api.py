@@ -15,7 +15,7 @@ Story 8.5 - Action Execution (Scoped & Reversible)
 import pytest
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 from fastapi import FastAPI

@@ -10,9 +10,7 @@ Test classes:
 """
 
 import uuid
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
 
 from sqlalchemy.orm import Session
 
@@ -85,7 +83,7 @@ class TestRefreshJWT:
             .filter(
                 UserTenantRole.user_id == user.id,
                 UserTenantRole.tenant_id == tenant.id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             )
             .first()
         )
@@ -103,7 +101,7 @@ class TestRefreshJWT:
             .filter(
                 UserTenantRole.user_id == user.id,
                 UserTenantRole.tenant_id == tenant.id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             )
             .first()
         )
@@ -124,7 +122,7 @@ class TestRefreshJWT:
             .filter(
                 UserTenantRole.user_id == user.id,
                 UserTenantRole.tenant_id == tenant.id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             )
             .first()
         )
@@ -143,7 +141,7 @@ class TestRefreshJWT:
             db_session.query(UserTenantRole)
             .filter(
                 UserTenantRole.user_id == user.id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             )
             .all()
         )
@@ -312,7 +310,7 @@ class TestDashboardDenial:
             .filter(
                 UserTenantRole.user_id == user.id,
                 UserTenantRole.tenant_id == tenant.id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             )
             .first()
         )
@@ -328,7 +326,7 @@ class TestDashboardDenial:
             .filter(
                 UserTenantRole.user_id == user.id,
                 UserTenantRole.tenant_id == tenant.id,
-                UserTenantRole.is_active == True,
+                UserTenantRole.is_active,
             )
             .first()
         )

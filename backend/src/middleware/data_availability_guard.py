@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from typing import Callable, Dict, List, Optional
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -50,9 +50,7 @@ from src.models.data_availability import AvailabilityState
 from src.services.data_availability_service import (
     DataAvailabilityResult,
     DataAvailabilityService,
-    resolve_sla_key,
 )
-from src.database.session import get_db_session
 from src.platform.tenant_context import get_tenant_context
 
 logger = logging.getLogger(__name__)

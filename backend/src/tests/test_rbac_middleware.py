@@ -14,7 +14,7 @@ Test classes:
 """
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from starlette.responses import JSONResponse
@@ -437,7 +437,6 @@ class TestDecoratorAuditIntegration:
     def test_require_role_emits_audit(self):
         """require_role decorator emits audit on denial."""
         from src.platform.rbac import require_role
-        from src.constants.permissions import Role
 
         app = FastAPI()
 

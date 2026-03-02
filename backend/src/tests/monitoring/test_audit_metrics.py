@@ -4,7 +4,6 @@ Unit tests for audit metrics.
 Story 10.5 - Monitoring & Alerting for Audit System
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 from src.monitoring.audit_metrics import AuditMetrics, get_audit_metrics

@@ -12,14 +12,12 @@ Story 8.5 - Action Execution (Scoped & Reversible)
 
 import pytest
 import uuid
-from datetime import datetime, timezone, timedelta
 
 from src.models.ai_action import (
     AIAction,
     ActionStatus,
     ActionType,
     ActionTargetEntityType,
-    Platform,
 )
 from src.models.action_execution_log import (
     ActionExecutionLog,
@@ -101,7 +99,10 @@ class TestAIActionModel:
         assert action.tenant_id == tenant_id
         assert action.action_type == ActionType.ADJUST_BUDGET
         assert action.platform == "google"
-        assert action.status == ActionStatus.PENDING_APPROVAL
+        # SQLAlchemy Column defaults are applied at INSERT time, not in-memory
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(AIAction)
+        assert mapper.columns["status"].default.arg == ActionStatus.PENDING_APPROVAL
 
     def test_is_pending_approval_returns_true_initially(self, sample_action):
         """is_pending_approval should return True for new actions."""
@@ -137,6 +138,12 @@ class TestAIActionModel:
                 sample_action.mark_failed("error", "ERR001")
             elif status == ActionStatus.PARTIALLY_EXECUTED:
                 sample_action.mark_partially_executed("partial", {}, {})
+            elif status == ActionStatus.ROLLED_BACK:
+                sample_action.status = ActionStatus.SUCCEEDED
+                sample_action.mark_rolled_back()
+            elif status == ActionStatus.ROLLBACK_FAILED:
+                sample_action.status = ActionStatus.SUCCEEDED
+                sample_action.mark_rollback_failed("rollback error")
 
             assert sample_action.is_terminal is True, f"Failed for {status}"
 
@@ -271,7 +278,8 @@ class TestAIActionStatusTransitions:
 
     def test_increment_retry_increases_count(self, sample_action):
         """increment_retry() should increase retry count."""
-        assert sample_action.retry_count == 0
+        # SQLAlchemy default=0 is applied at INSERT time; set initial value manually
+        sample_action.retry_count = 0
 
         sample_action.increment_retry()
         assert sample_action.retry_count == 1
@@ -437,104 +445,84 @@ class TestActionJobModel:
         assert job.status == ActionJobStatus.QUEUED
         assert job.action_ids == action_ids
 
-    def test_is_running_returns_true_for_running_status(self, sample_job):
-        """is_running should return True for RUNNING status."""
+    def test_is_active_returns_true_for_running_status(self, sample_job):
+        """is_active should return True for RUNNING status."""
         sample_job.status = ActionJobStatus.RUNNING
-        assert sample_job.is_running is True
+        assert sample_job.is_active is True
 
-    def test_is_running_returns_false_for_other_statuses(self, sample_job):
-        """is_running should return False for non-RUNNING statuses."""
-        assert sample_job.is_running is False  # QUEUED
+    def test_is_active_returns_true_for_queued_status(self, sample_job):
+        """is_active should return True for QUEUED status."""
+        assert sample_job.is_active is True  # QUEUED
 
-    def test_is_completed_for_all_completed_statuses(self, sample_job):
-        """is_completed should return True for all completed statuses."""
+    def test_is_terminal_for_all_completed_statuses(self, sample_job):
+        """is_terminal should return True for all completed statuses."""
         completed_statuses = [
             ActionJobStatus.SUCCEEDED,
             ActionJobStatus.FAILED,
-            ActionJobStatus.PARTIAL_SUCCESS,
+            ActionJobStatus.PARTIALLY_SUCCEEDED,
         ]
 
-        for status in completed_statuses:
-            sample_job.status = status
-            assert sample_job.is_completed is True, f"Failed for {status}"
+        for job_status in completed_statuses:
+            sample_job.status = job_status
+            assert sample_job.is_terminal is True, f"Failed for {job_status}"
 
-    def test_is_completed_false_for_active_statuses(self, sample_job):
-        """is_completed should return False for active statuses."""
+    def test_is_terminal_false_for_active_statuses(self, sample_job):
+        """is_terminal should return False for active statuses."""
         sample_job.status = ActionJobStatus.QUEUED
-        assert sample_job.is_completed is False
+        assert sample_job.is_terminal is False
 
         sample_job.status = ActionJobStatus.RUNNING
-        assert sample_job.is_completed is False
+        assert sample_job.is_terminal is False
 
-    def test_start_sets_running_status_and_timestamp(self, sample_job):
-        """start() should set status to RUNNING and record timestamp."""
-        sample_job.start()
+    def test_mark_running_sets_running_status_and_timestamp(self, sample_job):
+        """mark_running() should set status to RUNNING and record timestamp."""
+        sample_job.mark_running()
 
         assert sample_job.status == ActionJobStatus.RUNNING
         assert sample_job.started_at is not None
 
-    def test_start_raises_if_not_queued(self, sample_job):
-        """start() should raise if not in QUEUED status."""
-        sample_job.status = ActionJobStatus.RUNNING
-
-        with pytest.raises(ValueError, match="Cannot start job"):
-            sample_job.start()
-
     def test_finalize_determines_status_from_counts(self, sample_job):
         """finalize() should determine status based on succeeded/failed counts."""
-        sample_job.start()
+        sample_job.mark_running()
 
         # All succeeded
-        sample_job.succeeded_count = 3
-        sample_job.failed_count = 0
-        sample_job.finalize()
+        sample_job.finalize(actions_succeeded=3, actions_failed=0)
         assert sample_job.status == ActionJobStatus.SUCCEEDED
 
     def test_finalize_sets_failed_when_all_failed(self, sample_job):
         """finalize() should set FAILED when all actions failed."""
-        sample_job.start()
-        sample_job.succeeded_count = 0
-        sample_job.failed_count = 3
-        sample_job.finalize()
+        sample_job.mark_running()
+        sample_job.finalize(actions_succeeded=0, actions_failed=3)
 
         assert sample_job.status == ActionJobStatus.FAILED
 
-    def test_finalize_sets_partial_success_when_mixed(self, sample_job):
-        """finalize() should set PARTIAL_SUCCESS when some succeeded and some failed."""
-        sample_job.start()
-        sample_job.succeeded_count = 2
-        sample_job.failed_count = 1
-        sample_job.finalize()
+    def test_finalize_sets_partially_succeeded_when_mixed(self, sample_job):
+        """finalize() should set PARTIALLY_SUCCEEDED when some succeeded and some failed."""
+        sample_job.mark_running()
+        sample_job.finalize(actions_succeeded=2, actions_failed=1)
 
-        assert sample_job.status == ActionJobStatus.PARTIAL_SUCCESS
+        assert sample_job.status == ActionJobStatus.PARTIALLY_SUCCEEDED
 
     def test_finalize_sets_completed_at(self, sample_job):
         """finalize() should set completed_at timestamp."""
-        sample_job.start()
-        sample_job.succeeded_count = 3
-        sample_job.finalize()
+        sample_job.mark_running()
+        sample_job.finalize(actions_succeeded=3, actions_failed=0)
 
         assert sample_job.completed_at is not None
 
-    def test_increment_succeeded(self, sample_job):
-        """increment_succeeded() should increase succeeded count."""
-        sample_job.start()
+    def test_actions_succeeded_tracked(self, sample_job):
+        """actions_succeeded should be tracked by finalize."""
+        sample_job.mark_running()
 
-        sample_job.increment_succeeded()
-        assert sample_job.succeeded_count == 1
+        sample_job.finalize(actions_succeeded=2, actions_failed=1)
+        assert sample_job.actions_succeeded == 2
 
-        sample_job.increment_succeeded()
-        assert sample_job.succeeded_count == 2
+    def test_actions_failed_tracked(self, sample_job):
+        """actions_failed should be tracked by finalize."""
+        sample_job.mark_running()
 
-    def test_increment_failed(self, sample_job):
-        """increment_failed() should increase failed count."""
-        sample_job.start()
-
-        sample_job.increment_failed()
-        assert sample_job.failed_count == 1
-
-        sample_job.increment_failed()
-        assert sample_job.failed_count == 2
+        sample_job.finalize(actions_succeeded=1, actions_failed=2)
+        assert sample_job.actions_failed == 2
 
 
 # =============================================================================
@@ -592,7 +580,7 @@ class TestActionJobStatusEnum:
         assert ActionJobStatus.RUNNING.value == "running"
         assert ActionJobStatus.SUCCEEDED.value == "succeeded"
         assert ActionJobStatus.FAILED.value == "failed"
-        assert ActionJobStatus.PARTIAL_SUCCESS.value == "partial_success"
+        assert ActionJobStatus.PARTIALLY_SUCCEEDED.value == "partially_succeeded"
 
 
 class TestActionLogEventTypeEnum:

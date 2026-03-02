@@ -18,7 +18,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy import desc
 
 from src.ingestion.jobs.models import IngestionJob, JobStatus
 from src.models.airbyte_connection import TenantAirbyteConnection
@@ -150,7 +150,6 @@ def diagnose_ingestion_failure(
     )
 
     last_sync_at = connector.last_sync_at if connector else None
-    last_sync_status = connector.last_sync_status if connector else None
 
     # --- Signal 1: Sync failures ---
     failed_jobs = _get_recent_failed_jobs(db_session, tenant_id, connector_id, since)

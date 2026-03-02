@@ -135,11 +135,13 @@ class TestFreshnessClassification:
         assert svc._classify_freshness(ts, 60) == "critical"
 
     def test_high_frequency_uses_larger_threshold(self):
-        """Sync frequency of 360 min → effective threshold is 360, not 120."""
+        """SLA-based thresholds: source_type without SLA falls to legacy (120 warn, 1440 error).
+        300 minutes > legacy warn (120) → stale."""
         svc = self._make_service()
         ts = datetime.now(timezone.utc) - timedelta(minutes=300)
-        # effective_threshold = max(360, 120) = 360 → 300 < 360 → fresh
-        assert svc._classify_freshness(ts, 360) == "fresh"
+        # Unknown source_type falls back to legacy: warn=120, error=1440
+        # 300 > 120 and 300 < 1440 → stale
+        assert svc._classify_freshness(ts, "unknown_source") == "stale"
 
     def test_timezone_naive_treated_as_utc(self):
         """Timezone-naive datetime treated as UTC."""
@@ -170,11 +172,13 @@ class TestBuildSourceFreshness:
         assert sf.warning_message is None
 
     def test_stale_source_warning(self):
-        """Stale source includes warning message."""
+        """Stale source includes warning message.
+        SLA for shopify/free: warn=1440min, error=2880min.
+        25 hours (1500 min) > 1440 and < 2880 → stale."""
         svc = FreshnessService(db_session=MagicMock(), tenant_id="t-1")
         conn = _make_connection(
             "t-1",
-            last_sync_at=datetime.now(timezone.utc) - timedelta(hours=3),
+            last_sync_at=datetime.now(timezone.utc) - timedelta(hours=25),
         )
         sf = svc._build_source_freshness(conn)
 
@@ -184,11 +188,13 @@ class TestBuildSourceFreshness:
         assert "stale" in sf.warning_message.lower()
 
     def test_critical_source_warning(self):
-        """Critical source includes critical warning message."""
+        """Critical source includes critical warning message.
+        SLA for shopify/free: warn=1440min, error=2880min.
+        49 hours (2940 min) > 2880 → critical."""
         svc = FreshnessService(db_session=MagicMock(), tenant_id="t-1")
         conn = _make_connection(
             "t-1",
-            last_sync_at=datetime.now(timezone.utc) - timedelta(hours=25),
+            last_sync_at=datetime.now(timezone.utc) - timedelta(hours=49),
         )
         sf = svc._build_source_freshness(conn)
 
@@ -345,11 +351,12 @@ class TestFreshnessSummary:
         assert summary.has_stale_data is True
 
     def test_critical_sources_score_zero(self):
-        """Critical sources contribute 0 to the score."""
+        """Critical sources contribute 0 to the score.
+        SLA for shopify/free: error_after=2880min. 49h > 2880min → critical."""
         svc = FreshnessService(db_session=MagicMock(), tenant_id="t-1")
         critical = _make_connection(
             "t-1", source_type="shopify",
-            last_sync_at=datetime.now(timezone.utc) - timedelta(hours=25),
+            last_sync_at=datetime.now(timezone.utc) - timedelta(hours=49),
         )
         with patch.object(svc, "_get_connections", return_value=[critical]):
             summary = svc.get_freshness_summary()
@@ -590,6 +597,7 @@ class TestStaticAIGate:
         mock_init.assert_called_once_with(
             db_session=db,
             tenant_id="t-1",
+            billing_tier=None,
             ai_block_threshold_minutes=360,
         )
 
@@ -780,7 +788,6 @@ class TestAuditLogging:
         mock_audit.assert_called_once()
         call_kwargs = mock_audit.call_args
         # Check action is AI_ACTION_BLOCKED
-        from src.platform.audit import AuditAction
         assert call_kwargs.kwargs.get("action") or call_kwargs[1].get("action") is not None
 
 

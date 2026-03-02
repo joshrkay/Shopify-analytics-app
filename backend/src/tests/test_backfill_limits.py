@@ -12,10 +12,8 @@ Run with: pytest tests/test_backfill_limits.py -v
 """
 
 import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch, AsyncMock
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
 from src.models.dq_models import (
     BackfillJob, BackfillJobStatus, MAX_MERCHANT_BACKFILL_DAYS,
@@ -372,7 +370,6 @@ class TestFrontendBackfillValidation:
 
     def test_calculate_backfill_date_range_valid(self):
         """Frontend should correctly validate valid date ranges."""
-        from src.services import syncHealthApi  # This would be frontend code
 
         # Simulate frontend validation logic
         def calculate_days(start_str: str, end_str: str) -> int:

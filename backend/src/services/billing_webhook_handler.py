@@ -191,7 +191,7 @@ class BillingWebhookHandler:
         app_subscription = payload.get("app_subscription", {})
         subscription_gid = app_subscription.get("admin_graphql_api_id")
         shopify_status = app_subscription.get("status")
-        subscription_name = app_subscription.get("name")
+        app_subscription.get("name")
 
         if not subscription_gid:
             logger.warning("Webhook missing subscription ID", extra={
@@ -362,7 +362,7 @@ class BillingWebhookHandler:
                 )
             return WebhookProcessingResult(
                 processed=True,
-                message=f"Subscription activated",
+                message="Subscription activated",
                 subscription_id=subscription.id if subscription else None
             )
 

@@ -19,12 +19,9 @@ import yaml
 # Import governance modules
 from src.governance.approval_gate import (
     ApprovalGate,
-    ApprovalResult,
     ApprovalStatus,
 )
 from src.governance.metric_versioning import (
-    DeprecationWarning,
-    MetricResolution,
     MetricStatus,
     MetricVersionResolver,
     WarningLevel,
@@ -32,21 +29,16 @@ from src.governance.metric_versioning import (
 from src.governance.rollback_orchestrator import (
     RollbackOrchestrator,
     RollbackRequest,
-    RollbackResult,
     RollbackScope,
     RollbackState,
 )
 from src.governance.pre_deploy_validator import (
     CheckResult,
     PreDeployValidator,
-    ValidationResult,
     ValidationStatus,
 )
 from src.governance.ai_guardrails import (
     AIGuardrails,
-    GuardrailCheck,
-    GuardrailRefusal,
-    GuardrailViolation,
     RefusalReason,
 )
 

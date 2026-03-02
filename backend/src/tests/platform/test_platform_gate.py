@@ -16,10 +16,8 @@ FAILURE OF ANY TEST BLOCKS DEPLOYMENT.
 import pytest
 import logging
 import os
-import re
-from dataclasses import dataclass, field
 from io import StringIO
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.testclient import TestClient
 
@@ -28,8 +26,7 @@ from src.platform.tenant_context import (
     TenantContextMiddleware,
     get_tenant_context,
 )
-from src.repositories.base_repo import BaseRepository, TenantIsolationError
-from src.db_base import Base
+from src.repositories.base_repo import BaseRepository
 
 # Note: mock_authorization_enforcement fixture is provided by conftest.py
 
@@ -198,7 +195,6 @@ class TestTenantIsolation:
         
         This test MUST pass - cross-tenant access is a critical security violation.
         """
-        from unittest.mock import MagicMock
         mock_signing_key = MagicMock()
         mock_signing_key.key = "mock-key"
         mock_get_signing_key.return_value = mock_signing_key
@@ -243,7 +239,6 @@ class TestTenantIsolation:
         
         tenant_id MUST come from JWT only.
         """
-        from unittest.mock import MagicMock
         mock_signing_key = MagicMock()
         mock_signing_key.key = "mock-key"
         mock_get_signing_key.return_value = mock_signing_key
@@ -339,7 +334,6 @@ class TestRBACEnforcement:
         
         Users without admin role MUST be denied access.
         """
-        from unittest.mock import MagicMock
         mock_signing_key = MagicMock()
         mock_signing_key.key = "mock-key"
         mock_get_signing_key.return_value = mock_signing_key
@@ -454,11 +448,6 @@ class TestSecretsRedaction:
         logger = logging.getLogger("test")
         
         # Simulate request with secrets in body
-        request_body = {
-            "api_key": "secret-key-12345",
-            "password": "my-password",
-            "data": "normal-data"
-        }
         
         # Log request metadata only (not body)
         logger.info("Request received", extra={
@@ -501,7 +490,6 @@ class TestAuditLogging:
         
         Every request MUST include tenant_id in log context for audit trail.
         """
-        from unittest.mock import MagicMock
         mock_signing_key = MagicMock()
         mock_signing_key.key = "mock-key"
         mock_get_signing_key.return_value = mock_signing_key
@@ -564,7 +552,6 @@ class TestFeatureFlagKillSwitch:
         
         Critical features must be disableable via feature flags.
         """
-        import os
         
         # Simulate feature flag check
         feature_enabled = os.getenv("FEATURE_DATA_ENDPOINT", "true") == "true"
@@ -582,7 +569,6 @@ class TestFeatureFlagKillSwitch:
         
         Emergency kill switch must be able to disable data modifications.
         """
-        import os
         
         # Simulate global kill switch
         kill_switch_active = os.getenv("KILL_SWITCH_ACTIVE", "false") == "true"
@@ -610,7 +596,6 @@ class TestFeatureFlagKillSwitch:
         
         Feature flags must be controllable via environment variables.
         """
-        import os
         
         # Test that feature flag can be read from environment
         feature_flag = os.getenv("FEATURE_ADVANCED_ANALYTICS", "false")
