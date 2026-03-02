@@ -102,7 +102,12 @@ class TenantInvite(Base, TimestampMixin):
 
     # Status tracking
     status = Column(
-        SAEnum(InviteStatus, name="invite_status", create_constraint=True),
+        SAEnum(
+            InviteStatus,
+            name="invite_status",
+            create_constraint=True,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         nullable=False,
         default=InviteStatus.PENDING,
         index=True,

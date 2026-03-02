@@ -720,8 +720,11 @@ class TenantContextMiddleware:
             # will also fail with DataError.
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as rollback_err:
+                logger.debug(
+                    "Rollback failed during _resolve_tenant_from_db fallback",
+                    extra={"rollback_error": str(rollback_err)},
+                )
             logger.warning(
                 "DB lookup failed in _resolve_tenant_from_db, falling back to JWT",
                 extra={"error": str(db_err), "error_type": type(db_err).__name__},
@@ -743,7 +746,7 @@ class TenantContextMiddleware:
         # hashed bundles from the Vite build and contain no tenant data.
         # The SPA catch-all also serves files like vite.svg, favicon.ico,
         # etc. from the static directory — these must not require auth.
-        PUBLIC_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json", "/api/v1/embed/health"}
+        PUBLIC_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json", "/api/v1/embed/health", "/api/auth/provision"}
         # Static file extensions served by the SPA catch-all route
         STATIC_EXTENSIONS = (".svg", ".ico", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf", ".map")
         if (

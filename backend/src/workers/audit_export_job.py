@@ -174,7 +174,4 @@ class AuditExportWorker:
         In GA scope, this is a placeholder that demonstrates the pattern.
         Production implementation would query a job table.
         """
-        # GA: No persistent job table yet.
-        # This worker exists to handle the async export pattern.
-        # Jobs are dispatched directly in the API layer for now.
-        pass
+        logger.debug("audit_export_worker_poll: no persistent job table (GA scope)")

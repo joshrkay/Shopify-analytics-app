@@ -44,7 +44,6 @@ from src.integrations.airbyte.oauth_registry import (
     PLATFORMS_NEEDING_ACCOUNT_SELECTION,
     build_auth_url,
     build_source_config,
-    discover_accounts,
     exchange_code_for_tokens,
     validate_shop_domain,
 )
@@ -344,7 +343,6 @@ async def initiate_oauth(
         shop_domain = validate_shop_domain(shop_domain)
 
     # Ensure the tenant has an isolated Airbyte workspace (lazy provision)
-    from src.models.tenant import Tenant
     tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
     tenant_name = tenant.name if tenant else tenant_ctx.tenant_id
     workspace_id = await ensure_tenant_workspace(
@@ -587,53 +585,55 @@ async def oauth_callback(
             )
 
         # Exchange the authorization code for tokens with the platform directly.
+        # build_source_config maps token response fields + env var credentials
+        # to the Airbyte source configuration dict.
         tokens = await exchange_code_for_tokens(
             platform, body.code, OAUTH_REDIRECT_URI, shop_domain
         )
-
-        # Platforms like Meta Ads require the merchant to select which ad account
-        # to sync before we can create the Airbyte source (source-facebook-marketing
-        # requires account_id).  For these platforms we:
-        #   1. Call the platform API to discover available ad accounts
-        #   2. Store the access token in Redis under a pending key
-        #   3. Return discovered accounts + pending_token to the frontend
-        #   4. The frontend shows account selection, then calls the finalize endpoint
-        if platform in PLATFORMS_NEEDING_ACCOUNT_SELECTION:
-            accounts = await discover_accounts(platform, tokens)
-
-            pending_token = secrets.token_urlsafe(32)
-            pending_data: dict = {
-                "tenant_id": tenant_ctx.tenant_id,
-                "platform": platform,
-                "workspace_id": workspace_id,
-                "tokens": tokens,
-            }
-            if shop_domain:
-                pending_data["shop_domain"] = shop_domain
-            _store_oauth_state(pending_token, pending_data)
-
-            logger.info(
-                "OAuth pending account selection",
-                extra={
-                    "tenant_id": tenant_ctx.tenant_id,
-                    "platform": platform,
-                    "account_count": len(accounts),
-                },
-            )
-
-            return OAuthCallbackResponse(
-                success=True,
-                connection_id="",
-                message="Please select the ad account you want to connect",
-                needs_account_selection=True,
-                discovered_accounts=[
-                    DiscoveredAccount(id=a["id"], name=a["name"]) for a in accounts
-                ],
-                pending_token=pending_token,
-            )
-
-        # Standard flow: create the Airbyte source immediately.
         source_config: dict = build_source_config(platform, tokens)
+        if shop_domain:
+            source_config["shop"] = shop_domain
+
+        airbyte_client = get_airbyte_client()
+
+        # Create the source in the tenant's workspace
+        source_request = SourceCreationRequest(
+            name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} - {tenant_ctx.tenant_id[:8]}",
+            source_type=airbyte_source_type,
+            configuration=source_config,
+        )
+        source = await airbyte_client.create_source(source_request, workspace_id=workspace_id)
+
+        # Resolve the destination for this workspace.
+        # ensure_tenant_workspace provisions one at workspace creation time, but
+        # if that failed the operator may not have added it yet.  We attempt to
+        # auto-provision here as a second chance before giving up.
+        destinations = await airbyte_client.list_destinations(workspace_id=workspace_id)
+
+        if not destinations:
+            from src.services.airbyte_workspace import _parse_db_connection_config
+            dest_request = DestinationCreationRequest(
+                name=f"PostgreSQL - {tenant_ctx.tenant_id[:8]}",
+                destination_type="destination-postgres",
+                configuration=_parse_db_connection_config(),
+            )
+            dest = await airbyte_client.create_destination(
+                dest_request, workspace_id=workspace_id
+            )
+            destinations = [dest]
+
+        destination_id = destinations[0].destination_id
+
+        conn_request = ConnectionCreationRequest(
+            source_id=source.source_id,
+            destination_id=destination_id,
+            name=f"{PLATFORM_DISPLAY_NAMES.get(platform, platform)} sync",
+        )
+        connection = await airbyte_client.create_connection(conn_request)
+        connection_id = connection.connection_id
+
+        # Build configuration for tenant registration
+        reg_config: dict = {"platform": platform}
         if shop_domain:
             source_config["shop"] = shop_domain
 
