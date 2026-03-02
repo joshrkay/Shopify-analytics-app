@@ -23,8 +23,6 @@ import logging
 import os
 import secrets
 from typing import List, Optional
-from urllib.parse import urlparse, parse_qs
-
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 
 from src.platform.tenant_context import get_tenant_context
@@ -34,6 +32,7 @@ from src.services.airbyte_service import (
     ConnectionNotFoundServiceError,
     DuplicateConnectionError,
 )
+from src.services.ad_ingestion import AdPlatform, AIRBYTE_SOURCE_TYPES
 from src.services.airbyte_workspace import ensure_tenant_workspace
 from src.integrations.airbyte.client import get_airbyte_client, AirbyteError
 from src.integrations.airbyte.models import (
@@ -42,7 +41,6 @@ from src.integrations.airbyte.models import (
     DestinationCreationRequest,
 )
 from src.integrations.airbyte.oauth_registry import (
-    OAUTH_REGISTRY,
     PLATFORMS_NEEDING_ACCOUNT_SELECTION,
     build_auth_url,
     build_source_config,
@@ -65,6 +63,8 @@ from src.api.schemas.sources import (
     UpdateSyncConfigRequest,
     GlobalSyncSettingsResponse,
     UpdateGlobalSyncSettingsRequest,
+    ApiKeyConnectRequest,
+    ApiKeyConnectResponse,
     normalize_connection_to_source,
     PLATFORM_DISPLAY_NAMES,
     PLATFORM_AUTH_TYPE,
@@ -624,7 +624,7 @@ async def oauth_callback(
             return OAuthCallbackResponse(
                 success=True,
                 connection_id="",
-                message=f"Please select the ad account you want to connect",
+                message="Please select the ad account you want to connect",
                 needs_account_selection=True,
                 discovered_accounts=[
                     DiscoveredAccount(id=a["id"], name=a["name"]) for a in accounts
