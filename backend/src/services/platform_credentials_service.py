@@ -400,6 +400,7 @@ class PlatformCredentialsService:
 
             self.db.flush()
             self.db.commit()
+            logger.info(
                 "Credentials stored",
                 extra={"tenant_id": tenant_id, "platform": platform.value},
             )
