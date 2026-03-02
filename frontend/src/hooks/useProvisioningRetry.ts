@@ -81,7 +81,7 @@ export function useProvisioningRetry() {
 
     // Unreachable — the loop always throws or returns above.
     throw new Error('useProvisioningRetry: max retries exceeded');
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return { execute, isProvisioning };
 }

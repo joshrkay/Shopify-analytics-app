@@ -16,6 +16,7 @@ vi.mock('../services/apiUtils', () => ({
     Authorization: 'Bearer test-token',
   }),
   handleResponse: vi.fn(async (res: Response) => res.json()),
+  fetchWithRetry: vi.fn((...args: unknown[]) => (globalThis.fetch as any)(...args)),
 }));
 
 const mockHeaders = { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' };

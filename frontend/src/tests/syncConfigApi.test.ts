@@ -1,39 +1,29 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('../services/apiUtils', () => ({
-  API_BASE_URL: '',
-  createHeadersAsync: vi.fn(),
-  handleResponse: vi.fn(async (res: Response) => res.json()),
-}));
+import { describe, expect, it, vi } from 'vitest';
 
 import { restoreFromBackup } from '../services/syncConfigApi';
-import { createHeadersAsync } from '../services/apiUtils';
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ success: true }) });
-});
 
 describe('syncConfigApi edge cases', () => {
-  it('restoreFromBackup forwards lowercase authorization header from object headers', async () => {
-    vi.mocked(createHeadersAsync).mockResolvedValue({ authorization: 'Bearer lower' } as unknown as HeadersInit);
+  it('restoreFromBackup throws because backend is not yet implemented', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    await restoreFromBackup(new File(['x'], 'backup.zip'));
-
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/sync/backup/restore',
-      expect.objectContaining({ headers: { Authorization: 'Bearer lower' } }),
+    await expect(restoreFromBackup(new File(['x'], 'backup.zip'))).rejects.toThrow(
+      'Backup restore is not yet available',
     );
+
+    consoleSpy.mockRestore();
   });
 
-  it('restoreFromBackup omits auth header when none provided', async () => {
-    vi.mocked(createHeadersAsync).mockResolvedValue({ 'Content-Type': 'application/json' });
+  it('restoreFromBackup does not call fetch since it is a stub', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    globalThis.fetch = vi.fn();
 
-    await restoreFromBackup(new File(['x'], 'backup.zip'));
+    try {
+      await restoreFromBackup(new File(['x'], 'backup.zip'));
+    } catch {
+      // expected
+    }
 
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/sync/backup/restore',
-      expect.objectContaining({ headers: {} }),
-    );
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });

@@ -108,7 +108,7 @@ beforeEach(() => {
 describe('DataSources Page', () => {
   it('shows empty state when no connections exist', () => {
     mockUseDataSources.mockReturnValue({
-      connections: [],
+      sources: [],
       isLoading: false,
       error: null,
       hasConnectedSources: false,
@@ -122,7 +122,7 @@ describe('DataSources Page', () => {
 
   it('renders connected source cards when connections exist', () => {
     mockUseDataSources.mockReturnValue({
-      connections: [
+      sources: [
         createMockSource({ id: 'src-1', displayName: 'Main Store' }),
         createMockSource({ id: 'src-2', displayName: 'Ad Campaign', platform: 'meta_ads' }),
       ],
@@ -141,7 +141,7 @@ describe('DataSources Page', () => {
 
   it('shows skeleton loading state', () => {
     mockUseDataSources.mockReturnValue({
-      connections: [],
+      sources: [],
       isLoading: true,
       error: null,
       hasConnectedSources: false,
@@ -156,7 +156,7 @@ describe('DataSources Page', () => {
 
   it('shows error banner on API failure', () => {
     mockUseDataSources.mockReturnValue({
-      connections: [],
+      sources: [],
       isLoading: false,
       error: new Error('Network error'),
       hasConnectedSources: false,
@@ -171,7 +171,7 @@ describe('DataSources Page', () => {
 
   it('shows "Add New Data Source" CTA when connections exist', () => {
     mockUseDataSources.mockReturnValue({
-      connections: [createMockSource()],
+      sources: [createMockSource()],
       isLoading: false,
       error: null,
       hasConnectedSources: true,

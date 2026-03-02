@@ -65,7 +65,7 @@ export function generateSampleData(
         return dataPoint;
       });
 
-    case 'pie':
+    case 'pie': {
       // Category distribution with 5 segments
       const categories = ['Category A', 'Category B', 'Category C', 'Category D', 'Category E'];
       return categories.map((cat, i) => {
@@ -75,6 +75,7 @@ export function generateSampleData(
           [metrics[0]?.label || 'value']: value,
         };
       });
+    }
 
     case 'table':
       // Tabular data with multiple columns and rows

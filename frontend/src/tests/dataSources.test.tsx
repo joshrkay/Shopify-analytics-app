@@ -203,9 +203,11 @@ vi.mock('../services/sourcesApi', () => ({
   getAvailableSources: vi.fn(),
   initiateOAuth: vi.fn(),
   completeOAuth: vi.fn(),
+  finalizeOAuth: vi.fn(),
   disconnectSource: vi.fn(),
   testConnection: vi.fn(),
   updateSyncConfig: vi.fn(),
+  completeApiKeyConnect: vi.fn(),
 }));
 
 vi.mock('../services/dataSourcesApi', async (importOriginal) => {
@@ -237,6 +239,15 @@ vi.mock('../hooks/useSourceConnection', () => ({
 
 vi.mock('../components/sources/ConnectSourceModal', () => ({
   ConnectSourceModal: () => null,
+}));
+
+vi.mock('../components/sources/ConnectSourceWizard', () => ({
+  ConnectSourceWizard: ({ open }: { open: boolean }) =>
+    open ? React.createElement('div', { 'data-testid': 'connect-wizard' }, 'Connect Wizard') : null,
+}));
+
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
 }));
 
 vi.mock('../components/sources/DisconnectConfirmationModal', () => ({

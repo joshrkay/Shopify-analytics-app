@@ -6,6 +6,12 @@ import {
 } from '../services/widgetCatalogApi';
 import { useWidgetCatalog, useWidgetPreview } from '../hooks/useWidgetCatalog';
 
+// Helper to create mock headers object that satisfies handleResponse's
+// response.headers.get('content-type') call.
+const mockHeaders = (contentType = 'application/json') => ({
+  get: (name: string) => (name.toLowerCase() === 'content-type' ? contentType : null),
+});
+
 describe('useWidgetCatalog/useWidgetPreview backend integration', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -20,6 +26,7 @@ describe('useWidgetCatalog/useWidgetPreview backend integration', () => {
       if (url.endsWith('/api/v1/templates')) {
         return {
           ok: true,
+          headers: mockHeaders(),
           json: async () => ({
             templates: [
               {
@@ -77,6 +84,7 @@ describe('useWidgetCatalog/useWidgetPreview backend integration', () => {
       if (url.endsWith('/api/v1/templates')) {
         return {
           ok: true,
+          headers: mockHeaders(),
           json: async () => ({
             templates: [
               {
@@ -117,6 +125,7 @@ describe('useWidgetCatalog/useWidgetPreview backend integration', () => {
         return {
           ok: false,
           status: 403,
+          headers: mockHeaders(),
           json: async () => ({ detail: 'Forbidden' }),
         } as Response;
       }
