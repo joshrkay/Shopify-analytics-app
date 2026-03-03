@@ -250,7 +250,6 @@ class TestSessionRevocation:
         """Test revoking user sessions with timestamp check."""
         user_id = "user_123"
         old_token_time = datetime.now(timezone.utc) - timedelta(hours=1)
-        datetime.now(timezone.utc) + timedelta(minutes=1)
 
         # Revoke all sessions issued before now
         token_service.revoke_all_user_sessions(

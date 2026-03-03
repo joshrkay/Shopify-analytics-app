@@ -164,9 +164,9 @@ class ShopifyIngestionService:
                 f"Store {store.shop_domain} does not have a valid access token"
             )
 
-        # Decrypt access token for Airbyte source configuration
+        # Decrypt access token to verify it's valid before registering
         try:
-            await decrypt_secret(store.access_token_encrypted)
+            access_token = await decrypt_secret(store.access_token_encrypted)
         except Exception as e:
             logger.error(
                 "Failed to decrypt store access token",

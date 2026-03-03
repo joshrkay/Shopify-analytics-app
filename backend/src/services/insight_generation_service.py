@@ -640,46 +640,25 @@ class InsightGenerationService:
         - LLM call fails for any reason
         - Already running in an async event loop
         """
-        try:
-            import asyncio
-            from src.services.llm_integration import enhance_with_llm
+        from src.services.llm_integration import enhance_pair_with_llm_sync
 
-            variables = {
-                "insight_type": detected.insight_type.value,
-                "severity": detected.severity.value,
-                "metrics": [m.to_dict() for m in detected.metrics],
-                "period_type": detected.period_type,
-                "platform": detected.platform or "all",
-            }
+        variables = {
+            "insight_type": detected.insight_type.value,
+            "severity": detected.severity.value,
+            "metrics": [m.to_dict() for m in detected.metrics],
+            "period_type": detected.period_type,
+            "platform": detected.platform or "all",
+        }
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop is not None and loop.is_running():
-                # Already in async context — skip LLM to avoid nested loop
-                return summary, why_it_matters
-
-            enhanced_summary = asyncio.run(enhance_with_llm(
-                db_session=self.db,
-                tenant_id=self.tenant_id,
-                template_key="insight_summary",
-                variables=variables,
-                fallback_content=summary,
-            ))
-            enhanced_why = asyncio.run(enhance_with_llm(
-                db_session=self.db,
-                tenant_id=self.tenant_id,
-                template_key="insight_why_it_matters",
-                variables=variables,
-                fallback_content=why_it_matters,
-            ))
-            return enhanced_summary, enhanced_why
-        except Exception as e:
-            # LLM enhancement is optional — never block insight generation
-            logger.warning("LLM enhancement failed, using fallback content.", extra={"error": str(e)}, exc_info=True)
-            return summary, why_it_matters
+        return enhance_pair_with_llm_sync(
+            db_session=self.db,
+            tenant_id=self.tenant_id,
+            template_key_a="insight_summary",
+            template_key_b="insight_why_it_matters",
+            variables=variables,
+            fallback_a=summary,
+            fallback_b=why_it_matters,
+        )
 
     def _persist_insight(
         self,

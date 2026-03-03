@@ -260,7 +260,6 @@ class BillingEntitlementsService:
             RoleValidationResult with validation status for all roles
         """
         billing_tier = self.get_billing_tier()
-        get_allowed_roles_for_billing_tier(billing_tier)
 
         valid_roles = []
         revoked_roles = []

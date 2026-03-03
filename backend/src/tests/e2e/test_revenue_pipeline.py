@@ -91,8 +91,6 @@ class TestRevenuePipeline:
         - Cancellations: $50.00
         - Net revenue: $450.00
         """
-        EXPECTED_OUTCOMES["revenue_scenario_complex"]
-
         # Setup tenant with complex revenue scenario
         await setup_tenant_with_data(
             async_db_session,

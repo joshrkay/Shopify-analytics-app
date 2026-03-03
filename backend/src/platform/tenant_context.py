@@ -831,10 +831,6 @@ class TenantContextMiddleware:
             # Extract roles - Clerk uses org_role (single role) or custom roles in metadata
             # Support both Clerk JWT v1 and v2 formats for role/permissions
             org_role = payload.get("org_role", "") or (payload.get("o") or {}).get("rol", "")
-            _o = payload.get("o") or {}
-            payload.get("org_permissions", []) or (
-                _o.get("per", "").split(",") if _o.get("per") else []
-            )
 
             # Convert Clerk org_role to roles list
             # Clerk org_role format: "org:admin", "org:member", etc.

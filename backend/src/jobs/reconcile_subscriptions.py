@@ -228,8 +228,6 @@ async def check_grace_period_expirations(session: Session, stats: Reconciliation
             "grace_period_ended": subscription.grace_period_ends_on.isoformat()
         })
 
-        BillingService(session, subscription.tenant_id)
-
         # This will log the cancellation event
         subscription.status = SubscriptionStatus.CANCELLED.value
         subscription.cancelled_at = now

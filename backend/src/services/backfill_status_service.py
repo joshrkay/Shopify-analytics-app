@@ -175,12 +175,6 @@ class BackfillStatusService:
             else 0.0
         )
 
-        (
-            request.status.value
-            if isinstance(request.status, HistoricalBackfillStatus)
-            else request.status
-        )
-
         return {
             "id": request.id,
             "tenant_id": request.tenant_id,

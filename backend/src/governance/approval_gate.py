@@ -371,7 +371,6 @@ class ApprovalGate:
         """Check if pre-approval checklist is complete."""
         required_items = approval_config.get("pre_approval_checklist", [])
         completed_items = change_request.get("checklist_completed", [])
-        change_request.get("checklist_pending", [])
 
         # Items that are required but not completed
         incomplete = [item for item in required_items if item not in completed_items]
