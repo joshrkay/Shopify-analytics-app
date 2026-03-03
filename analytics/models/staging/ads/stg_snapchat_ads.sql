@@ -255,20 +255,26 @@ snapchat_ads_normalized as (
     from snapchat_ads_extracted
 ),
 
--- Join to tenant mapping to get tenant_id
+-- Tenant mapping: join on ad_account_id for multi-tenant isolation.
+-- Snapchat Ads connections store account_id in configuration JSONB.
+-- SECURITY: Without this join, all Snapchat Ads data would be assigned to one arbitrary tenant.
+snapchat_tenant_mapping as (
+    select
+        tenant_id,
+        config_account_id as mapped_account_id
+    from {{ ref('_tenant_airbyte_connections') }}
+    where source_type = 'source-snapchat-marketing'
+        and config_account_id is not null
+        and config_account_id != ''
+),
+
 snapchat_ads_with_tenant as (
     select
         ads.*,
-        coalesce(
-            (select tenant_id
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'source-snapchat-marketing'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            null
-        ) as tenant_id
+        tm.tenant_id
     from snapchat_ads_normalized ads
+    inner join snapchat_tenant_mapping tm
+        on ads.ad_account_id = tm.mapped_account_id
 ),
 
 -- Add internal IDs and canonical channel

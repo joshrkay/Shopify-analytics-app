@@ -234,20 +234,25 @@ attentive_events_normalized as (
     from attentive_events_extracted
 ),
 
--- Join to tenant mapping to get tenant_id
+-- LIMITATION: Attentive event data lacks a per-record account identifier.
+-- Tenant mapping assumes at most one active Attentive connection exists.
+-- The dbt test 'test_single_connection_per_source_type' enforces this constraint.
+-- For multi-tenant with multiple Attentive accounts, migrate to per-tenant
+-- Airbyte destination schemas so raw data is pre-isolated.
+attentive_tenant_mapping as (
+    select tenant_id
+    from {{ ref('_tenant_airbyte_connections') }}
+    where source_type = 'source-attentive'
+    order by tenant_id
+    limit 1
+),
+
 attentive_events_with_tenant as (
     select
         events.*,
-        coalesce(
-            (select tenant_id
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'source-attentive'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            null
-        ) as tenant_id
+        tm.tenant_id
     from attentive_events_normalized events
+    cross join attentive_tenant_mapping tm
 ),
 
 -- Add internal IDs and canonical channel
