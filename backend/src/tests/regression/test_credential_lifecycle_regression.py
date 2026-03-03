@@ -762,7 +762,6 @@ class TestRevocationBlocksSyncs:
         scalars_mock.all.return_value = creds
 
         call_count = [0]
-        {f"cred-{i}": creds[i] for i in range(3)}
 
         def mock_execute(stmt):
             result = MagicMock()

@@ -348,45 +348,26 @@ class RecommendationGenerationService:
         Returns the original deterministic text if LLM is not available,
         not entitled, or fails for any reason.
         """
-        try:
-            import asyncio
-            from src.services.llm_integration import enhance_with_llm
+        from src.services.llm_integration import enhance_pair_with_llm_sync
 
-            variables = {
-                "recommendation_type": detected.recommendation_type.value,
-                "insight_type": detected.source_insight_type.value,
-                "severity": detected.source_severity.value,
-                "direction": detected.direction,
-                "entity": detected.affected_entity or "account",
-                "confidence": detected.confidence_score,
-            }
+        variables = {
+            "recommendation_type": detected.recommendation_type.value,
+            "insight_type": detected.source_insight_type.value,
+            "severity": detected.source_severity.value,
+            "direction": detected.direction,
+            "entity": detected.affected_entity or "account",
+            "confidence": detected.confidence_score,
+        }
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-
-            if loop is not None and loop.is_running():
-                return recommendation_text, rationale
-
-            enhanced_text = asyncio.run(enhance_with_llm(
-                db_session=self.db,
-                tenant_id=self.tenant_id,
-                template_key="recommendation_text",
-                variables=variables,
-                fallback_content=recommendation_text,
-            ))
-            enhanced_rationale = asyncio.run(enhance_with_llm(
-                db_session=self.db,
-                tenant_id=self.tenant_id,
-                template_key="recommendation_rationale",
-                variables=variables,
-                fallback_content=rationale,
-            ))
-            return enhanced_text, enhanced_rationale
-        except Exception as e:
-            logger.warning("LLM enhancement for recommendation failed, using fallback content.", extra={"error": str(e)}, exc_info=True)
-            return recommendation_text, rationale
+        return enhance_pair_with_llm_sync(
+            db_session=self.db,
+            tenant_id=self.tenant_id,
+            template_key_a="recommendation_text",
+            template_key_b="recommendation_rationale",
+            variables=variables,
+            fallback_a=recommendation_text,
+            fallback_b=rationale,
+        )
 
     def _persist_recommendation(
         self,

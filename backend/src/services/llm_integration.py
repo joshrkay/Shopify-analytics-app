@@ -122,6 +122,74 @@ async def enhance_with_llm(
         return fallback_content
 
 
+def enhance_pair_with_llm_sync(
+    db_session: Session,
+    tenant_id: str,
+    template_key_a: str,
+    template_key_b: str,
+    variables: Dict[str, Any],
+    fallback_a: str,
+    fallback_b: str,
+) -> tuple:
+    """
+    Synchronously enhance two related text fields with LLM.
+
+    Handles asyncio event loop detection: if already in an async context,
+    returns fallbacks immediately. Otherwise batches both LLM calls into
+    a single asyncio.run() with asyncio.gather() for efficiency.
+
+    Args:
+        db_session: Database session
+        tenant_id: Tenant ID from JWT
+        template_key_a: Template key for first text field
+        template_key_b: Template key for second text field
+        variables: Shared variables for both templates
+        fallback_a: Fallback for first text field
+        fallback_b: Fallback for second text field
+
+    Returns:
+        Tuple of (enhanced_a, enhanced_b) or (fallback_a, fallback_b)
+    """
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None and loop.is_running():
+        # Already in async context — skip LLM to avoid nested loop
+        return fallback_a, fallback_b
+
+    try:
+        async def _gather():
+            return await asyncio.gather(
+                enhance_with_llm(
+                    db_session=db_session,
+                    tenant_id=tenant_id,
+                    template_key=template_key_a,
+                    variables=variables,
+                    fallback_content=fallback_a,
+                ),
+                enhance_with_llm(
+                    db_session=db_session,
+                    tenant_id=tenant_id,
+                    template_key=template_key_b,
+                    variables=variables,
+                    fallback_content=fallback_b,
+                ),
+            )
+
+        return asyncio.run(_gather())
+    except Exception as e:
+        logger.warning(
+            "LLM enhancement failed, using fallback content.",
+            extra={"error": str(e)},
+            exc_info=True,
+        )
+        return fallback_a, fallback_b
+
+
 def is_llm_enabled(db_session: Session, tenant_id: str) -> bool:
     """
     Check if LLM routing is enabled for a tenant.

@@ -29,7 +29,7 @@ from src.models.llm_routing import (
     LLMUsageLog,
 )
 from src.services.billing_entitlements import BillingEntitlementsService
-from src.api.dependencies.entitlements import check_ai_insights_entitlement as check_llm_routing_entitlement
+from src.api.dependencies.entitlements import check_llm_routing_entitlement
 
 logger = logging.getLogger(__name__)
 

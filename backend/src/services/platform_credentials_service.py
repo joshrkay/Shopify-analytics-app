@@ -465,20 +465,7 @@ class PlatformCredentialsService:
     # Encryption Helpers
     # =========================================================================
 
-    async def _fetch_active_credential(
-        self, tenant_id: str, source_type: str
-    ) -> Optional[ConnectorCredential]:
-        """Query the DB for an active, non-soft-deleted credential record."""
-        stmt = (
-            select(ConnectorCredential)
-            .where(ConnectorCredential.tenant_id == tenant_id)
-            .where(ConnectorCredential.source_type == source_type)
-            .where(ConnectorCredential.soft_deleted_at.is_(None))
-            .where(ConnectorCredential.status == CredentialStatus.ACTIVE)
-        )
-        return self.db.execute(stmt).scalar_one_or_none()
-
-    async def _encrypt_credentials(self, data: dict) -> str:
+    def _encrypt_credentials(self, data: dict) -> str:
         """
         Encrypt credential data for storage using Fernet via src.platform.secrets.
 

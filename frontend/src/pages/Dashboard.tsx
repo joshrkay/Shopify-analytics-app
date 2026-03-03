@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { getKpiSummary, type KpiSummaryResponse } from "../services/kpiApi";
-import { createHeadersAsync, API_BASE_URL } from "../services/apiUtils";
+import { sendChatMessage } from "../services/aiChatApi";
 import { BreakdownModal } from "../components/dashboard/BreakdownModal";
 
 type TimeFrame = "7days" | "thisWeek" | "30days" | "thisMonth" | "90days" | "thisQuarter";
@@ -577,18 +577,7 @@ function AIInsightsSection() {
     setQuestion("");
 
     try {
-      const headers = await createHeadersAsync();
-      const response = await fetch(`${API_BASE_URL}/api/ai/chat`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ question: asked.trim() }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`AI chat failed: ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await sendChatMessage(asked);
       const aiResponse = {
         type: "ai" as const,
         message: data.message,

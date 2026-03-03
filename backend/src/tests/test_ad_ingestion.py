@@ -743,7 +743,6 @@ class TestDisconnectAccount:
 
         # Deleted accounts should not appear in list (depends on implementation)
         accounts = service.list_ad_accounts()
-        [a.id for a in accounts]
         # The account may still appear but with deleted status
 
 

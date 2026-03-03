@@ -161,9 +161,6 @@ class FeatureFlagClient:
                 )
                 return result
 
-            # Build context for potential entitlement evaluation
-            self._build_context(tenant_id, user_id, custom_attributes)
-
             # For now, return default - JWT entitlements can be checked later
             # when specific integration is needed
             logger.debug(

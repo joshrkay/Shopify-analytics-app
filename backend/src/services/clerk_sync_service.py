@@ -691,7 +691,6 @@ class ClerkSyncService:
             return None
 
         old_app_role = self._map_clerk_role(old_role)
-        self._map_clerk_role(new_role)
 
         # Find existing role
         existing = self.session.query(UserTenantRole).filter(
