@@ -397,6 +397,138 @@ async def discover_accounts(platform: str, tokens: Dict[str, Any]) -> list:
         )
 
 
+async def refresh_access_token(
+    platform: str,
+    refresh_token: str,
+) -> Dict[str, Any]:
+    """
+    Refresh an OAuth access token using the stored refresh_token.
+
+    Supports platforms that issue refresh tokens: google_ads, snapchat_ads,
+    pinterest_ads, twitter_ads. Meta uses long-lived tokens exchanged differently.
+
+    Args:
+        platform: Platform key (e.g. "google_ads", "snapchat_ads")
+        refresh_token: The stored refresh token
+
+    Returns:
+        Token response dict with new access_token (and possibly new refresh_token)
+
+    Raises:
+        HTTPException 400: If platform doesn't support refresh
+        HTTPException 502: If credentials not configured or refresh fails
+    """
+    config = _get_config(platform)
+
+    # Verify this platform stores refresh tokens
+    if "refresh_token" not in config.token_to_source_config:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Platform '{platform}' does not support token refresh",
+        )
+
+    client_id = _get_client_id(config)
+    client_secret = os.getenv(config.client_secret_env, "")
+
+    token_url = config.token_url
+
+    payload = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            response = await http.post(token_url, data=payload)
+
+        if response.status_code != 200:
+            logger.error(
+                "Token refresh failed",
+                extra={
+                    "platform": platform,
+                    "status_code": response.status_code,
+                    "response": response.text[:200],
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to refresh {platform} access token",
+            )
+
+        return response.json()
+
+    except httpx.RequestError as exc:
+        logger.error(
+            "Token refresh request error",
+            extra={"platform": platform, "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Network error during {platform} token refresh",
+        )
+
+
+async def exchange_meta_long_lived_token(short_lived_token: str) -> Dict[str, Any]:
+    """
+    Exchange a short-lived Meta access token for a long-lived one (~60 days).
+
+    Meta doesn't use standard refresh_token flow. Instead, short-lived tokens
+    (1-2 hours) are exchanged for long-lived tokens (~60 days). When the
+    long-lived token nears expiry, exchange it again for a new one.
+
+    Args:
+        short_lived_token: Short-lived access token from OAuth callback
+
+    Returns:
+        Token response with long-lived access_token and expires_in
+
+    Raises:
+        HTTPException 502: If exchange fails
+    """
+    config = _get_config("meta_ads")
+    client_id = _get_client_id(config)
+    client_secret = os.getenv(config.client_secret_env, "")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            response = await http.get(
+                "https://graph.facebook.com/v19.0/oauth/access_token",
+                params={
+                    "grant_type": "fb_exchange_token",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "fb_exchange_token": short_lived_token,
+                },
+            )
+
+        if response.status_code != 200:
+            logger.error(
+                "Meta long-lived token exchange failed",
+                extra={
+                    "status_code": response.status_code,
+                    "response": response.text[:200],
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to exchange Meta token for long-lived token",
+            )
+
+        return response.json()
+
+    except httpx.RequestError as exc:
+        logger.error(
+            "Meta token exchange request error",
+            extra={"error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Network error during Meta token exchange",
+        )
+
+
 def build_source_config(platform: str, tokens: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build the Airbyte source configuration from OAuth token response + env vars.

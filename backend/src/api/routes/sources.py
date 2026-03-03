@@ -214,6 +214,11 @@ PLATFORM_TO_AIRBYTE_SOURCE_TYPE: dict[str, str] = {
     "snapchat_ads": "source-snapchat-marketing",
     "pinterest_ads": "source-pinterest-ads",
     "twitter_ads": "source-twitter-ads",
+    # API-key platforms
+    "klaviyo": "source-klaviyo",
+    "attentive": "source-attentive",
+    "postscript": "source-postscript",
+    "smsbump": "source-smsbump",
 }
 
 

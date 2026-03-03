@@ -25,6 +25,16 @@ MIGRATIONS = [
     "0057_access_revocation.sql",
     "add_insight_dollar_impact.sql",
     "add_tenant_airbyte_workspace.sql",
+    "create_shopify_stores.sql",
+    "billing_schema.sql",
+    "connector_credentials.sql",
+    "ingestion_jobs.sql",
+    "notifications_schema.sql",
+    "ai_insights_schema.sql",
+    "ai_recommendations_schema.sql",
+    "ai_actions_schema.sql",
+    "ai_safety_schema.sql",
+    "llm_routing_schema.sql",
 ]
 
 
