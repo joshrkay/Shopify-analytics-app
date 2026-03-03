@@ -298,7 +298,16 @@ def calculate_risk_level_for_change(
     change_type = proposed_change.get("type")
     change_value = proposed_change.get("value", 0)
 
-    # Default to medium risk
+    # Status-based action types have fixed risk levels regardless of change_type
+    if action_type == ActionType.PAUSE_CAMPAIGN:
+        # Pausing is always at least medium risk
+        return RiskLevel.MEDIUM
+
+    if action_type == ActionType.RESUME_CAMPAIGN:
+        # Resuming is generally low risk
+        return RiskLevel.LOW
+
+    # For non-percentage changes, default to medium risk
     if change_type != "percentage":
         return RiskLevel.MEDIUM
 
@@ -312,14 +321,6 @@ def calculate_risk_level_for_change(
             return RiskLevel.MEDIUM
         else:
             return RiskLevel.HIGH
-
-    if action_type == ActionType.PAUSE_CAMPAIGN:
-        # Pausing is always at least medium risk
-        return RiskLevel.MEDIUM
-
-    if action_type == ActionType.RESUME_CAMPAIGN:
-        # Resuming is generally low risk
-        return RiskLevel.LOW
 
     if action_type in (ActionType.ADJUST_TARGETING, ActionType.MODIFY_BIDDING):
         # Targeting and bidding changes are medium to high risk

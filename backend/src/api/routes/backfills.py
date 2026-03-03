@@ -78,7 +78,7 @@ class BackfillResultResponse(BaseModel):
 
 
 # Import shared database session dependency
-from src.database.session import get_db_session
+from src.database.session import get_db_session  # noqa: E402
 
 
 async def get_audit_db_session():

@@ -129,7 +129,7 @@ class TestBuildEvidenceLinks:
             {"evidence": {"signal": "sync_failure"}},
             connector_id="conn_abc",
         )
-        sync_links = [l for l in links if l.link_type == "sync_run"]
+        sync_links = [lnk for lnk in links if lnk.link_type == "sync_run"]
         assert len(sync_links) == 1
         assert sync_links[0].resource_id == "conn_abc"
 
@@ -137,14 +137,14 @@ class TestBuildEvidenceLinks:
         links = _build_evidence_links(
             {"evidence": {"signal": "dbt_model_failure", "dbt_generated_at": "2025-06-15"}},
         )
-        dbt_links = [l for l in links if l.link_type == "dbt_run"]
+        dbt_links = [lnk for lnk in links if lnk.link_type == "dbt_run"]
         assert len(dbt_links) == 1
 
     def test_log_link_for_sync_failure(self):
         links = _build_evidence_links(
             {"evidence": {"signal": "sync_failure", "failed_job_id": "job_123"}},
         )
-        log_links = [l for l in links if l.link_type == "log"]
+        log_links = [lnk for lnk in links if lnk.link_type == "log"]
         assert len(log_links) == 1
         assert log_links[0].resource_id == "job_123"
 
@@ -158,7 +158,7 @@ class TestBuildEvidenceLinks:
         links = _build_evidence_links(
             {"evidence": {"signal": "historical_drift_detected"}},
         )
-        dq_links = [l for l in links if l.link_type == "dq_result"]
+        dq_links = [lnk for lnk in links if lnk.link_type == "dq_result"]
         assert len(dq_links) == 1
 
 
@@ -282,7 +282,7 @@ class TestSignalToResponse:
         resp = _signal_to_response(signal)
 
         # Should have sync_run link from connector_id and log link from sync_failure
-        link_types = [l.link_type for c in resp.ranked_causes for l in c.evidence_links]
+        link_types = [lnk.link_type for c in resp.ranked_causes for lnk in c.evidence_links]
         assert "sync_run" in link_types
 
     def test_multiple_hypotheses_ranked(self):

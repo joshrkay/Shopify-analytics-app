@@ -126,7 +126,7 @@ class ShopifyValidationResponse(BaseModel):
 
 
 # Import shared database session dependency
-from src.database.session import get_db_session
+from src.database.session import get_db_session  # noqa: E402
 
 
 def verify_admin_role(request: Request) -> TenantContext:

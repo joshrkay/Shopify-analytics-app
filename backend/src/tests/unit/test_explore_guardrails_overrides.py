@@ -216,8 +216,8 @@ class TestValidateQueryWithOverrides:
 class TestBackwardCompatibility:
     """Ensure existing behavior is preserved for datasets without overrides."""
 
-    def test_marketing_spend_no_overrides(self):
-        """fact_marketing_spend has no guardrail_overrides set."""
+    def test_marketing_spend_has_overrides(self):
+        """fact_marketing_spend now has guardrail_overrides configured."""
         from explore_guardrails import (
             ExplorePermissionValidator,
             ExplorePersona,
@@ -226,11 +226,13 @@ class TestBackwardCompatibility:
         )
         config = DATASET_EXPLORE_CONFIGS.get("fact_marketing_spend")
         assert config is not None
-        assert config.guardrail_overrides is None
+        assert config.guardrail_overrides is not None
+        assert config.guardrail_overrides.max_date_range_days == 90
 
+        # Effective guardrails should use the stricter of overrides vs global
         validator = ExplorePermissionValidator(ExplorePersona.MERCHANT)
         effective = validator._get_effective_guardrails("fact_marketing_spend")
-        assert effective == PERFORMANCE_GUARDRAILS
+        assert effective.max_date_range_days <= PERFORMANCE_GUARDRAILS.max_date_range_days
 
     def test_disabled_dataset_still_rejected(self):
         from explore_guardrails import (

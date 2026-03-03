@@ -182,6 +182,14 @@ class TestListRecommendations:
             response = await list_recommendations(
                 request=mock_request,
                 db_session=mock_db_session,
+                recommendation_type=None,
+                priority=None,
+                risk_level=None,
+                related_insight_id=None,
+                include_dismissed=False,
+                include_accepted=True,
+                limit=20,
+                offset=0,
             )
 
             assert response.total == 1
@@ -209,6 +217,13 @@ class TestListRecommendations:
                 request=mock_request,
                 db_session=mock_db_session,
                 recommendation_type="reduce_spend",
+                priority=None,
+                risk_level=None,
+                related_insight_id=None,
+                include_dismissed=False,
+                include_accepted=True,
+                limit=20,
+                offset=0,
             )
 
             assert response.total == 0
@@ -255,7 +270,14 @@ class TestListRecommendations:
             await list_recommendations(
                 request=mock_request,
                 db_session=mock_db_session,
+                recommendation_type=None,
+                priority=None,
+                risk_level=None,
+                related_insight_id=None,
                 include_dismissed=False,
+                include_accepted=True,
+                limit=20,
+                offset=0,
             )
 
             # Verify filter was called (checking is_dismissed == 0)
@@ -283,7 +305,14 @@ class TestListRecommendations:
             response = await list_recommendations(
                 request=mock_request,
                 db_session=mock_db_session,
+                recommendation_type=None,
+                priority=None,
+                risk_level=None,
+                related_insight_id=None,
+                include_dismissed=False,
+                include_accepted=True,
                 limit=20,
+                offset=0,
             )
 
             assert response.has_more is True

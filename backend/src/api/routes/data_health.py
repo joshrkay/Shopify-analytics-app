@@ -85,7 +85,7 @@ class FreshnessSLAConfigResponse(BaseModel):
 
 
 # Merchant data health response (Story 4.3)
-from src.models.merchant_data_health import MerchantDataHealthResponse
+from src.models.merchant_data_health import MerchantDataHealthResponse  # noqa: E402
 
 
 class DatasetHealthEntry(BaseModel):
@@ -118,7 +118,7 @@ class DatasetHealthResponse(BaseModel):
 # =============================================================================
 
 # Import shared database session dependency
-from src.database.session import get_db_session
+from src.database.session import get_db_session  # noqa: E402
 
 
 def get_data_health_service(

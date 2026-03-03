@@ -37,11 +37,11 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 # Use JSON with PostgreSQL variant for JSONB - allows SQLite in tests
 JSONType = JSON().with_variant(JSONB(), "postgresql")
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session  # noqa: E402
 
-from src.db_base import Base
-from src.monitoring.audit_metrics import get_audit_metrics
-from src.monitoring.audit_alerts import get_audit_alert_manager
+from src.db_base import Base  # noqa: E402
+from src.monitoring.audit_metrics import get_audit_metrics  # noqa: E402
+from src.monitoring.audit_alerts import get_audit_alert_manager  # noqa: E402
 
 logger = logging.getLogger(__name__)
 fallback_logger = logging.getLogger("audit.fallback")
@@ -1480,6 +1480,12 @@ AUDITABLE_EVENTS: dict[AuditAction, AuditableEventMetadata] = {
         description="API rate limit triggered for endpoint",
         required_fields=("user_id", "tenant_id", "endpoint", "limit", "window"),
         risk_level="medium",
+        compliance_tags=("SOC2",),
+    ),
+    AuditAction.RBAC_DENIED: AuditableEventMetadata(
+        description="RBAC permission check denied access",
+        required_fields=("user_id", "tenant_id", "permission", "endpoint"),
+        risk_level="high",
         compliance_tags=("SOC2",),
     ),
 }

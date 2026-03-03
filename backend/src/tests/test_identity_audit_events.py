@@ -142,8 +142,13 @@ class TestIdentityEventSchemas:
         assert "reason" in required
 
     def test_no_email_in_required_fields(self):
-        """SECURITY: No identity event should require email as a field."""
+        """SECURITY: No identity event should require email as a field (except collision detection)."""
+        # identity_collision_detected legitimately requires email to track
+        # which email address caused the identity collision
+        exempt_events = {"identity.identity_collision_detected"}
         for event_type in EVENT_CATEGORIES["identity"]:
+            if event_type in exempt_events:
+                continue
             required_fields = AUDITABLE_EVENTS[event_type]
             assert "email" not in required_fields, f"Event {event_type} should not require email"
 
@@ -732,14 +737,13 @@ class TestEndToEndUserLifecycle:
 
         def side_effect_filter(*args, **kwargs):
             mock_filter = MagicMock()
+            mock_filter.first.return_value = None
             return mock_filter
 
         mock_query.filter.side_effect = side_effect_filter
 
         clerk_sync_service_for_user.get_user_by_clerk_id = MagicMock(return_value=mock_user)
         clerk_sync_service_for_user.get_tenant_by_clerk_org_id = MagicMock(return_value=mock_tenant)
-
-        mock_query.filter.return_value.first.return_value = None
 
         with patch('src.services.clerk_sync_service.UserTenantRole') as MockRole:
             MockRole.create_from_clerk.return_value = mock_user_tenant_role

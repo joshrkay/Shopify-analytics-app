@@ -81,7 +81,7 @@ class CallbackResponse(BaseModel):
 
 
 # Import shared database session dependency
-from src.database.session import get_db_session
+from src.database.session import get_db_session  # noqa: E402
 
 
 def get_billing_service(request: Request, db_session=Depends(get_db_session)) -> BillingService:

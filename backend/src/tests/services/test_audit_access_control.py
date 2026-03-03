@@ -245,15 +245,16 @@ class TestAuditAccessControl:
         mock_db = MagicMock()
 
         with patch(
-            "src.services.audit_access_control.log_system_audit_event_sync"
+            "src.platform.audit.log_system_audit_event_sync"
         ) as mock_log:
-            with pytest.raises(Exception):
-                ac.validate_access("tenant-2", db_session=mock_db)
+            with patch("src.monitoring.audit_alerts.get_audit_alert_manager"):
+                with pytest.raises(Exception):
+                    ac.validate_access("tenant-2", db_session=mock_db)
 
-            mock_log.assert_called_once()
-            call_kwargs = mock_log.call_args[1]
-            assert call_kwargs["tenant_id"] == "tenant-1"
-            assert call_kwargs["metadata"]["target_tenant"] == "tenant-2"
+                mock_log.assert_called_once()
+                call_kwargs = mock_log.call_args[1]
+                assert call_kwargs["tenant_id"] == "tenant-1"
+                assert call_kwargs["metadata"]["target_tenant"] == "tenant-2"
 
     def test_validate_access_super_admin_never_raises(self):
         """Super admin validate_access should never raise."""

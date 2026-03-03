@@ -14,8 +14,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 # Use JSONB for PostgreSQL (optimized for queries), JSON for other databases (testing)
 JSONType = JSON().with_variant(JSONB(), "postgresql")
 
-from src.db_base import Base
-from src.models.base import TimestampMixin, TenantScopedMixin
+from src.db_base import Base  # noqa: E402
+from src.models.base import TimestampMixin, TenantScopedMixin  # noqa: E402
 
 
 class ConnectionStatus(str, enum.Enum):

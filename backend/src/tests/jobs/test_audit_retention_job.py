@@ -219,7 +219,7 @@ class TestAuditRetentionJobIntegration:
             job.delete_expired_logs("tenant-1", cutoff)
 
         # Check that DISABLE and ENABLE TRIGGER were called
-        call_args_list = [str(c) for c in mock_db.execute.call_args_list]
+        call_args_list = [str(c[0][0]) if c[0] else "" for c in mock_db.execute.call_args_list]
         disable_called = any("DISABLE TRIGGER" in c for c in call_args_list)
         enable_called = any("ENABLE TRIGGER" in c for c in call_args_list)
 
