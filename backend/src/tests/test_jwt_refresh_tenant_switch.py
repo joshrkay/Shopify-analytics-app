@@ -158,6 +158,12 @@ class TestRefreshJWT:
 class TestAccessSurface:
     """Test access_surface JWT claim generation."""
 
+    JWT_TEST_SECRET = "test-secret-for-jwt-tests"
+
+    @pytest.fixture(autouse=True)
+    def set_jwt_secret(self, monkeypatch):
+        monkeypatch.setenv("JWT_SECRET", self.JWT_TEST_SECRET)
+
     def test_generate_jwt_includes_access_surface(self):
         """JWT generator includes access_surface in payload."""
         from src.api.routes.agency import _generate_jwt_token
@@ -174,10 +180,8 @@ class TestAccessSurface:
         assert token is not None
 
         import jwt as pyjwt
-        import os
 
-        secret = os.getenv("JWT_SECRET", "development-secret-change-in-prod")
-        payload = pyjwt.decode(token, secret, algorithms=["HS256"])
+        payload = pyjwt.decode(token, self.JWT_TEST_SECRET, algorithms=["HS256"])
         assert payload["access_surface"] == "shopify_embed"
 
     def test_generate_jwt_default_access_surface(self):
@@ -194,10 +198,8 @@ class TestAccessSurface:
         )
 
         import jwt as pyjwt
-        import os
 
-        secret = os.getenv("JWT_SECRET", "development-secret-change-in-prod")
-        payload = pyjwt.decode(token, secret, algorithms=["HS256"])
+        payload = pyjwt.decode(token, self.JWT_TEST_SECRET, algorithms=["HS256"])
         assert payload["access_surface"] == "external_app"
 
     def test_generate_jwt_includes_access_expiring_at(self):
@@ -217,10 +219,8 @@ class TestAccessSurface:
         )
 
         import jwt as pyjwt
-        import os
 
-        secret = os.getenv("JWT_SECRET", "development-secret-change-in-prod")
-        payload = pyjwt.decode(token, secret, algorithms=["HS256"])
+        payload = pyjwt.decode(token, self.JWT_TEST_SECRET, algorithms=["HS256"])
         assert payload["access_expiring_at"] == expiring_at.isoformat()
 
     def test_generate_jwt_no_access_expiring_at_when_none(self):
@@ -237,10 +237,8 @@ class TestAccessSurface:
         )
 
         import jwt as pyjwt
-        import os
 
-        secret = os.getenv("JWT_SECRET", "development-secret-change-in-prod")
-        payload = pyjwt.decode(token, secret, algorithms=["HS256"])
+        payload = pyjwt.decode(token, self.JWT_TEST_SECRET, algorithms=["HS256"])
         assert "access_expiring_at" not in payload
 
 

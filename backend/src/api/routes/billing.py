@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.platform.tenant_context import get_tenant_context
 from src.services.billing_service import (
@@ -442,8 +442,16 @@ async def get_entitlements(
 # =============================================================================
 
 
+def _to_camel(s: str) -> str:
+    """Convert snake_case to camelCase for frontend JSON serialization."""
+    parts = s.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
 class InvoiceResponse(BaseModel):
     """Invoice/billing event record."""
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+
     id: str
     date: str
     amount: str
@@ -453,6 +461,8 @@ class InvoiceResponse(BaseModel):
 
 class PaymentMethodResponse(BaseModel):
     """Payment method information."""
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+
     id: str
     type: str
     last4: str
@@ -463,6 +473,8 @@ class PaymentMethodResponse(BaseModel):
 
 class UsageMetricsResponse(BaseModel):
     """Current resource usage for the tenant."""
+    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+
     data_sources_used: int
     team_members_used: int
     dashboards_used: int
@@ -474,11 +486,10 @@ class UsageMetricsResponse(BaseModel):
 
 class ChangePlanRequest(BaseModel):
     """Request to change subscription plan."""
+    model_config = ConfigDict(populate_by_name=True)
+
     plan_id: str = Field(..., alias="planId")
     interval: str = Field("month")
-
-    class Config:
-        populate_by_name = True
 
 
 @router.get("/invoices", response_model=list[InvoiceResponse])
