@@ -22,14 +22,11 @@ Key invariants verified:
 import os
 import uuid
 import pytest
-from unittest.mock import patch, MagicMock
 from sqlalchemy import text, inspect
 from sqlalchemy.orm import Session
 
 from src.services.clerk_sync_service import ClerkSyncService
 from src.models.tenant import Tenant, TenantStatus
-from src.models.user import User
-from src.models.user_tenant_roles import UserTenantRole
 from src.models.airbyte_connection import (
     TenantAirbyteConnection,
     ConnectionStatus,
@@ -133,7 +130,7 @@ class TestLazySyncTenant:
         org_id = _make_clerk_org_id()
         svc = _sync_service(db_session)
 
-        tenant = svc.sync_tenant_from_org(
+        svc.sync_tenant_from_org(
             clerk_org_id=org_id,
             name="Test Store",
             billing_tier="free",
@@ -572,7 +569,7 @@ class TestFullLazySyncChain:
         clerk_uid = _make_clerk_user_id()
         clerk_oid = _make_clerk_org_id()
 
-        user = svc.get_or_create_user(clerk_user_id=clerk_uid)
+        svc.get_or_create_user(clerk_user_id=clerk_uid)
         tenant = svc.sync_tenant_from_org(clerk_org_id=clerk_oid, name="ConnChain")
         svc.sync_membership(
             clerk_user_id=clerk_uid,
@@ -633,7 +630,7 @@ class TestMiddlewareToDbChain:
         clerk_oid = _make_clerk_org_id()
 
         # Pre-provision user/tenant/role
-        user = svc.get_or_create_user(clerk_user_id=clerk_uid, email="mw@test.com")
+        svc.get_or_create_user(clerk_user_id=clerk_uid, email="mw@test.com")
         tenant = svc.sync_tenant_from_org(clerk_org_id=clerk_oid, name="MW Test")
         svc.sync_membership(
             clerk_user_id=clerk_uid,

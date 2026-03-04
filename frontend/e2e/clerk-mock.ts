@@ -80,7 +80,7 @@ export function SignedIn({ children }: { children: React.ReactNode }) {
   return React.createElement(React.Fragment, null, children);
 }
 
-export function SignedOut({ children }: { children: React.ReactNode }) {
+export function SignedOut(_props: { children: React.ReactNode }) {
   return null;
 }
 
@@ -92,7 +92,7 @@ export function ClerkLoaded({ children }: { children: React.ReactNode }) {
   return React.createElement(React.Fragment, null, children);
 }
 
-export function ClerkLoading({ children }: { children: React.ReactNode }) {
+export function ClerkLoading(_props: { children: React.ReactNode }) {
   return null;
 }
 

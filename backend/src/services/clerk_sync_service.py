@@ -295,7 +295,7 @@ class ClerkSyncService:
 
             logger.info(
                 "Updated organization from Clerk",
-                extra={"clerk_org_id": clerk_org_id, "name": name}
+                extra={"clerk_org_id": clerk_org_id, "tenant_name": name}
             )
         else:
             # Create new organization
@@ -310,7 +310,7 @@ class ClerkSyncService:
 
             logger.info(
                 "Created organization from Clerk",
-                extra={"clerk_org_id": clerk_org_id, "name": name}
+                extra={"clerk_org_id": clerk_org_id, "tenant_name": name}
             )
 
         return org
@@ -413,7 +413,7 @@ class ClerkSyncService:
 
             logger.info(
                 "Created tenant from Clerk org",
-                extra={"clerk_org_id": clerk_org_id, "name": name}
+                extra={"clerk_org_id": clerk_org_id, "tenant_name": name}
             )
 
         # Emit audit event for new tenants only
