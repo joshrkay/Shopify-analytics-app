@@ -81,8 +81,6 @@ class RulesListResponse(BaseModel):
 
 
 @router.get("/rules", response_model=RulesListResponse)
-@check_billing_entitlement_decorator(BillingFeature.ALERTS)
-async def list_rules(request: Request, db=Depends(_get_db)):
 async def list_rules(request: Request, db=Depends(check_alerts_entitlement)):
     tenant_ctx = get_tenant_context(request)
     svc = AlertRuleService(db, tenant_ctx.tenant_id)
