@@ -63,6 +63,7 @@ from src.api.routes import orders
 from src.api.routes import custom_dashboards
 from src.api.routes import dashboard_shares
 from src.api.routes import report_templates
+from src.api.routes import report_execute
 from src.platform.db_readiness import REQUIRED_IDENTITY_TABLES, check_required_tables
 from src.database.session import get_db_session_sync
 
@@ -346,6 +347,7 @@ app.include_router(audit_export.router)
 app.include_router(custom_dashboards.router)
 app.include_router(dashboard_shares.router)
 app.include_router(report_templates.router)
+app.include_router(report_execute.router)
 
 # Include dataset discovery + chart preview routes (requires authentication)
 # Phase 2A/2B - Dataset Discovery & Chart Preview
