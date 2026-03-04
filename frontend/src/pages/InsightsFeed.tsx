@@ -288,7 +288,7 @@ export function InsightsFeed() {
               <button
                 key={prompt}
                 type="button"
-                onClick={() => setTypeFilter('')}
+                onClick={() => handleNewPrompt(prompt)}
                 style={{
                   background: '#f6f6f7',
                   border: '1px solid #d2d5d8',
