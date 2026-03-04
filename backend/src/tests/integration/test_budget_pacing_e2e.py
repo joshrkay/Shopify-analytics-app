@@ -19,7 +19,8 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.api.routes.budget_pacing import router, _get_db
+from src.api.routes.budget_pacing import router
+from src.api.dependencies.entitlements import check_budget_pacing_entitlement
 from src.db_base import Base
 # Import models so Base.metadata knows about them
 from src.models.ad_budget import AdBudget  # noqa: F401
@@ -58,7 +59,7 @@ def mock_tenant_ctx():
 def app(db_session):
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[_get_db] = lambda: db_session
+    app.dependency_overrides[check_budget_pacing_entitlement] = lambda: db_session
     return app
 
 

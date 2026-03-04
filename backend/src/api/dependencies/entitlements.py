@@ -101,3 +101,21 @@ check_custom_reports_entitlement = create_entitlement_check(
     feature_name="Custom Reports",
     default_required_tier="Growth",
 )
+
+check_cohort_analysis_entitlement = create_entitlement_check(
+    feature=BillingFeature.COHORT_ANALYSIS,
+    feature_name="Cohort Analysis",
+    default_required_tier="Growth",
+)
+
+check_budget_pacing_entitlement = create_entitlement_check(
+    feature=BillingFeature.BUDGET_PACING,
+    feature_name="Budget Pacing",
+    default_required_tier="Growth",
+)
+
+check_alerts_entitlement = create_entitlement_check(
+    feature=BillingFeature.ALERTS,
+    feature_name="Alerts",
+    default_required_tier="Growth",
+)

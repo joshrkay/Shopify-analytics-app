@@ -17,20 +17,10 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
+from src.api.dependencies.entitlements import check_cohort_analysis_entitlement
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analytics/cohort-analysis", tags=["cohort_analysis"])
-
-
-def _get_db(request: Request):
-    """DB dependency — validates JWT/tenant then yields a session."""
-    get_tenant_context(request)  # raises 401/403 if invalid
-    from src.database.session import SessionLocal
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 # Response models
@@ -63,7 +53,7 @@ class CohortAnalysisResponse(BaseModel):
 async def get_cohort_analysis(
     request: Request,
     timeframe: str = Query("12m", description="Lookback: 3m, 6m, 12m"),
-    db=Depends(_get_db),
+    db=Depends(check_cohort_analysis_entitlement),
 ):
     """Return cohort retention grid for the heatmap."""
     tenant_ctx = get_tenant_context(request)

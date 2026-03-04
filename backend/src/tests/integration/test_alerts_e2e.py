@@ -19,7 +19,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.api.routes.alerts import router, _get_db
+from src.api.routes.alerts import router
+from src.api.dependencies.entitlements import check_alerts_entitlement
 from src.db_base import Base
 # Import models so Base.metadata knows about them
 from src.models.alert_rule import AlertRule, AlertExecution  # noqa: F401
@@ -58,7 +59,7 @@ def mock_tenant_ctx():
 def app(db_session):
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[_get_db] = lambda: db_session
+    app.dependency_overrides[check_alerts_entitlement] = lambda: db_session
     return app
 
 

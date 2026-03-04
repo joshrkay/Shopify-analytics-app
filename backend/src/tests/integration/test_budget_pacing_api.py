@@ -12,7 +12,8 @@ from unittest.mock import Mock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes.budget_pacing import router, _get_db
+from src.api.routes.budget_pacing import router
+from src.api.dependencies.entitlements import check_budget_pacing_entitlement
 from src.models.ad_budget import AdBudget
 
 
@@ -34,7 +35,7 @@ def mock_db():
 def app(mock_db):
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[_get_db] = lambda: mock_db
+    app.dependency_overrides[check_budget_pacing_entitlement] = lambda: mock_db
     return app
 
 

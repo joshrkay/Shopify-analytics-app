@@ -18,7 +18,8 @@ from datetime import date
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes.cohort_analysis import router, _get_db
+from src.api.routes.cohort_analysis import router
+from src.api.dependencies.entitlements import check_cohort_analysis_entitlement
 
 
 @pytest.fixture
@@ -39,7 +40,7 @@ def mock_db():
 def app(mock_db):
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[_get_db] = lambda: mock_db
+    app.dependency_overrides[check_cohort_analysis_entitlement] = lambda: mock_db
     return app
 
 

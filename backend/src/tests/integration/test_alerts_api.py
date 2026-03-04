@@ -12,7 +12,8 @@ from unittest.mock import Mock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes.alerts import router, _get_db
+from src.api.routes.alerts import router
+from src.api.dependencies.entitlements import check_alerts_entitlement
 from src.models.alert_rule import AlertRule, AlertExecution
 
 
@@ -34,7 +35,7 @@ def mock_db():
 def app(mock_db):
     app = FastAPI()
     app.include_router(router)
-    app.dependency_overrides[_get_db] = lambda: mock_db
+    app.dependency_overrides[check_alerts_entitlement] = lambda: mock_db
     return app
 
 
@@ -54,7 +55,7 @@ def sample_rule():
         metric_name="roas",
         comparison_operator="lt",
         threshold_value=2.0,
-        evaluation_period="last_7_days",
+        evaluation_period="daily",
         severity="warning",
         enabled=True,
     )
@@ -106,7 +107,7 @@ class TestCreateRule:
                     "metric_name": "roas",
                     "comparison_operator": "lt",
                     "threshold_value": 2.0,
-                    "evaluation_period": "last_7_days",
+                    "evaluation_period": "daily",
                     "severity": "warning",
                 })
 
@@ -246,3 +247,43 @@ class TestRuleHistory:
         MockSvc.return_value.list_executions.assert_called_once_with(
             rule_id="rule-1", limit=50, offset=0,
         )
+
+
+class TestSchemaValidation:
+    """Verify Literal-typed enum fields reject invalid values with 422."""
+
+    def test_invalid_comparison_operator_returns_422(self, client, mock_tenant_ctx):
+        with patch("src.api.routes.alerts.get_tenant_context", return_value=mock_tenant_ctx):
+            response = client.post("/api/alerts/rules", json={
+                "name": "Bad Rule",
+                "metric_name": "roas",
+                "comparison_operator": "invalid_op",
+                "threshold_value": 2.0,
+                "evaluation_period": "daily",
+                "severity": "warning",
+            })
+        assert response.status_code == 422
+
+    def test_invalid_evaluation_period_returns_422(self, client, mock_tenant_ctx):
+        with patch("src.api.routes.alerts.get_tenant_context", return_value=mock_tenant_ctx):
+            response = client.post("/api/alerts/rules", json={
+                "name": "Bad Rule",
+                "metric_name": "roas",
+                "comparison_operator": "lt",
+                "threshold_value": 2.0,
+                "evaluation_period": "last_7_days",
+                "severity": "warning",
+            })
+        assert response.status_code == 422
+
+    def test_invalid_severity_returns_422(self, client, mock_tenant_ctx):
+        with patch("src.api.routes.alerts.get_tenant_context", return_value=mock_tenant_ctx):
+            response = client.post("/api/alerts/rules", json={
+                "name": "Bad Rule",
+                "metric_name": "roas",
+                "comparison_operator": "lt",
+                "threshold_value": 2.0,
+                "evaluation_period": "daily",
+                "severity": "extreme",
+            })
+        assert response.status_code == 422

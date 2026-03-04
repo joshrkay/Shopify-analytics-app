@@ -48,7 +48,7 @@ def sample_rule(tenant_id):
         metric_name="roas",
         comparison_operator="lt",
         threshold_value=2.0,
-        evaluation_period="last_7_days",
+        evaluation_period="daily",
         severity="warning",
         enabled=True,
     )
@@ -110,7 +110,7 @@ class TestCreateRule:
                 metric_name="spend",
                 comparison_operator="gt",
                 threshold_value=1000,
-                evaluation_period="last_7_days",
+                evaluation_period="daily",
                 severity="critical",
                 user_id="user-1",
             )
@@ -240,7 +240,7 @@ class TestEvaluateRules:
         rule = AlertRule(
             id="rule-1", tenant_id="tenant-test-456", name="Test",
             metric_name="roas", comparison_operator="lt",
-            threshold_value=2.0, evaluation_period="last_7_days",
+            threshold_value=2.0, evaluation_period="daily",
             severity="warning", enabled=True,
         )
 
@@ -268,7 +268,7 @@ class TestEvaluateRules:
         rule = AlertRule(
             id="rule-1", tenant_id="tenant-test-456", name="Test",
             metric_name="roas", comparison_operator="lt",
-            threshold_value=2.0, evaluation_period="last_7_days",
+            threshold_value=2.0, evaluation_period="daily",
             severity="warning", enabled=True,
         )
 
@@ -295,13 +295,13 @@ class TestEvaluateRules:
         rule1 = AlertRule(
             id="rule-1", tenant_id="tenant-test-456", name="Bad Metric",
             metric_name="roas", comparison_operator="lt",
-            threshold_value=2.0, evaluation_period="last_7_days",
+            threshold_value=2.0, evaluation_period="daily",
             severity="warning", enabled=True,
         )
         rule2 = AlertRule(
             id="rule-2", tenant_id="tenant-test-456", name="Good",
             metric_name="spend", comparison_operator="gt",
-            threshold_value=500, evaluation_period="last_7_days",
+            threshold_value=500, evaluation_period="daily",
             severity="warning", enabled=True,
         )
 
