@@ -60,6 +60,10 @@ models:
     utils:
       +materialized: table
       +schema: utils
+    cohorts:
+      +materialized: table
+      +schema: analytics
+      +tags: ['cohorts']
     marts:
       +materialized: table
       +schema: marts

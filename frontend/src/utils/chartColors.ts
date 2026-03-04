@@ -6,14 +6,14 @@
  */
 
 const CHART_PALETTE = [
-  '#2E72D2', // Shopify blue
-  '#00A47C', // Green
-  '#FFC453', // Yellow
-  '#E3516E', // Red
-  '#9C6ADE', // Purple
-  '#47C1BF', // Teal
-  '#F49342', // Orange
-  '#50B83C', // Light green
+  'var(--color-primary)',
+  'var(--color-success)',
+  'var(--color-warning)',
+  'var(--color-danger)',
+  'var(--color-info)',
+  'var(--color-teal)',
+  'var(--color-orange)',
+  'var(--color-green-light)',
 ];
 
 /**
