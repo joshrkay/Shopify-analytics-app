@@ -1,4 +1,4 @@
-# Figma-Codebase Alignment Plan
+# Figma-Codebase Alignment Plan — Parallelized
 
 **Generated**: March 4, 2026
 **Branch**: `claude/figma-codebase-alignment-plan-baSL9`
@@ -6,466 +6,543 @@
 
 ---
 
-## Overview
-
-This plan addresses the 21 missing tasks and 37 partial implementations identified in the Figma-to-codebase delta analysis. Work is organized into 6 phases, ordered by impact and dependency.
-
----
-
-## Phase 1: Design Token Foundation (Sprint 1 Gaps)
-
-**Priority**: High — affects visual consistency across all pages
-**Effort**: ~2 days
-**Files touched**: 4-5 frontend files
-
-### 1.1 Extract and apply Figma design tokens
-
-Create a centralized design token file that maps Figma design decisions to Tailwind theme overrides.
-
-**Tasks**:
-- [ ] Create `frontend/src/styles/tokens.css` with CSS custom properties for:
-  - Color palette (primary, secondary, accent, semantic colors from Figma)
-  - Typography scale (font sizes, weights, line heights)
-  - Spacing scale (if Figma uses non-standard spacing)
-  - Border radii, shadows, transitions
-- [ ] Update `frontend/src/index.css` to import tokens and extend Tailwind's `@theme` with Figma values
-- [ ] Update `frontend/src/utils/chartColors.ts` to reference token CSS variables instead of hardcoded hex values
-
-**Acceptance criteria**:
-- All color, typography, and spacing values reference design tokens
-- Changing a token value updates all components that use it
-- Chart colors are consistent with the Figma palette
-
-### 1.2 Create global color palette constants
-
-**Tasks**:
-- [ ] Define semantic color mappings in `tokens.css`: `--color-success`, `--color-warning`, `--color-danger`, `--color-info`
-- [ ] Define platform brand colors: `--color-meta`, `--color-google`, `--color-tiktok`, `--color-shopify`
-- [ ] Refactor existing hardcoded colors in `chartColors.ts`, `KpiWidget.tsx`, `Attribution.tsx`, `ChannelAnalytics.tsx`, and `Orders.tsx` to use tokens
-
-### 1.3 Create typography scale
-
-**Tasks**:
-- [ ] Define typography tokens in `tokens.css`: `--font-size-xs` through `--font-size-4xl`, `--font-weight-normal/medium/semibold/bold`, `--line-height-tight/normal/relaxed`
-- [ ] Map to Tailwind `@theme` fontSize overrides if Figma values differ from defaults
-
-### 1.4 Create spacing scale
-
-**Tasks**:
-- [ ] Define spacing tokens if Figma uses a non-4px-based scale
-- [ ] Map to Tailwind `@theme` spacing overrides
-- [ ] If Figma uses standard 4px scale (matches Tailwind defaults), document this and mark as N/A
-
----
-
-## Phase 2: Layout & Navigation Gaps (Sprint 2 Gaps)
-
-**Priority**: High — affects overall app usability
-**Effort**: ~3 days
-**Files touched**: 6-8 frontend files
-
-### 2.1 Add global search functionality
-
-**Tasks**:
-- [ ] Create `frontend/src/components/layout/GlobalSearch.tsx`
-  - Command palette style (Cmd+K / Ctrl+K to trigger)
-  - Search across: pages (nav items), recent dashboards, data sources, insights
-  - Use shadcn `Command` component (already in `ui/command.tsx`)
-- [ ] Create `frontend/src/hooks/useGlobalSearch.ts` for search logic
-- [ ] Integrate into `AppHeader.tsx` — search icon in header bar
-- [ ] Backend: Create `GET /api/search` route in `backend/src/api/routes/search.py`
-  - Query dashboards, insights, sources by name/title
-  - Return typed results with navigation paths
-
-**Acceptance criteria**:
-- Cmd+K opens search overlay
-- Results grouped by type (Pages, Dashboards, Sources, Insights)
-- Clicking a result navigates to it
-- Debounced input (300ms)
-
-### 2.2 Add Markinsight logo component
-
-**Tasks**:
-- [ ] Create `frontend/src/components/layout/MarkinsightIcon.tsx` matching Figma logo design
-- [ ] Replace current branding in `Sidebar.tsx` with the Figma-accurate logo component
-
-### 2.3 Align sidebar section grouping with Figma
-
-**Tasks**:
-- [ ] Compare current `NAV_SECTIONS` in `Sidebar.tsx` (Main/Channels) against Figma sidebar sections (Analytics/Tools/System)
-- [ ] Restructure nav sections to match Figma grouping:
-  - **Analytics**: Home, Attribution, Orders, Channels, Cohort Analysis, Budget Pacing
-  - **Tools**: Dashboard Builder, Sources, Report Builder
-  - **System**: Settings, Alerts, Sync Health, What's New
-- [ ] Add nav items for new pages (Cohort Analysis, Budget Pacing, Alerts)
-
-### 2.4 Mobile responsive improvements
-
-**Tasks**:
-- [ ] Verify sidebar drawer behavior on mobile (< 1024px)
-- [ ] Ensure hamburger menu properly toggles sidebar overlay
-- [ ] Note: RotatePhoneIndicator is low priority — skip unless Figma specifically requires it for chart pages
-
-### 2.5 Create 404 / NotFound page
-
-**Tasks**:
-- [ ] Create `frontend/src/pages/NotFound.tsx` — simple page with "Page not found" message and link back to home
-- [ ] Add catch-all route in `App.tsx`: `<Route path="*" element={<NotFound />} />`
-
----
-
-## Phase 3: Missing Analytics Pages (Sprint 5 Gaps) — LARGEST GAP
-
-**Priority**: Critical — 3 entire Figma pages have no implementation
-**Effort**: ~8-10 days
-**Dependencies**: Phase 1 (design tokens) recommended but not blocking
-
-### 3.1 Cohort Analysis Page
-
-The Figma design shows a retention heatmap with cohort-based customer analysis.
-
-#### 3.1.1 dbt models (backend data layer)
-
-**Tasks**:
-- [ ] Create `analytics/models/cohorts/stg_cohort_base.sql`
-  - Source: `canonical.orders` + customer data
-  - Assign each customer to an acquisition cohort by first-order month
-  - Output: `customer_id`, `tenant_id`, `cohort_month`, `first_order_date`, `acquisition_channel`
-- [ ] Create `analytics/models/cohorts/fct_cohort_retention.sql`
-  - Join cohort base with subsequent orders
-  - Calculate: `cohort_month`, `period_number` (months since acquisition), `customers_active`, `customers_total`, `retention_rate`, `revenue`
-  - Materialization: `incremental` with monthly grain
-- [ ] Add dbt tests for the new models (unique, not_null, accepted_values)
-- [ ] Update `analytics/dbt_project.yml` with `cohorts` folder schema config
-
-#### 3.1.2 Backend route
-
-**Tasks**:
-- [ ] Create `backend/src/api/routes/cohort_analysis.py`
-  - `GET /api/analytics/cohort-analysis` — returns cohort retention grid
-  - Query params: `timeframe` (3m/6m/12m), `cohort_dimension` (month/quarter), `metric` (retention/revenue/orders)
-  - Query `fct_cohort_retention` via SQL (verify against dbt model columns)
-  - Response shape:
-    ```json
-    {
-      "cohorts": [
-        {
-          "cohort_month": "2025-01",
-          "customers_total": 150,
-          "periods": [
-            { "period": 0, "retention_rate": 1.0, "customers": 150 },
-            { "period": 1, "retention_rate": 0.42, "customers": 63 },
-            { "period": 2, "retention_rate": 0.28, "customers": 42 }
-          ]
-        }
-      ],
-      "summary": { "avg_retention_month_1": 0.38, "best_cohort": "2025-03" }
-    }
-    ```
-- [ ] Register route in `backend/src/main.py`
-- [ ] Verify module loads: `PYTHONPATH=. python -c "from src.api.routes import cohort_analysis"`
-
-#### 3.1.3 Frontend page
-
-**Tasks**:
-- [ ] Create `frontend/src/services/cohortAnalysisApi.ts` with `getCohortRetention(timeframe, dimension, metric)`
-- [ ] Create `frontend/src/pages/CohortAnalysis.tsx`
-  - Retention heatmap: grid where rows = cohorts, columns = periods, cell color intensity = retention rate
-  - Use Recharts or custom HTML table with background-color scaling
-  - Timeframe selector (3m/6m/12m)
-  - Cohort dimension toggle (monthly/quarterly)
-  - Metric toggle (retention rate / revenue / order count)
-  - Summary KPI cards at top (avg retention, best cohort, worst cohort)
-- [ ] Create `frontend/src/components/charts/RetentionHeatmap.tsx` — reusable heatmap component
-- [ ] Add lazy import + route in `App.tsx`: `/cohort-analysis`
-- [ ] Add to sidebar nav under Analytics section
-- [ ] Feature gate: `COHORT_ANALYSIS` (paid tier)
-
-### 3.2 Budget Pacing Page
-
-The Figma design shows spend tracking with progress bars and forecast charts.
-
-#### 3.2.1 Backend model & dbt
-
-**Tasks**:
-- [ ] Create `backend/src/models/ad_budget.py`
-  - `AdBudget` model: `id`, `tenant_id`, `source_platform`, `budget_monthly_cents`, `start_date`, `end_date`, `enabled`, `created_at`, `updated_at`
-  - RLS policy on `tenant_id`
-- [ ] Create Alembic migration for `ad_budgets` table
-- [ ] Create `analytics/models/budget/fct_budget_pacing.sql`
-  - Join `AdBudget` with `canonical.marketing_spend`
-  - Calculate: `platform`, `date`, `daily_spend`, `cumulative_spend`, `budget_allocated`, `pct_budget_spent`, `days_elapsed`, `days_remaining`, `projected_total_spend`
-
-#### 3.2.2 Backend routes
-
-**Tasks**:
-- [ ] Create `backend/src/services/budget_pacing_service.py`
-  - `list_budgets(tenant_id)` — CRUD for budget rules
-  - `get_pacing(tenant_id, timeframe)` — current pacing vs budget by platform
-  - `get_forecast(tenant_id)` — projected end-of-period spend
-- [ ] Create `backend/src/api/routes/budget_pacing.py`
-  - `GET /api/budgets` — list budgets for tenant
-  - `POST /api/budgets` — create budget
-  - `PUT /api/budgets/{id}` — update budget
-  - `DELETE /api/budgets/{id}` — delete budget
-  - `GET /api/budget-pacing` — current pacing data
-- [ ] Register route in `main.py`
-- [ ] Verify module loads
-
-#### 3.2.3 Frontend page
-
-**Tasks**:
-- [ ] Create `frontend/src/services/budgetPacingApi.ts`
-- [ ] Create `frontend/src/pages/BudgetPacing.tsx`
-  - Per-platform budget cards with progress bars
-  - Progress bar color: green (on pace) / yellow (slightly over) / red (significantly over)
-  - Pacing ratio: `% budget spent` vs `% time elapsed`
-  - Forecast line chart showing projected spend vs budget limit
-  - Budget CRUD: modal to set/edit monthly budgets per platform
-- [ ] Create `frontend/src/components/budget/PacingProgressBar.tsx`
-- [ ] Create `frontend/src/components/budget/BudgetForecastChart.tsx`
-- [ ] Add lazy import + route in `App.tsx`: `/budget-pacing`
-- [ ] Add to sidebar nav under Analytics section
-- [ ] Feature gate: `BUDGET_PACING` (paid tier)
-
-### 3.3 Alerts Page
-
-The Figma design shows a notification center with alert rules and severity indicators.
-
-#### 3.3.1 Backend model & service
-
-**Tasks**:
-- [ ] Create `backend/src/models/alert_rule.py`
-  - `AlertRule`: `id`, `tenant_id`, `name`, `description`, `metric_name`, `comparison_operator` (gt/lt/eq/gte/lte), `threshold_value`, `evaluation_period` (daily/weekly/monthly), `enabled`, `severity` (info/warning/critical), `created_at`, `updated_at`
-  - `AlertExecution`: `id`, `tenant_id`, `alert_rule_id`, `fired_at`, `metric_value`, `threshold_value`, `resolved_at`, `notification_id`
-  - RLS policies on both tables
-- [ ] Create Alembic migration
-- [ ] Add `ALERT_TRIGGERED` to `NotificationEventType` enum (with `values_callable`)
-- [ ] Create `backend/src/services/alert_rule_service.py`
-  - CRUD for alert rules
-  - `evaluate_rules(tenant_id)` — query dbt metrics, compare against thresholds
-  - `notify_on_trigger()` — create notification via existing `NotificationService`
-- [ ] Create background job: `backend/src/jobs/alert_evaluation_job.py`
-  - Scheduled hourly via worker
-  - Evaluates all enabled rules across all tenants
-  - Creates `AlertExecution` records + notifications for triggered alerts
-
-#### 3.3.2 Backend routes
-
-**Tasks**:
-- [ ] Create `backend/src/api/routes/alerts.py`
-  - `GET /api/alerts/rules` — list alert rules
-  - `POST /api/alerts/rules` — create rule
-  - `PUT /api/alerts/rules/{id}` — update rule
-  - `DELETE /api/alerts/rules/{id}` — delete rule
-  - `GET /api/alerts/history` — list alert executions (fired alerts)
-  - `GET /api/alerts/rules/{id}/history` — execution history for specific rule
-- [ ] Register in `main.py`, verify module loads
-
-#### 3.3.3 Frontend page
-
-**Tasks**:
-- [ ] Create `frontend/src/services/alertsApi.ts`
-- [ ] Create `frontend/src/pages/Alerts.tsx`
-  - Two tabs: "Rules" (manage alert rules) and "History" (fired alerts log)
-  - Rules tab: list of alert rules with enable/disable toggle, edit/delete actions
-  - History tab: timeline of fired alerts with severity badge, metric value, timestamp
-  - Create/edit rule modal: metric picker, operator, threshold, period, severity
-  - Severity indicators: colored badges (info=blue, warning=yellow, critical=red)
-- [ ] Create `frontend/src/components/alerts/AlertRuleCard.tsx`
-- [ ] Create `frontend/src/components/alerts/AlertHistoryTimeline.tsx`
-- [ ] Create `frontend/src/components/alerts/CreateAlertRuleModal.tsx`
-- [ ] Add lazy import + route in `App.tsx`: `/alerts`
-- [ ] Add to sidebar nav under System section
-- [ ] Feature gate: `ALERTS` (paid tier — or free tier with limited rule count)
-
----
-
-## Phase 4: Partial Implementation Completion (Sprints 3-6 Gaps)
-
-**Priority**: Medium — improves existing pages
-**Effort**: ~4-5 days
-
-### 4.1 MetricCard sparkline mini-charts
-
-**Tasks**:
-- [ ] Enhance `frontend/src/components/charts/KpiWidget.tsx` to accept optional `sparklineData` prop
-- [ ] Render small inline Recharts `<AreaChart>` (50x20px) inside KPI cards showing 7-day trend
-- [ ] Pass sparkline data from Dashboard.tsx
-
-### 4.2 Enhanced drill-down modal with tabs
-
-**Tasks**:
-- [ ] Update `frontend/src/components/dashboard/BreakdownModal.tsx` to support tabbed views
-- [ ] Tabs: Summary, Trend Chart, Data Table
-- [ ] Use shadcn `Tabs` component (already available in `ui/tabs.tsx`)
-
-### 4.3 Sortable table headers (consistent pattern)
-
-**Tasks**:
-- [ ] Create `frontend/src/components/common/SortableTable.tsx` — wrapper that adds sort indicators and click handlers to `<th>` elements
-- [ ] Apply to Orders.tsx, Attribution.tsx, ChannelAnalytics.tsx tables
-
-### 4.4 Cross-page date range sync
-
-**Tasks**:
-- [ ] Create `frontend/src/contexts/DateRangeContext.tsx`
-  - Stores selected timeframe globally
-  - Provider mounted in `App.tsx` `AppWithOrg()`
-- [ ] Create `frontend/src/hooks/useDateRange.ts`
-- [ ] Refactor `TimeframeSelector` to read/write from context
-- [ ] Update all analytics pages (Dashboard, Attribution, Orders, ChannelAnalytics, CohortAnalysis, BudgetPacing) to use the shared date range context
-
-### 4.5 Dashboard empty state
-
-**Tasks**:
-- [ ] Create empty state component for Dashboard.tsx when no data sources are connected
-- [ ] Show friendly illustration + "Connect your first data source" CTA
-- [ ] Reuse pattern from existing `EmptySourcesState.tsx`
-
-### 4.6 Loading skeleton states (systematic)
-
-**Tasks**:
-- [ ] Audit all pages for loading state consistency
-- [ ] Add Polaris `<SkeletonPage>` / `<SkeletonBodyText>` to any page that shows a raw spinner
-- [ ] Priority pages: Dashboard, Attribution, Orders, CohortAnalysis, BudgetPacing, Alerts
-
----
-
-## Phase 5: Settings & Intelligence Alignment (Sprint 6 Gaps)
-
-**Priority**: Medium
-**Effort**: ~2 days
-
-### 5.1 Align Settings tabs with Figma spec
-
-**Tasks**:
-- [ ] Compare current Settings tabs (DataSources, Sync, Team) against Figma (Profile, Integrations, Notifications, Billing)
-- [ ] Add missing tabs if needed:
-  - Profile tab: user profile editing (may be handled by Clerk, in which case link to Clerk profile)
-  - Notifications tab: surface existing `useNotificationPreferences` hook as a settings tab
-  - Billing tab: link to existing `/billing/checkout` flow or embed billing summary
-- [ ] Reorder tabs to match Figma sequence
-
-### 5.2 AI Consultant suggested prompts
-
-**Tasks**:
-- [ ] Add suggested prompt chips to `InsightsFeed.tsx`
-- [ ] Example prompts: "What drove revenue this week?", "Which channel has best ROAS?", "Show me customer retention trends"
-- [ ] Clicking a prompt should trigger the AI insight generation flow
-
----
-
-## Phase 6: Quality & Infrastructure (Sprint 7 Gaps)
-
-**Priority**: Low-Medium — production readiness improvements
-**Effort**: ~2-3 days
-
-### 6.1 Visual QA pass
-
-**Tasks**:
-- [ ] Side-by-side comparison of each page against Figma designs
-- [ ] Document pixel-level discrepancies in a tracking spreadsheet
-- [ ] Prioritize fixes by visual impact
-
-### 6.2 Performance monitoring
-
-**Tasks**:
-- [ ] Add Lighthouse CI to GitHub Actions: `npm run build && npx lighthouse-ci`
-- [ ] Set performance budget: score >= 90
-- [ ] Add bundle analysis: `npx vite-bundle-analyzer` or `rollup-plugin-visualizer`
-- [ ] Set bundle size budget: < 200KB gzipped for initial JS
-
-### 6.3 Accessibility audit
-
-**Tasks**:
-- [ ] Run `axe-core` audit on all pages
-- [ ] Fix WCAG AA contrast violations
-- [ ] Add missing ARIA labels to interactive elements
-- [ ] Verify keyboard navigation on modals, dropdowns, tables
-
-### 6.4 PR preview deployments
-
-**Tasks**:
-- [ ] Configure Render preview environments or add Render PR preview config to `render.yaml`
-- [ ] Each PR gets a temporary deployment URL for visual review
-
----
-
-## Entitlement Changes Required
-
-New features need entitlement definitions in both systems:
-
-| Feature Key | Free Tier | Growth | Pro | Enterprise |
-|---|---|---|---|---|
-| `COHORT_ANALYSIS` | No | Yes | Yes | Yes |
-| `BUDGET_PACING` | No | Yes | Yes | Yes |
-| `ALERTS` | 3 rules max | 10 rules | Unlimited | Unlimited |
-
-**Files to update**:
-- `backend/src/services/billing_entitlements.py` — add to `BILLING_TIER_FEATURES` dict
-- `backend/src/models/plan_feature.py` — add `PlanFeature` rows via migration
-- `frontend/src/services/entitlementsApi.ts` — add new feature key constants
-
----
-
-## Implementation Order & Dependencies
+## Architecture: How Each Stream Connects
+
+Every work stream follows the same full-stack vertical. Understanding this
+is critical for parallelization — each stream is independent because each
+owns its own slice through every layer:
 
 ```
-Phase 1 (Design Tokens)          ← No dependencies, can start immediately
-  ↓
-Phase 2 (Layout & Nav)           ← Depends on Phase 1 for token values
-  ↓
-Phase 3 (Missing Pages)          ← Depends on Phase 2 for nav integration
-  ├─ 3.1 Cohort Analysis         ← Needs dbt models first, then backend, then frontend
-  ├─ 3.2 Budget Pacing           ← Needs DB model + migration first
-  └─ 3.3 Alerts                  ← Needs DB models + background job
-  ↓
-Phase 4 (Partial Completions)    ← Can run in parallel with Phase 3
-  ↓
-Phase 5 (Settings & AI)          ← After Phase 3 (uses new features)
-  ↓
-Phase 6 (Quality)                ← After all feature work complete
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        FIGMA DESIGN (source of truth)                  │
+│  Design tokens, page layouts, component specs, interaction patterns   │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────────┐
+│                     FRONTEND (React/TypeScript)                        │
+│  Page component → API service (createHeadersAsync) → types/interfaces │
+│  Feature gate (FeatureGateRoute in App.tsx) → Sidebar nav item        │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │ fetch(`${API_BASE_URL}/api/...`)
+┌──────────────────────────────▼──────────────────────────────────────────┐
+│                     MIDDLEWARE LAYER (FastAPI)                          │
+│  CORSMiddleware → EmbedOnlyCSPMiddleware → TenantContextMiddleware    │
+│  JWT → _resolve_tenant_from_db() → TenantGuard.enforce_authorization()│
+│  Result: request.state.tenant_id, request.state.user_id set           │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │ get_tenant_context(request)
+┌──────────────────────────────▼──────────────────────────────────────────┐
+│                     API ROUTE (backend/src/api/routes/*.py)            │
+│  router = APIRouter(prefix="/api/...", tags=[...])                    │
+│  Pydantic request/response models                                     │
+│  Entitlement check via BillingEntitlementsService                     │
+│  Register in main.py: app.include_router(module.router)               │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────────┐
+│                     SERVICE LAYER (backend/src/services/*.py)          │
+│  Business logic, SQL queries against dbt tables                       │
+│  Tenant isolation: WHERE tenant_id = :tenant_id on every query        │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────────┐
+│                     DATA LAYER                                         │
+│  SQLAlchemy models (backend/src/models/) → PostgreSQL + RLS           │
+│  dbt models (analytics/models/) → staging → canonical → metrics/marts │
+│  Enum columns: MUST use values_callable=lambda e: [x.value for x in e]│
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Parallelization opportunities**:
-- Phase 1 + Phase 2.5 (404 page) can run simultaneously
-- Phase 3.1, 3.2, 3.3 are independent — can be developed in parallel by different developers
-- Phase 4 can run in parallel with Phase 3
+### Route Registration Pattern (for every new route)
+
+```python
+# 1. backend/src/api/routes/your_feature.py
+from fastapi import APIRouter, Request
+from src.platform.tenant_context import get_tenant_context
+from src.database.session import SessionLocal
+
+router = APIRouter(prefix="/api/your-feature", tags=["your_feature"])
+
+def _get_db(request: Request):
+    get_tenant_context(request)  # validates JWT + tenant → 401/403 if invalid
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# 2. backend/main.py — add these two lines:
+from src.api.routes import your_feature      # import at top
+app.include_router(your_feature.router)       # register in router section
+
+# 3. Verify: PYTHONPATH=. python -c "from src.api.routes import your_feature"
+```
+
+### Entitlement Integration Pattern (for gated features)
+
+```python
+# Backend: billing_entitlements.py
+class BillingFeature:
+    YOUR_FEATURE = "your_feature"  # add constant
+
+BILLING_TIER_FEATURES = {
+    'free':       { BillingFeature.YOUR_FEATURE: False },
+    'growth':     { BillingFeature.YOUR_FEATURE: True },
+    'enterprise': { BillingFeature.YOUR_FEATURE: True },
+}
+```
+
+```typescript
+// Frontend: App.tsx — wrap route with FeatureGateRoute
+<Route path="/your-feature" element={
+  <FeatureGateRoute feature="your_feature" entitlements={entitlements}
+    entitlementsLoading={entitlementsLoading}
+    entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
+    <YourFeaturePage />
+  </FeatureGateRoute>
+} />
+```
 
 ---
 
-## Estimated Timeline
+## Parallel Work Streams
 
-| Phase | Effort | Can Parallel With |
-|---|---|---|
-| Phase 1: Design Tokens | 2 days | Phase 2.5 |
-| Phase 2: Layout & Nav | 3 days | — |
-| Phase 3: Missing Pages | 8-10 days | Phase 4 |
-| Phase 4: Partial Completions | 4-5 days | Phase 3 |
-| Phase 5: Settings & AI | 2 days | — |
-| Phase 6: Quality | 2-3 days | — |
-| **Total** | **~18-22 days** | (with parallelization: ~14-16 days) |
+```
+                    ┌──────────────────────────────────────────┐
+                    │         SHARED FOUNDATION (S0)           │
+                    │  Design tokens, entitlement scaffolding  │
+                    │  404 page, sidebar restructure           │
+                    └──────────┬───────────────────────────────┘
+                               │ tokens.css + nav structure ready
+          ┌────────────────────┼────────────────────┬───────────────────────┐
+          ▼                    ▼                    ▼                       ▼
+ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐  ┌──────────────────┐
+ │  STREAM A (S-A) │ │  STREAM B (S-B) │ │  STREAM C (S-C) │  │  STREAM D (S-D)  │
+ │ Cohort Analysis │ │ Budget Pacing   │ │ Alerts           │  │ UX Polish &      │
+ │                 │ │                 │ │                  │  │ Existing Pages   │
+ │ dbt: fct_cohort │ │ model: AdBudget │ │ model: AlertRule │  │                  │
+ │ route: /api/    │ │ route: /api/    │ │ route: /api/     │  │ Global search    │
+ │   analytics/    │ │   budgets,      │ │   alerts/rules,  │  │ KPI sparklines   │
+ │   cohort-       │ │   budget-pacing │ │   alerts/history │  │ Drill-down tabs  │
+ │   analysis      │ │ service: pacing │ │ service: rules   │  │ Sortable tables  │
+ │ page: /cohort-  │ │ page: /budget-  │ │ job: evaluation  │  │ Date range sync  │
+ │   analysis      │ │   pacing        │ │ page: /alerts    │  │ Empty/loading    │
+ │                 │ │                 │ │                  │  │   states         │
+ │ Entitlement:    │ │ Entitlement:    │ │ Entitlement:     │  │ Settings tabs    │
+ │ COHORT_ANALYSIS │ │ BUDGET_PACING   │ │ ALERTS           │  │ AI prompts       │
+ └─────────────────┘ └─────────────────┘ └─────────────────┘  └──────────────────┘
+          │                    │                    │                       │
+          └────────────────────┴────────────────────┴───────────────────────┘
+                                         │
+                               ┌─────────▼─────────┐
+                               │   STREAM E (S-E)   │
+                               │   Quality Gate     │
+                               │   Visual QA        │
+                               │   Lighthouse CI    │
+                               │   a11y audit       │
+                               │   Bundle analysis  │
+                               └────────────────────┘
+```
+
+**Key**: S0 must complete first. Then S-A, S-B, S-C, S-D run fully in parallel. S-E runs after all streams merge.
 
 ---
 
-## Out of Scope (Acknowledged Divergences)
+## S0: Shared Foundation (BLOCKING — do first)
 
-These items from the gap analysis are **intentionally different** and should NOT be aligned:
+**Effort**: ~2 days | **Owner**: 1 developer
+**Why blocking**: Establishes design tokens all streams consume, restructures sidebar nav that all new pages plug into, and scaffolds entitlement keys that all gated features reference.
 
-1. **Auth page** — Clerk handles auth; custom login/signup forms are unnecessary
-2. **Vercel deployment** — Render is the production target; no migration needed
-3. **Mock data modules** — Real API services exist; static mocks add no value
-4. **Storybook** — Not prioritized; consider adding later if team grows
-5. **RotatePhoneIndicator** — Niche mobile feature; low ROI
+### S0.1 Design Tokens
+
+| Task | File(s) | Details |
+|------|---------|---------|
+| Create token file | `frontend/src/styles/tokens.css` | CSS custom properties: `--color-primary`, `--color-success/warning/danger/info`, `--color-meta/google/tiktok/shopify`, `--font-size-xs..4xl`, `--font-weight-*`, `--radius-*`, `--shadow-*` |
+| Wire into Tailwind | `frontend/src/index.css` | `@import './styles/tokens.css'` + extend `@theme` with token references |
+| Consolidate chart colors | `frontend/src/utils/chartColors.ts` | Replace hardcoded hex with `var(--color-*)` references |
+| Consolidate platform colors | `Attribution.tsx`, `ChannelAnalytics.tsx`, `Orders.tsx`, `BreakdownModal.tsx` | Replace scattered `PLATFORM_COLORS` / `statusBadge` color dicts with shared token imports |
+
+### S0.2 Sidebar Restructure
+
+| Task | File(s) | Details |
+|------|---------|---------|
+| Restructure NAV_SECTIONS | `frontend/src/components/layout/Sidebar.tsx` | **Analytics**: Home, Attribution, Orders, Channels, Cohort Analysis, Budget Pacing — **Tools**: Dashboard Builder, Sources — **System**: Settings, Alerts, Sync Health, What's New |
+| Add Markinsight logo | `frontend/src/components/layout/MarkinsightIcon.tsx` | SVG logo matching Figma; replace current branding in Sidebar.tsx |
+
+### S0.3 Entitlement Scaffolding
+
+These keys are added now so all streams can reference them without merge conflicts.
+
+| Task | File(s) | Details |
+|------|---------|---------|
+| Add BillingFeature constants | `backend/src/services/billing_entitlements.py` | Add `COHORT_ANALYSIS = "cohort_analysis"`, `BUDGET_PACING = "budget_pacing"`, `ALERTS = "alerts"` to `BillingFeature` class |
+| Add to tier matrix | `backend/src/services/billing_entitlements.py` | Add all 3 keys to `free` (False), `growth` (True), `enterprise` (True) in `BILLING_TIER_FEATURES` |
+| Add alert rule limits | `backend/src/services/billing_entitlements.py` | `free`: `'max_alert_rules': 3`, `growth`: `'max_alert_rules': 10`, `enterprise`: `'max_alert_rules': -1` (unlimited) |
+
+### S0.4 NotFound Page
+
+| Task | File(s) | Details |
+|------|---------|---------|
+| Create 404 page | `frontend/src/pages/NotFound.tsx` | "Page not found" with Home link |
+| Add catch-all route | `frontend/src/App.tsx` | `<Route path="*" element={<NotFound />} />` as last route |
+
+### S0 Verification Checklist
+
+```bash
+# After S0, verify:
+cd frontend && npm run build          # tokens compile, no TS errors
+cd ../backend && PYTHONPATH=. python -c "from src.services.billing_entitlements import BillingFeature; print(BillingFeature.COHORT_ANALYSIS, BillingFeature.BUDGET_PACING, BillingFeature.ALERTS)"
+```
+
+---
+
+## S-A: Cohort Analysis (Full-Stack Vertical)
+
+**Effort**: ~3 days | **Owner**: 1 developer | **Depends on**: S0
+**Zero overlap** with S-B, S-C, S-D — unique files at every layer.
+
+### S-A.1 Data Layer — dbt Models
+
+**Existing asset**: `metrics.fct_ltv` already has cohort-month grouping with retention rates at 90d/365d windows. Extend rather than rebuild.
+
+| Task | File | Details |
+|------|------|---------|
+| Create cohort retention model | `analytics/models/cohorts/fct_cohort_retention.sql` | Source: `canonical.orders`. Group customers by first-order month (`cohort_month`). For each cohort + period_number (0..N months), calculate: `customers_total`, `customers_active`, `retention_rate`, `cohort_revenue`. Materialized as `table`. Cross-join `utils.dim_date_ranges` for period-over-period. Tenant isolation via `tenant_id` column. |
+| Add schema config | `analytics/dbt_project.yml` | Under `models.markinsight`: add `cohorts: { +schema: analytics, +materialized: table }` |
+| Add dbt tests | `analytics/models/cohorts/schema.yml` | `unique: id`, `not_null: [tenant_id, cohort_month, period_number]`, `accepted_values: { period_number: range(0,24) }` |
+
+**SQL verification before commit**:
+```bash
+# Confirm source tables exist
+find analytics/models -name "orders.sql"    # → canonical/orders.sql ✓
+grep -l "dim_date_ranges" analytics/models/  # → utils/dim_date_ranges.sql ✓
+```
+
+### S-A.2 API Layer — Backend Route + Service
+
+| Task | File | Details |
+|------|------|---------|
+| Create Pydantic schemas | `backend/src/api/schemas/cohort_analysis.py` | `CohortPeriod(period: int, retention_rate: float, customers: int, revenue: float)`, `CohortRow(cohort_month: str, customers_total: int, periods: list[CohortPeriod])`, `CohortAnalysisResponse(cohorts: list[CohortRow], summary: CohortSummary)` |
+| Create route | `backend/src/api/routes/cohort_analysis.py` | `router = APIRouter(prefix="/api/analytics/cohort-analysis", tags=["cohort_analysis"])`. `GET /` with query params: `timeframe` (3m/6m/12m), `cohort_dimension` (month/quarter), `metric` (retention/revenue/orders). Uses `get_tenant_context(request)` for tenant isolation. Queries `fct_cohort_retention WHERE tenant_id = :tenant_id`. |
+| Register route | `backend/main.py` | `from src.api.routes import cohort_analysis` + `app.include_router(cohort_analysis.router)` |
+| Entitlement check | In route handler | `BillingEntitlementsService(db, tenant_id).check_feature_entitlement(BillingFeature.COHORT_ANALYSIS)` → 403 if not entitled |
+
+**Route verification**:
+```bash
+cd backend && PYTHONPATH=. python -c "from src.api.routes import cohort_analysis; print('OK')"
+```
+
+### S-A.3 Frontend — Page + API Service
+
+| Task | File | Details |
+|------|------|---------|
+| Create API service | `frontend/src/services/cohortAnalysisApi.ts` | `getCohortRetention(timeframe, dimension, metric)` → `GET ${API_BASE_URL}/api/analytics/cohort-analysis?...` using `createHeadersAsync()` + `handleResponse<CohortAnalysisResponse>()` |
+| Create heatmap component | `frontend/src/components/charts/RetentionHeatmap.tsx` | HTML table: rows = cohorts, columns = periods. Cell `background-color` intensity scales with retention_rate (green gradient). Tooltip on hover showing exact values. |
+| Create page | `frontend/src/pages/CohortAnalysis.tsx` | **Header**: TimeframeSelector (3m/6m/12m) + dimension toggle (month/quarter) + metric toggle (retention/revenue/orders). **KPI row**: avg retention at month 1, best cohort, worst cohort. **Main**: RetentionHeatmap. **Loading**: SkeletonPage. **Empty**: "Connect data sources to see cohort analysis." |
+| Add route | `frontend/src/App.tsx` | Lazy import. `<Route path="/cohort-analysis" element={<FeatureGateRoute feature="cohort_analysis" ...><CohortAnalysis /></FeatureGateRoute>} />` |
+| Sidebar nav item | `frontend/src/components/layout/Sidebar.tsx` | Already added in S0.2 — verify icon + path `/cohort-analysis` |
+
+### S-A Integration Contract
+
+```
+Frontend calls:  GET /api/analytics/cohort-analysis?timeframe=12m&dimension=month&metric=retention
+                 Authorization: Bearer <clerk_jwt>
+
+Middleware:      TenantContextMiddleware extracts tenant_id from JWT
+                 Sets request.state.tenant_id
+
+Route:           get_tenant_context(request) validates auth
+                 Checks COHORT_ANALYSIS entitlement → 403 if free tier
+                 Queries: SELECT * FROM analytics.fct_cohort_retention
+                          WHERE tenant_id = :tenant_id
+                          AND cohort_month >= :start_date
+                 Returns: CohortAnalysisResponse (JSON, snake_case)
+
+Frontend:        handleResponse<CohortAnalysisResponse> parses JSON
+                 Renders RetentionHeatmap + KPI cards
+```
+
+---
+
+## S-B: Budget Pacing (Full-Stack Vertical)
+
+**Effort**: ~3 days | **Owner**: 1 developer | **Depends on**: S0
+**Zero overlap** with S-A, S-C, S-D — unique files at every layer.
+
+### S-B.1 Data Layer — DB Model + dbt
+
+| Task | File | Details |
+|------|------|---------|
+| Create SQLAlchemy model | `backend/src/models/ad_budget.py` | `AdBudget`: `id` (UUID, PK), `tenant_id` (FK), `source_platform` (String — 'meta_ads', 'google_ads', 'tiktok_ads'), `budget_monthly_cents` (BigInteger), `start_date`, `end_date` (Date), `enabled` (Boolean, default True), `created_at`, `updated_at`. Add `__table_args__` with `Index('ix_ad_budget_tenant_platform', 'tenant_id', 'source_platform')`. |
+| Create Alembic migration | `backend/migrations/versions/xxx_create_ad_budgets.py` | `create_table('ad_budgets', ...)` + RLS policy: `CREATE POLICY ad_budgets_tenant_isolation ON ad_budgets USING (tenant_id = current_setting('app.current_tenant_id'))` |
+| Create dbt pacing model | `analytics/models/budget/fct_budget_pacing.sql` | Source: `canonical.marketing_spend`. Calculates per platform per day: `daily_spend`, `cumulative_spend_mtd`, `days_elapsed`, `days_in_month`, `pct_time_elapsed`, `pct_budget_spent` (requires budget from API param or join), `projected_total_spend` = `cumulative_spend / pct_time_elapsed`. Materialized as `table`. |
+| Add schema config | `analytics/dbt_project.yml` | `budget: { +schema: analytics, +materialized: table }` |
+
+### S-B.2 API Layer — Backend Route + Service
+
+| Task | File | Details |
+|------|------|---------|
+| Create Pydantic schemas | `backend/src/api/schemas/budget_pacing.py` | `AdBudgetCreate(source_platform: str, budget_monthly_cents: int, start_date: date, end_date: date | None)`, `AdBudgetResponse(id, source_platform, budget_monthly_cents, ...)`, `PacingData(platform: str, budget_cents: int, spent_cents: int, pct_spent: float, pct_time: float, pace_ratio: float, projected_total_cents: int, status: str)`, `BudgetPacingResponse(platforms: list[PacingData])` |
+| Create service | `backend/src/services/budget_pacing_service.py` | `create_budget()`, `update_budget()`, `delete_budget()`, `list_budgets(tenant_id)`. `get_pacing(tenant_id)` — queries `canonical.marketing_spend` for MTD spend per platform, joins with `ad_budgets` table for budget targets, calculates pace ratio. |
+| Create route | `backend/src/api/routes/budget_pacing.py` | `router = APIRouter(prefix="/api", tags=["budget_pacing"])`. Routes: `GET /budgets`, `POST /budgets`, `PUT /budgets/{id}`, `DELETE /budgets/{id}`, `GET /budget-pacing`. All use `get_tenant_context(request)`. Entitlement: `BUDGET_PACING`. |
+| Register route | `backend/main.py` | `from src.api.routes import budget_pacing` + `app.include_router(budget_pacing.router)` |
+
+**Route verification**:
+```bash
+cd backend && PYTHONPATH=. python -c "from src.api.routes import budget_pacing; print('OK')"
+```
+
+### S-B.3 Frontend — Page + API Service
+
+| Task | File | Details |
+|------|------|---------|
+| Create API service | `frontend/src/services/budgetPacingApi.ts` | `listBudgets()`, `createBudget(data)`, `updateBudget(id, data)`, `deleteBudget(id)`, `getPacing()` — all use `createHeadersAsync()`, all URLs prefixed with `/api/`. |
+| Create progress bar | `frontend/src/components/budget/PacingProgressBar.tsx` | Props: `pctSpent`, `pctTime`, `platform`. Color: green if pace_ratio < 1.1, yellow if 1.1-1.3, red if > 1.3. Shows `$X,XXX of $Y,YYY` label. |
+| Create forecast chart | `frontend/src/components/budget/BudgetForecastChart.tsx` | Recharts `<AreaChart>`: X = day of month, Y = cumulative spend. Two lines: actual (solid) and projected (dashed). Horizontal line at budget cap. |
+| Create budget modal | `frontend/src/components/budget/BudgetEditModal.tsx` | Form: platform select, monthly budget input ($), start/end dates. Uses shadcn `Dialog`. |
+| Create page | `frontend/src/pages/BudgetPacing.tsx` | **Header**: Month selector. **Cards**: One `PacingProgressBar` per platform with edit/delete buttons. **Chart**: `BudgetForecastChart` for selected platform. **CTA**: "Set Budget" button opens `BudgetEditModal`. **Empty**: "Set your first budget to track ad spend pacing." |
+| Add route | `frontend/src/App.tsx` | Lazy import. `<Route path="/budget-pacing" element={<FeatureGateRoute feature="budget_pacing" ...><BudgetPacing /></FeatureGateRoute>} />` |
+
+### S-B Integration Contract
+
+```
+Frontend calls:  GET /api/budget-pacing      (read pacing data)
+                 GET /api/budgets            (list budgets)
+                 POST /api/budgets           (create budget)
+                 PUT /api/budgets/{id}       (update budget)
+                 DELETE /api/budgets/{id}    (delete budget)
+
+Middleware:      TenantContextMiddleware → tenant_id from JWT
+
+Route:           get_tenant_context(request) → auth + tenant
+                 Checks BUDGET_PACING entitlement → 403 if free tier
+                 Service queries: ad_budgets (ORM) + canonical.marketing_spend (raw SQL)
+                 All queries: WHERE tenant_id = :tenant_id
+```
+
+---
+
+## S-C: Alerts (Full-Stack Vertical)
+
+**Effort**: ~4 days | **Owner**: 1 developer | **Depends on**: S0
+**Zero overlap** with S-A, S-B, S-D — unique files at every layer.
+**Unique complexity**: Background job for rule evaluation + integration with existing NotificationService.
+
+### S-C.1 Data Layer — DB Models
+
+| Task | File | Details |
+|------|------|---------|
+| Create AlertRule model | `backend/src/models/alert_rule.py` | `AlertRule`: `id` (UUID), `tenant_id` (FK), `user_id` (FK), `name` (String), `description` (Text, nullable), `metric_name` (String — e.g. 'roas', 'cac', 'revenue', 'spend'), `comparison_operator` (Enum: gt/lt/eq/gte/lte — use `values_callable`), `threshold_value` (Float), `evaluation_period` (Enum: daily/weekly/monthly — use `values_callable`), `enabled` (Boolean, default True), `severity` (Enum: info/warning/critical — use `values_callable`), `created_at`, `updated_at`. |
+| Create AlertExecution model | `backend/src/models/alert_rule.py` | `AlertExecution`: `id` (UUID), `tenant_id` (FK), `alert_rule_id` (FK → AlertRule), `fired_at` (DateTime), `metric_value` (Float), `threshold_value` (Float), `resolved_at` (DateTime, nullable), `notification_id` (UUID, nullable — FK → Notification). |
+| Create Alembic migration | `backend/migrations/versions/xxx_create_alert_tables.py` | `create_table('alert_rules', ...)`, `create_table('alert_executions', ...)`. Create PostgreSQL enum types with lowercase values. RLS policies on both tables. |
+| Add notification event type | `backend/src/models/notification.py` | Add `ALERT_TRIGGERED = 'alert_triggered'` to `NotificationEventType` enum. **Critical**: Ensure the enum uses `values_callable`. |
+
+### S-C.2 API Layer — Backend Route + Service + Job
+
+| Task | File | Details |
+|------|------|---------|
+| Create Pydantic schemas | `backend/src/api/schemas/alerts.py` | `AlertRuleCreate(name, metric_name, comparison_operator, threshold_value, evaluation_period, severity)`, `AlertRuleResponse(id, name, ..., enabled, last_fired_at: datetime | None)`, `AlertExecutionResponse(id, alert_rule_id, rule_name, fired_at, metric_value, threshold_value, severity)` |
+| Create service | `backend/src/services/alert_rule_service.py` | **CRUD**: `create_rule()`, `update_rule()`, `delete_rule()`, `list_rules(tenant_id)`, `toggle_rule(id, enabled)`. **Evaluation**: `evaluate_rules(tenant_id)` — for each enabled rule, query the relevant dbt metric table (`marts.mart_marketing_metrics` for roas/cac/spend, `metrics.fct_revenue` for revenue), compare latest value against threshold using the rule's operator. **On trigger**: call `NotificationService.notify()` with `ALERT_TRIGGERED` event type, create `AlertExecution` record. **Limit check**: `check_rule_count(tenant_id)` — enforce `max_alert_rules` from entitlements. |
+| Create route | `backend/src/api/routes/alerts.py` | `router = APIRouter(prefix="/api/alerts", tags=["alerts"])`. Routes: `GET /rules` (list), `POST /rules` (create — check rule limit), `PUT /rules/{id}` (update), `DELETE /rules/{id}`, `PATCH /rules/{id}/toggle` (enable/disable), `GET /history` (paginated execution log), `GET /rules/{id}/history`. All: `get_tenant_context(request)` + `ALERTS` entitlement check. |
+| Register route | `backend/main.py` | `from src.api.routes import alerts` + `app.include_router(alerts.router)` |
+| Create background job | `backend/src/jobs/alert_evaluation_job.py` | Scheduled task (hourly). Iterates all tenants with enabled rules. Calls `AlertRuleService.evaluate_rules(tenant_id)` for each. Logs results. Error handling: per-tenant try/except so one tenant's failure doesn't block others. |
+
+**Route verification**:
+```bash
+cd backend && PYTHONPATH=. python -c "from src.api.routes import alerts; print('OK')"
+```
+
+### S-C.3 Frontend — Page + API Service
+
+| Task | File | Details |
+|------|------|---------|
+| Create API service | `frontend/src/services/alertsApi.ts` | `listAlertRules()`, `createAlertRule(data)`, `updateAlertRule(id, data)`, `deleteAlertRule(id)`, `toggleAlertRule(id, enabled)`, `getAlertHistory(params)`, `getRuleHistory(ruleId, params)`. All: `createHeadersAsync()`, `/api/alerts/...` URLs. |
+| Create rule card | `frontend/src/components/alerts/AlertRuleCard.tsx` | Displays: name, metric, operator + threshold, period, severity badge. Actions: edit, delete, enable/disable toggle. Severity colors: info=`--color-info`, warning=`--color-warning`, critical=`--color-danger` (from S0 tokens). |
+| Create history timeline | `frontend/src/components/alerts/AlertHistoryTimeline.tsx` | Vertical timeline: each entry shows severity badge + rule name + metric value vs threshold + timestamp. Paginated. |
+| Create rule modal | `frontend/src/components/alerts/CreateAlertRuleModal.tsx` | Form fields: name, metric (dropdown: ROAS, CAC, Revenue, Spend, Orders), operator (>, <, =, >=, <=), threshold (number input), period (daily/weekly/monthly), severity (info/warning/critical). Uses shadcn `Dialog` + `Select` + `Input`. |
+| Create page | `frontend/src/pages/Alerts.tsx` | **Tabs** (shadcn Tabs): "Rules" and "History". **Rules tab**: list of `AlertRuleCard` components + "Create Alert" button. Shows rule count vs limit badge (e.g., "3 / 3 rules"). **History tab**: `AlertHistoryTimeline`. **Loading**: SkeletonPage. **Empty rules**: "Create your first alert to get notified when metrics cross thresholds." |
+| Add route | `frontend/src/App.tsx` | Lazy import. `<Route path="/alerts" element={<FeatureGateRoute feature="alerts" ...><Alerts /></FeatureGateRoute>} />` |
+
+### S-C Integration Contract
+
+```
+Frontend calls:  GET    /api/alerts/rules            (list rules)
+                 POST   /api/alerts/rules            (create rule)
+                 PUT    /api/alerts/rules/{id}        (update rule)
+                 DELETE /api/alerts/rules/{id}        (delete rule)
+                 PATCH  /api/alerts/rules/{id}/toggle (enable/disable)
+                 GET    /api/alerts/history           (execution log)
+
+Middleware:      TenantContextMiddleware → tenant_id + user_id from JWT
+
+Route:           get_tenant_context(request) → auth
+                 ALERTS entitlement check
+                 POST /rules: also checks max_alert_rules limit
+                 Service → SQLAlchemy ORM for alert_rules/alert_executions tables
+                 Evaluation job → raw SQL against marts.mart_marketing_metrics
+
+Notification:    AlertRuleService.evaluate_rules() → NotificationService.notify()
+                 Uses existing ALERT_TRIGGERED event type
+                 Respects user notification preferences (in-app / email)
+```
+
+---
+
+## S-D: UX Polish & Existing Page Improvements
+
+**Effort**: ~4 days | **Owner**: 1 developer | **Depends on**: S0
+**Zero overlap** with S-A, S-B, S-C — touches only existing files, no new routes.
+
+### S-D.1 Global Search (Frontend + Backend)
+
+| Task | File | Details |
+|------|------|---------|
+| Create search route | `backend/src/api/routes/search.py` | `GET /api/search?q=...` — queries dashboards (name ILIKE), insights (title ILIKE), sources (platform ILIKE). Returns `{ results: [{ type: 'dashboard'|'insight'|'source'|'page', title, path, icon }] }`. Tenant-isolated. Max 20 results. |
+| Register route | `backend/main.py` | `from src.api.routes import search` + `app.include_router(search.router)` |
+| Create search service | `frontend/src/services/searchApi.ts` | `searchAll(query: string)` → `GET /api/search?q=${query}` |
+| Create search component | `frontend/src/components/layout/GlobalSearch.tsx` | Uses shadcn `Command` (already installed as `ui/command.tsx`). Cmd+K / Ctrl+K triggers. Groups results by type. Static page results (nav items) searched client-side. API results debounced 300ms. |
+| Create hook | `frontend/src/hooks/useGlobalSearch.ts` | Manages search state, debounce, keyboard shortcut registration. |
+| Integrate in header | `frontend/src/components/layout/AppHeader.tsx` | Add search icon button that opens GlobalSearch. Show Cmd+K hint. |
+
+### S-D.2 KPI Sparklines
+
+| Task | File | Details |
+|------|------|---------|
+| Enhance KpiWidget | `frontend/src/components/charts/KpiWidget.tsx` | Add optional `sparklineData?: number[]` prop. When provided, render a tiny Recharts `<AreaChart>` (64x24px, no axes, no labels) below the metric value. Use `--color-primary` with 20% opacity fill. |
+| Pass trend data | `frontend/src/pages/Dashboard.tsx` | Extract 7-day trend arrays from existing KPI API response. Pass to KpiWidget. |
+
+### S-D.3 Enhanced Drill-Down Modal
+
+| Task | File | Details |
+|------|------|---------|
+| Add tabs to BreakdownModal | `frontend/src/components/dashboard/BreakdownModal.tsx` | Wrap existing content with shadcn `<Tabs>`. Three tabs: **Summary** (existing bar + pie charts), **Trend** (new LineChart showing metric over time), **Data** (new table view of raw data). |
+
+### S-D.4 Sortable Table Headers
+
+| Task | File | Details |
+|------|------|---------|
+| Create SortableTable util | `frontend/src/components/common/SortableTable.tsx` | Wrapper component. Props: `columns`, `data`, `defaultSort`. Renders `<th>` with sort arrow icons, click toggles asc/desc/none. Returns sorted data. |
+| Apply to existing pages | `Orders.tsx`, `Attribution.tsx`, `ChannelAnalytics.tsx` | Replace plain `<table>` headers with SortableTable. |
+
+### S-D.5 Cross-Page Date Range Sync
+
+| Task | File | Details |
+|------|------|---------|
+| Create DateRange context | `frontend/src/contexts/DateRangeContext.tsx` | `DateRangeProvider` stores `{ timeframe, setTimeframe }`. Default: `'30days'`. |
+| Create hook | `frontend/src/hooks/useDateRange.ts` | `useDateRange()` → `{ timeframe, setTimeframe }` |
+| Mount provider | `frontend/src/App.tsx` | Add `<DateRangeProvider>` inside `AppWithOrg()`, wrapping `<Routes>`. |
+| Refactor pages | `Dashboard.tsx`, `Attribution.tsx`, `Orders.tsx`, `ChannelAnalytics.tsx` | Replace local `useState('30days')` with `useDateRange()`. Changing timeframe on one page persists to others. |
+
+### S-D.6 Loading & Empty States
+
+| Task | File | Details |
+|------|------|---------|
+| Dashboard empty state | `frontend/src/pages/Dashboard.tsx` | When no data sources connected, show illustration + "Connect your first data source" CTA linking to `/sources`. |
+| Skeleton audit | All page files | Replace raw spinners with Polaris `<SkeletonPage>` + `<SkeletonBodyText>`. Priority: Dashboard, Attribution, Orders. |
+
+### S-D.7 Settings Tabs Alignment
+
+| Task | File | Details |
+|------|------|---------|
+| Add Notifications tab | `frontend/src/components/settings/NotificationSettingsTab.tsx` | Surface existing `useNotificationPreferences` hook as a settings tab UI. |
+| Add Billing tab | `frontend/src/components/settings/BillingSettingsTab.tsx` | Show current plan name + "Manage Plan" button linking to `/billing/checkout`. |
+| Reorder tabs | `frontend/src/pages/Settings.tsx` | Tab order: Profile (→ Clerk), Integrations (existing DataSources), Notifications (new), Billing (new), Sync (existing), Team (existing). |
+
+### S-D.8 AI Suggested Prompts
+
+| Task | File | Details |
+|------|------|---------|
+| Add prompt chips | `frontend/src/pages/InsightsFeed.tsx` | Below header, render clickable chip buttons: "What drove revenue this week?", "Which channel has best ROAS?", "Show retention trends", "Compare ad spend efficiency". Clicking triggers AI insight generation with that prompt. |
+
+---
+
+## S-E: Quality Gate (runs after S-A through S-D merge)
+
+**Effort**: ~2-3 days | **Owner**: 1 developer | **Depends on**: All streams merged
+
+### S-E.1 Visual QA
+
+| Task | Details |
+|------|---------|
+| Side-by-side Figma comparison | Open each page alongside Figma Make. Screenshot discrepancies. Log as issues with priority (P1 = layout broken, P2 = spacing/color, P3 = polish). |
+| Fix P1/P2 issues | Address layout and color discrepancies identified in comparison. |
+
+### S-E.2 Performance
+
+| Task | File | Details |
+|------|------|---------|
+| Add Lighthouse CI | `.github/workflows/ci.yml` | Add job: `npm run build && npx @lhci/cli autorun`. Budget: performance >= 90. |
+| Bundle analysis | `frontend/vite.config.ts` | Add `rollup-plugin-visualizer` to build. Set size budget: initial JS < 200KB gzip. |
+
+### S-E.3 Accessibility
+
+| Task | Details |
+|------|---------|
+| axe-core audit | Run `npx axe-cli` on all pages. Fix WCAG AA contrast violations. |
+| Keyboard nav | Verify tab order on: GlobalSearch modal, AlertRuleModal, BudgetEditModal, BreakdownModal tabs. |
+| ARIA labels | Add `aria-label` to icon-only buttons (search, notification bell, sidebar collapse). |
+
+### S-E.4 Integration Testing
+
+| Task | Details |
+|------|---------|
+| Route import smoke test | `PYTHONPATH=. python -c "from src.api.routes import cohort_analysis, budget_pacing, alerts, search"` |
+| Frontend build | `cd frontend && npm run build && npm run lint` |
+| Backend tests | `cd backend && make test` |
+| dbt compile | `cd analytics && dbt compile --profiles-dir . --project-dir .` |
+
+---
+
+## Merge Coordination
+
+Each stream works on its own branch, merging into the feature branch:
+
+| Stream | Branch | Touches `main.py`? | Touches `App.tsx`? | Touches `Sidebar.tsx`? |
+|--------|--------|--------------------|--------------------|------------------------|
+| S0 | `claude/figma-codebase-alignment-plan-baSL9` | No | Yes (404 route) | Yes (restructure) |
+| S-A | `s-a/cohort-analysis` | Yes (1 import + 1 include) | Yes (1 route) | No (done in S0) |
+| S-B | `s-b/budget-pacing` | Yes (1 import + 1 include) | Yes (1 route) | No (done in S0) |
+| S-C | `s-c/alerts` | Yes (1 import + 1 include) | Yes (1 route) | No (done in S0) |
+| S-D | `s-d/ux-polish` | Yes (1 import + 1 include for search) | Yes (DateRangeProvider + route) | No (done in S0) |
+
+**Merge conflict zones** (small, predictable):
+- `main.py` lines 21-67 (imports) and 224-298 (router registration) — each stream adds 2 lines; resolve by keeping all additions
+- `App.tsx` lazy imports section and `<Routes>` section — each stream adds 1 lazy import + 1 `<Route>`; resolve by keeping all additions
+
+**Merge order**: S0 first → then S-A, S-B, S-C, S-D in any order → S-E last.
+
+---
+
+## Summary
+
+| Stream | What | Effort | Owner | Files Created | Files Modified |
+|--------|------|--------|-------|---------------|----------------|
+| **S0** | Foundation | 2 days | Dev 1 | 3 (tokens.css, MarkinsightIcon, NotFound) | 5 (index.css, chartColors, Sidebar, App, billing_entitlements) |
+| **S-A** | Cohort Analysis | 3 days | Dev 2 | 5 (dbt model, schema, route, service, page + heatmap) | 3 (dbt_project.yml, main.py, App.tsx) |
+| **S-B** | Budget Pacing | 3 days | Dev 3 | 8 (model, migration, dbt, schemas, service, route, 3 components, page) | 3 (dbt_project.yml, main.py, App.tsx) |
+| **S-C** | Alerts | 4 days | Dev 4 | 9 (2 models, migration, schemas, service, route, job, 3 components, page) | 3 (notification.py enum, main.py, App.tsx) |
+| **S-D** | UX Polish | 4 days | Dev 1 (or 5) | 6 (search route+service+component, DateRange context, SortableTable, NotificationSettingsTab) | 10+ (existing pages) |
+| **S-E** | Quality Gate | 2-3 days | Any | 0 | 2-3 (CI config, vite config) |
+| **Total** | | **~8-9 days wall clock** (parallel) | 4-5 devs | ~31 new files | ~20 modified files |
+
+---
+
+## Out of Scope (Unchanged from v1)
+
+1. **Auth page** — Clerk handles auth
+2. **Vercel deployment** — Using Render
+3. **Mock data modules** — Real APIs exist
+4. **Storybook** — Not prioritized
+5. **RotatePhoneIndicator** — Low ROI
 6. **Form validation on auth** — Clerk handles this
 
 ---
 
-## Risk Mitigation
+## Risk Mitigation (Unchanged from v1)
 
-1. **dbt model verification** — All SQL queries MUST be verified against dbt model final SELECTs before merging (per CLAUDE.md policy)
-2. **Route module import verification** — Run `PYTHONPATH=. python -c "from src.api.routes import <module>"` after every route file change
-3. **Entitlement dual-path update** — Update both `BILLING_TIER_FEATURES` and `EntitlementPolicy` when adding features
-4. **Enum `values_callable`** — All new SQLAlchemy Enum columns MUST include `values_callable=lambda enum_cls: [e.value for e in enum_cls]`
-5. **Frontend `/api` prefix** — All new API service URLs must include `/api/` prefix
+1. **dbt model verification** — All SQL queries verified against dbt model final SELECTs
+2. **Route module import verification** — `PYTHONPATH=. python -c "from src.api.routes import <module>"`
+3. **Entitlement dual-path update** — Both `BILLING_TIER_FEATURES` and `EntitlementPolicy`
+4. **Enum `values_callable`** — All new SQLAlchemy Enum columns
+5. **Frontend `/api` prefix** — All new API service URLs
+6. **Merge conflict prevention** — S0 handles shared files (Sidebar, billing_entitlements) before parallel streams start
