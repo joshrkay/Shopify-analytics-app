@@ -14,9 +14,10 @@
  * - Shared dashboard view (/dashboards/:id) is NOT gated — viewable on any plan
  */
 
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
-import { AppProvider, SkeletonPage, Page, Banner } from '@shopify/polaris';
+import { AppProvider, SkeletonPage, SkeletonBodyText, Page, Banner } from '@shopify/polaris';
 import enTranslations from '@shopify/polaris/locales/en.json';
 import '@shopify/polaris/build/esm/styles.css';
 
@@ -30,28 +31,38 @@ import { useClerkToken } from './hooks/useClerkToken';
 import { useEntitlements } from './hooks/useEntitlements';
 import { isFeatureEntitled } from './services/entitlementsApi';
 import type { EntitlementsResponse } from './services/entitlementsApi';
-import AdminPlans from './pages/AdminPlans';
-import RootCausePanel from './pages/admin/RootCausePanel';
-import Analytics from './pages/Analytics';
-import Paywall from './pages/Paywall';
-import InsightsFeed from './pages/InsightsFeed';
-import ApprovalsInbox from './pages/ApprovalsInbox';
-import WhatsNew from './pages/WhatsNew';
-import { DashboardList } from './pages/DashboardList';
-import { DashboardView } from './pages/DashboardView';
-import { DashboardBuilder } from './pages/DashboardBuilder';
-import { WizardFlow } from './components/dashboards/wizard/WizardFlow';
 import { DashboardBuilderProvider } from './contexts/DashboardBuilderContext';
-import DataSources from './pages/DataSources';
-import OAuthCallback from './pages/OAuthCallback';
-import Settings from './pages/Settings';
-import { DashboardHome } from './pages/DashboardHome';
+
+// Default route — loaded eagerly (users always land here)
 import { Dashboard } from './pages/Dashboard';
-import BillingCheckout from './pages/BillingCheckout';
-import { Attribution } from './pages/Attribution';
-import { Orders } from './pages/Orders';
-import { Onboarding } from './pages/Onboarding';
-import { ChannelAnalytics } from './pages/ChannelAnalytics';
+
+// Lazy-loaded pages — split into separate chunks
+const AdminPlans = lazy(() => import('./pages/AdminPlans'));
+const RootCausePanel = lazy(() => import('./pages/admin/RootCausePanel'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Paywall = lazy(() => import('./pages/Paywall'));
+const InsightsFeed = lazy(() => import('./pages/InsightsFeed'));
+const ApprovalsInbox = lazy(() => import('./pages/ApprovalsInbox'));
+const WhatsNew = lazy(() => import('./pages/WhatsNew'));
+const DashboardList = lazy(() => import('./pages/DashboardList').then(m => ({ default: m.DashboardList })));
+const DashboardView = lazy(() => import('./pages/DashboardView').then(m => ({ default: m.DashboardView })));
+const DashboardBuilder = lazy(() => import('./pages/DashboardBuilder').then(m => ({ default: m.DashboardBuilder })));
+const WizardFlow = lazy(() => import('./components/dashboards/wizard/WizardFlow').then(m => ({ default: m.WizardFlow })));
+const DataSources = lazy(() => import('./pages/DataSources'));
+const OAuthCallback = lazy(() => import('./pages/OAuthCallback'));
+const Settings = lazy(() => import('./pages/Settings'));
+const DashboardHome = lazy(() => import('./pages/DashboardHome').then(m => ({ default: m.DashboardHome })));
+const BillingCheckout = lazy(() => import('./pages/BillingCheckout'));
+const Attribution = lazy(() => import('./pages/Attribution').then(m => ({ default: m.Attribution })));
+const Orders = lazy(() => import('./pages/Orders').then(m => ({ default: m.Orders })));
+const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
+const ChannelAnalytics = lazy(() => import('./pages/ChannelAnalytics').then(m => ({ default: m.ChannelAnalytics })));
+
+const PageLoader = () => (
+  <SkeletonPage primaryAction={false}>
+    <SkeletonBodyText lines={6} />
+  </SkeletonPage>
+);
 
 // =============================================================================
 // FeatureGateRoute — redirects to paywall if feature not entitled
@@ -149,6 +160,7 @@ function AppWithOrg() {
   return (
     <AgencyProvider>
       <DataHealthProvider>
+        <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Onboarding wizard — full-screen, no sidebar */}
           <Route path="/onboarding" element={<Onboarding />} />
@@ -212,6 +224,7 @@ function AppWithOrg() {
             <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
           </Route>
         </Routes>
+        </Suspense>
       </DataHealthProvider>
     </AgencyProvider>
   );

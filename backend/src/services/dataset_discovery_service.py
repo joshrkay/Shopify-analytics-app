@@ -142,8 +142,10 @@ class DatasetDiscoveryService:
         timeout_seconds: int = 10,
     ):
         self._superset_url = (superset_url or os.getenv("SUPERSET_EMBED_URL", "")).rstrip("/")
-        self._username = superset_username or os.getenv("SUPERSET_USERNAME", "admin")
-        self._password = superset_password or os.getenv("SUPERSET_PASSWORD", "admin")
+        self._username = superset_username or os.getenv("SUPERSET_USERNAME")
+        self._password = superset_password or os.getenv("SUPERSET_PASSWORD")
+        if not self._username or not self._password:
+            raise ValueError("SUPERSET_USERNAME and SUPERSET_PASSWORD must be set")
         self._timeout = timeout_seconds
         self._token: Optional[str] = None
         self._csrf: Optional[str] = None

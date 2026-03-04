@@ -49,14 +49,70 @@ google_ads_accounts as (
     group by 1, 2, 3, 4
 ),
 
--- Union all ad platform accounts
--- Additional platforms will be added here as their staging models are created:
--- tiktok_ads_accounts, pinterest_ads_accounts, snap_ads_accounts, amazon_ads_accounts
+tiktok_ads_accounts as (
+    select distinct
+        tenant_id,
+        'tiktok_ads' as source,
+        ad_account_id as platform_account_id,
+        currency,
+        min(airbyte_emitted_at) as first_seen_at,
+        max(airbyte_emitted_at) as last_seen_at
+    from {{ ref('stg_tiktok_ads_performance') }}
+    where ad_account_id is not null
+    group by 1, 2, 3, 4
+),
+
+snap_ads_accounts as (
+    select distinct
+        tenant_id,
+        'snap_ads' as source,
+        ad_account_id as platform_account_id,
+        currency,
+        min(airbyte_emitted_at) as first_seen_at,
+        max(airbyte_emitted_at) as last_seen_at
+    from {{ ref('stg_snapchat_ads') }}
+    where ad_account_id is not null
+    group by 1, 2, 3, 4
+),
+
+pinterest_ads_accounts as (
+    select distinct
+        tenant_id,
+        'pinterest_ads' as source,
+        ad_account_id as platform_account_id,
+        currency,
+        min(airbyte_emitted_at) as first_seen_at,
+        max(airbyte_emitted_at) as last_seen_at
+    from {{ ref('stg_pinterest_ads') }}
+    where ad_account_id is not null
+    group by 1, 2, 3, 4
+),
+
+twitter_ads_accounts as (
+    select distinct
+        tenant_id,
+        'twitter_ads' as source,
+        ad_account_id as platform_account_id,
+        currency,
+        min(airbyte_emitted_at) as first_seen_at,
+        max(airbyte_emitted_at) as last_seen_at
+    from {{ ref('stg_twitter_ads') }}
+    where ad_account_id is not null
+    group by 1, 2, 3, 4
+),
 
 all_accounts as (
     select * from meta_ads_accounts
     union all
     select * from google_ads_accounts
+    union all
+    select * from tiktok_ads_accounts
+    union all
+    select * from snap_ads_accounts
+    union all
+    select * from pinterest_ads_accounts
+    union all
+    select * from twitter_ads_accounts
 ),
 
 accounts_with_internal_id as (

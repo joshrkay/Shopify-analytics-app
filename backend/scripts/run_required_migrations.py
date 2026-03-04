@@ -44,6 +44,10 @@ MIGRATIONS = [
     "historical_backfill_requests.sql",
     "root_cause_signals.sql",
     "oauth_shop_domain_unique_constraint.sql",
+    "add_dashboard_metric_bindings.sql",
+    "add_report_templates.sql",
+    "performance_indexes.sql",
+    "raw_schema.sql",
 ]
 
 

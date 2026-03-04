@@ -104,8 +104,11 @@ def _get_redis_client():
         client = RedisClient()
         if client.available:
             return client
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Redis unavailable for OAuth state — falling back to in-memory storage",
+            extra={"error": str(exc)},
+        )
     return None
 
 

@@ -20,6 +20,7 @@ from src.services.billing_service import (
 )
 from src.entitlements.policy import EntitlementPolicy, BillingState
 from src.models.subscription import Subscription
+from src.models.billing_event import BillingEvent
 from src.services.billing_entitlements import BILLING_TIER_FEATURES, BillingFeature
 
 logger = logging.getLogger(__name__)
@@ -434,3 +435,268 @@ async def get_entitlements(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get entitlements"
         )
+
+
+# =============================================================================
+# Invoice, Payment Method, Usage, Plan Change, Cancel (frontend contract)
+# =============================================================================
+
+
+class InvoiceResponse(BaseModel):
+    """Invoice/billing event record."""
+    id: str
+    date: str
+    amount: str
+    status: str
+    download_url: Optional[str] = None
+
+
+class PaymentMethodResponse(BaseModel):
+    """Payment method information."""
+    id: str
+    type: str
+    last4: str
+    brand: Optional[str] = None
+    expiry_month: int
+    expiry_year: int
+
+
+class UsageMetricsResponse(BaseModel):
+    """Current resource usage for the tenant."""
+    data_sources_used: int
+    team_members_used: int
+    dashboards_used: int
+    storage_used_gb: float
+    storage_limit_gb: float
+    ai_requests_used: int
+    ai_requests_limit: int
+
+
+class ChangePlanRequest(BaseModel):
+    """Request to change subscription plan."""
+    plan_id: str = Field(..., alias="planId")
+    interval: str = Field("month")
+
+    class Config:
+        populate_by_name = True
+
+
+@router.get("/invoices", response_model=list[InvoiceResponse])
+async def get_invoices(
+    request: Request,
+    db_session=Depends(get_db_session),
+):
+    """
+    Get billing event history as invoices.
+
+    Returns charge and subscription events for the tenant, sorted by date descending.
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    events = (
+        db_session.query(BillingEvent)
+        .filter(
+            BillingEvent.tenant_id == tenant_ctx.tenant_id,
+            BillingEvent.event_type.in_([
+                "charge_succeeded",
+                "subscription_created",
+                "subscription_renewed",
+                "plan_changed",
+            ]),
+        )
+        .order_by(BillingEvent.created_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    return [
+        InvoiceResponse(
+            id=e.id,
+            date=e.created_at.isoformat() if e.created_at else "",
+            amount=f"${e.amount_cents / 100:.2f}" if e.amount_cents else "$0.00",
+            status="paid" if e.event_type in ("charge_succeeded", "subscription_renewed") else "pending",
+            download_url=None,
+        )
+        for e in events
+    ]
+
+
+@router.get("/payment-method", response_model=PaymentMethodResponse)
+async def get_payment_method(request: Request):
+    """
+    Get payment method information.
+
+    Shopify manages payment collection directly — merchants pay through
+    their Shopify account. This endpoint returns a placeholder indicating
+    payment is managed by Shopify.
+    """
+    get_tenant_context(request)  # validate auth
+
+    return PaymentMethodResponse(
+        id="shopify_managed",
+        type="card",
+        last4="****",
+        brand="Managed by Shopify",
+        expiry_month=0,
+        expiry_year=0,
+    )
+
+
+@router.get("/usage", response_model=UsageMetricsResponse)
+async def get_usage_metrics(
+    request: Request,
+    db_session=Depends(get_db_session),
+):
+    """
+    Get current resource usage for the tenant.
+
+    Queries actual counts from the database and derives limits from the
+    tenant's billing tier.
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    from src.models.connector_credential import ConnectorCredential
+    from src.models.user_tenant_roles import UserTenantRole
+    from src.models.custom_dashboard import CustomDashboard
+
+    data_sources = db_session.query(ConnectorCredential).filter(
+        ConnectorCredential.tenant_id == tenant_ctx.tenant_id,
+    ).count()
+
+    team_members = db_session.query(UserTenantRole).filter(
+        UserTenantRole.tenant_id == tenant_ctx.tenant_id,
+    ).count()
+
+    dashboards = db_session.query(CustomDashboard).filter(
+        CustomDashboard.tenant_id == tenant_ctx.tenant_id,
+    ).count()
+
+    # Derive limits from billing tier
+    tier = tenant_ctx.billing_tier or "free"
+    tier_limits = {
+        "free": {"storage_gb": 1.0, "ai_limit": 50},
+        "growth": {"storage_gb": 10.0, "ai_limit": 500},
+        "pro": {"storage_gb": 50.0, "ai_limit": 5000},
+        "enterprise": {"storage_gb": 500.0, "ai_limit": 50000},
+    }
+    limits = tier_limits.get(tier, tier_limits["free"])
+
+    return UsageMetricsResponse(
+        data_sources_used=data_sources,
+        team_members_used=team_members,
+        dashboards_used=dashboards,
+        storage_used_gb=0.0,  # Storage tracking not yet implemented
+        storage_limit_gb=limits["storage_gb"],
+        ai_requests_used=0,  # AI usage tracking not yet implemented
+        ai_requests_limit=limits["ai_limit"],
+    )
+
+
+@router.put("/subscription")
+async def change_plan(
+    request: Request,
+    body: ChangePlanRequest,
+    billing_service: BillingService = Depends(get_billing_service),
+):
+    """
+    Change subscription plan (upgrade or downgrade).
+
+    Determines direction based on plan tier comparison and delegates to
+    the appropriate billing service method.
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    logger.info("Plan change requested", extra={
+        "tenant_id": tenant_ctx.tenant_id,
+        "new_plan_id": body.plan_id,
+    })
+
+    try:
+        if billing_service.can_upgrade_to(body.plan_id):
+            await billing_service.upgrade_subscription(
+                new_plan_id=body.plan_id,
+            )
+        elif billing_service.can_downgrade_to(body.plan_id):
+            await billing_service.downgrade_subscription(
+                new_plan_id=body.plan_id,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot change to the requested plan",
+            )
+
+        info = billing_service.get_subscription_info()
+        return SubscriptionResponse(
+            subscription_id=info.subscription_id,
+            plan_id=info.plan_id,
+            plan_name=info.plan_name,
+            status=info.status,
+            is_active=info.is_active,
+            current_period_end=info.current_period_end.isoformat() if info.current_period_end else None,
+            trial_end=info.trial_end.isoformat() if info.trial_end else None,
+            can_access_features=info.can_access_features,
+        )
+
+    except PlanNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except SubscriptionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except BillingServiceError as e:
+        logger.error("Plan change failed", extra={
+            "tenant_id": tenant_ctx.tenant_id, "error": str(e)
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to change plan",
+        )
+
+
+@router.delete("/subscription")
+async def delete_subscription(
+    request: Request,
+    billing_service: BillingService = Depends(get_billing_service),
+):
+    """
+    Cancel subscription (DELETE method).
+
+    Shopify app subscriptions are cancelled through Shopify admin.
+    This endpoint acknowledges the request and directs the merchant.
+    """
+    tenant_ctx = get_tenant_context(request)
+
+    logger.info("Subscription cancellation requested (DELETE)", extra={
+        "tenant_id": tenant_ctx.tenant_id,
+    })
+
+    info = billing_service.get_subscription_info()
+
+    if not info.subscription_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active subscription found",
+        )
+
+    return {
+        "success": True,
+        "message": "To cancel your subscription, please visit your Shopify admin and manage app subscriptions.",
+        "subscription_id": info.subscription_id,
+        "current_plan": info.plan_name,
+    }
+
+
+@router.put("/payment-method")
+async def update_payment_method(request: Request):
+    """
+    Update payment method.
+
+    Shopify manages payment methods directly — merchants cannot update
+    payment methods through the app. Returns 400 with guidance.
+    """
+    get_tenant_context(request)  # validate auth
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Payment methods are managed through your Shopify admin. "
+               "Visit Settings > Payments in your Shopify admin to update.",
+    )
