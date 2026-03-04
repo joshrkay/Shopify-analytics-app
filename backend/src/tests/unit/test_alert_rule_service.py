@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, Mock, patch, PropertyMock
 import pytest
 
 from src.services.alert_rule_service import AlertRuleService
-from src.models.alert_rule import AlertRule, AlertExecution
+from src.models.alert_rule import AlertRule, AlertExecution, EvaluationPeriod
 
 
 @pytest.fixture
@@ -234,6 +234,45 @@ class TestGetMetricValue:
     def test_returns_none_for_unknown_metric(self, service, mock_db):
         assert service._get_metric_value("unknown_metric") is None
 
+    def test_weekly_period_passes_weekly_type(self, service, mock_db):
+        mock_row = Mock()
+        mock_row.gross_roas = 4.2
+        mock_result = MagicMock()
+        mock_result.fetchone.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        result = service._get_metric_value("roas", "weekly")
+        assert result == 4.2
+        # Verify the SQL was called with period_type = "weekly"
+        call_args = mock_db.execute.call_args
+        assert call_args[0][1]["period_type"] == "weekly"
+
+    def test_monthly_period_passes_monthly_type(self, service, mock_db):
+        mock_row = Mock()
+        mock_row.spend = 5000.0
+        mock_result = MagicMock()
+        mock_result.fetchone.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        result = service._get_metric_value("spend", "monthly")
+        assert result == 5000.0
+        call_args = mock_db.execute.call_args
+        assert call_args[0][1]["period_type"] == "monthly"
+
+    def test_revenue_uses_interval_for_period(self, service, mock_db):
+        mock_row = Mock()
+        mock_row.total_revenue = 10000.0
+        mock_result = MagicMock()
+        mock_result.fetchone.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        result = service._get_metric_value("revenue", "weekly")
+        assert result == 10000.0
+        # Revenue query uses interval in the SQL text, verify "7 days" appears
+        call_args = mock_db.execute.call_args
+        sql_text = str(call_args[0][0])
+        assert "7 days" in sql_text
+
 
 class TestEvaluateRules:
     def test_triggered_rule_creates_execution(self, service, mock_db):
@@ -332,3 +371,56 @@ class TestEvaluateRules:
         assert stats["evaluated"] == 2
         assert stats["errors"] == 0  # error handled inside _get_metric_value
         assert stats["triggered"] == 1
+
+    def test_passes_evaluation_period_to_metric_query(self, service, mock_db):
+        """evaluate_rules extracts rule.evaluation_period and passes it to _get_metric_value."""
+        rule = AlertRule(
+            id="rule-1", tenant_id="tenant-test-456", name="Monthly Spend",
+            metric_name="spend", comparison_operator="gt",
+            threshold_value=1000.0, evaluation_period="monthly",
+            severity="warning", enabled=True,
+        )
+
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [rule]
+        mock_db.query.return_value = mock_query
+
+        mock_row = Mock()
+        mock_row.spend = 2000.0
+        mock_result = MagicMock()
+        mock_result.fetchone.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        stats = service.evaluate_rules()
+
+        assert stats["triggered"] == 1
+        # Verify the SQL query used period_type = "monthly" (not hardcoded "daily")
+        call_args = mock_db.execute.call_args
+        assert call_args[0][1]["period_type"] == "monthly"
+
+    def test_handles_enum_evaluation_period(self, service, mock_db):
+        """evaluate_rules handles EvaluationPeriod enum objects (not just strings)."""
+        rule = AlertRule(
+            id="rule-1", tenant_id="tenant-test-456", name="Weekly ROAS",
+            metric_name="roas", comparison_operator="lt",
+            threshold_value=2.0, evaluation_period=EvaluationPeriod.WEEKLY,
+            severity="warning", enabled=True,
+        )
+
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [rule]
+        mock_db.query.return_value = mock_query
+
+        mock_row = Mock()
+        mock_row.gross_roas = 1.0
+        mock_result = MagicMock()
+        mock_result.fetchone.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        stats = service.evaluate_rules()
+
+        assert stats["triggered"] == 1
+        call_args = mock_db.execute.call_args
+        assert call_args[0][1]["period_type"] == "weekly"

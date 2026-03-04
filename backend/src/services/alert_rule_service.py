@@ -119,6 +119,21 @@ class AlertRuleService:
             return value <= threshold
         return False
 
+    # Map evaluation_period enum values to mart period_type and SQL intervals.
+    # The marts.mart_marketing_metrics table uses dim_date_ranges which provides
+    # period_type values: 'daily', 'weekly', 'monthly', 'last_7_days', etc.
+    # Revenue queries use raw SQL intervals against analytics.orders.
+    _PERIOD_TO_MART_TYPE = {
+        "daily": "daily",
+        "weekly": "weekly",
+        "monthly": "monthly",
+    }
+    _PERIOD_TO_INTERVAL = {
+        "daily": "1 day",
+        "weekly": "7 days",
+        "monthly": "30 days",
+    }
+
     def evaluate_rules(self) -> dict:
         """Evaluate all enabled rules and create executions for triggered ones."""
         rules = (
@@ -132,7 +147,10 @@ class AlertRuleService:
         for rule in rules:
             stats["evaluated"] += 1
             try:
-                value = self._get_metric_value(rule.metric_name)
+                period = rule.evaluation_period
+                if isinstance(period, EvaluationPeriod):
+                    period = period.value
+                value = self._get_metric_value(rule.metric_name, period)
                 if value is None:
                     continue
 
@@ -155,23 +173,30 @@ class AlertRuleService:
         self.db.commit()
         return stats
 
-    def _get_metric_value(self, metric_name: str) -> Optional[float]:
-        """Query the latest value for a named metric.
+    def _get_metric_value(self, metric_name: str, evaluation_period: str = "daily") -> Optional[float]:
+        """Query the latest value for a named metric over the rule's evaluation period.
+
+        Args:
+            metric_name: Which metric to fetch (roas, spend, revenue).
+            evaluation_period: The rule's configured period (daily, weekly, monthly).
 
         Verified against dbt models:
-          - marts.mart_marketing_metrics: gross_roas, spend columns
-          - analytics.marketing_spend: spend column (per-row, not aggregated)
+          - marts.mart_marketing_metrics: gross_roas, spend columns (uses period_type)
+          - analytics.orders: revenue_gross column (uses interval)
         """
+        mart_period = self._PERIOD_TO_MART_TYPE.get(evaluation_period, "daily")
+        interval = self._PERIOD_TO_INTERVAL.get(evaluation_period, "1 day")
+
         try:
             if metric_name == "roas":
                 row = self.db.execute(text("""
                     SELECT gross_roas
                     FROM marts.mart_marketing_metrics
                     WHERE tenant_id = :tenant_id
-                      AND period_type = 'last_7_days'
+                      AND period_type = :period_type
                     ORDER BY period_end DESC
                     LIMIT 1
-                """), {"tenant_id": self.tenant_id}).fetchone()
+                """), {"tenant_id": self.tenant_id, "period_type": mart_period}).fetchone()
                 return float(row.gross_roas) if row and row.gross_roas else None
 
             elif metric_name == "spend":
@@ -179,22 +204,22 @@ class AlertRuleService:
                     SELECT spend
                     FROM marts.mart_marketing_metrics
                     WHERE tenant_id = :tenant_id
-                      AND period_type = 'last_7_days'
+                      AND period_type = :period_type
                     ORDER BY period_end DESC
                     LIMIT 1
-                """), {"tenant_id": self.tenant_id}).fetchone()
+                """), {"tenant_id": self.tenant_id, "period_type": mart_period}).fetchone()
                 return float(row.spend) if row and row.spend else None
 
             elif metric_name == "revenue":
-                row = self.db.execute(text("""
+                row = self.db.execute(text(f"""
                     SELECT SUM(revenue_gross) as total_revenue
                     FROM analytics.orders
                     WHERE tenant_id = :tenant_id
-                      AND order_created_at >= current_date - interval '7 days'
+                      AND order_created_at >= current_date - interval '{interval}'
                 """), {"tenant_id": self.tenant_id}).fetchone()
                 return float(row.total_revenue) if row and row.total_revenue else None
 
         except Exception as exc:
-            logger.warning("Failed to get metric '%s': %s", metric_name, exc)
+            logger.warning("Failed to get metric '%s' (period=%s): %s", metric_name, evaluation_period, exc)
 
         return None
