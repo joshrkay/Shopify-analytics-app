@@ -237,9 +237,6 @@ export default function RootCausePanel() {
         limit: 20,
       });
       setSignals(result.signals);
-      if (result.signals.length > 0 && !selectedSignal) {
-        setSelectedSignal(result.signals[0]);
-      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to load diagnostics'
@@ -253,6 +250,13 @@ export default function RootCausePanel() {
     setSelectedSignal(null);
     loadSignals();
   }, [loadSignals]);
+
+  // Auto-select first signal after a fresh load
+  useEffect(() => {
+    if (signals.length > 0 && !selectedSignal) {
+      setSelectedSignal(signals[0]);
+    }
+  }, [signals, selectedSignal]);
 
   const handleAnalyze = async () => {
     setAnalyzing(true);

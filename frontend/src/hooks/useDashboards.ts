@@ -59,7 +59,7 @@ export function useDashboards(filters: DashboardFilters = {}): UseDashboardsResu
     } finally {
       setLoading(false);
     }
-  }, [filters.status, filters.limit, filters.offset]);
+  }, [filters]);
 
   useEffect(() => {
     loadDashboards();

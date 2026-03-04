@@ -111,7 +111,7 @@ export function DashboardView() {
     : false;
 
   // Build grid layout
-  const reports = dashboard?.reports ?? [];
+  const reports = useMemo(() => dashboard?.reports ?? [], [dashboard?.reports]);
   const layout = useMemo(
     () =>
       reports.map((report: Report) => {

@@ -49,15 +49,15 @@ export function ConnectSourceWizard({
 }: ConnectSourceWizardProps) {
   const navigate = useNavigate();
   const wizard = useConnectSourceWizard();
-  const { state } = wizard;
+  const { state, initWithPlatform } = wizard;
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   // Initialize wizard when modal opens with a platform
   useEffect(() => {
     if (open && platform) {
-      wizard.initWithPlatform(platform);
+      initWithPlatform(platform);
     }
-  }, [open, platform, wizard.initWithPlatform]);
+  }, [open, platform, initWithPlatform]);
 
   // Reset confirmation state when modal closes
   useEffect(() => {

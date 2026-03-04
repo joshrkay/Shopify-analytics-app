@@ -33,7 +33,7 @@ export function DashboardGrid() {
     openReportConfig,
   } = useDashboardBuilder();
 
-  const reports = dashboard?.reports ?? [];
+  const reports = useMemo(() => dashboard?.reports ?? [], [dashboard?.reports]);
   const canEdit = dashboard
     ? ['owner', 'admin', 'edit'].includes(dashboard.access_level)
     : false;

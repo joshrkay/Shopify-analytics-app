@@ -43,7 +43,7 @@ const DEFAULT_HEIGHT = '600px';
  */
 export const ExternalAnalyticsShell: React.FC<ExternalAnalyticsShellProps> = ({
   dashboardId,
-  tenantId,
+  tenantId: _tenantId,
   height = DEFAULT_HEIGHT,
   className = '',
   onLoad,
@@ -149,7 +149,7 @@ export const ExternalAnalyticsShell: React.FC<ExternalAnalyticsShellProps> = ({
         refreshManagerRef.current.stop();
       }
     };
-  }, [dashboardId, tenantId]); // Re-fetch when dashboard or tenant changes
+  }, [fetchToken]); // fetchToken already encodes dashboardId; re-fetch when token fn changes
 
   const iframeHeight = typeof height === 'number' ? `${height}px` : height;
 

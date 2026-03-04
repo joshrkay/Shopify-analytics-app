@@ -96,7 +96,7 @@ export function CreateDashboardModal({
     } finally {
       setIsCreating(false);
     }
-  }, [name, description, validateName, resetForm, onClose, navigate]);
+  }, [name, description, validateName, resetForm, onClose, onSuccess, navigate]);
 
   const handleBrowseTemplates = useCallback(() => {
     resetForm();

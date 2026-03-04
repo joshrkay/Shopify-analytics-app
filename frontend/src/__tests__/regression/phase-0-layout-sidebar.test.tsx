@@ -279,14 +279,13 @@ describe('Sidebar navigation', () => {
     expect(settingsNavItem).toBeInTheDocument();
   });
 
-  it('renders MAIN, CONNECTIONS, and SETTINGS sections', () => {
+  it('renders Analytics, Channels, Tools and System sections', () => {
     renderWithProviders(<Sidebar />, { initialEntries: ['/home'] });
 
-    expect(screen.getByText('Main')).toBeInTheDocument();
-    expect(screen.getByText('Connections')).toBeInTheDocument();
-    // "Settings" appears both as section header and nav item
-    const settingsElements = screen.getAllByText('Settings');
-    expect(settingsElements.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Analytics')).toBeInTheDocument();
+    expect(screen.getByText('Channels')).toBeInTheDocument();
+    expect(screen.getByText('Tools')).toBeInTheDocument();
+    expect(screen.getByText('System')).toBeInTheDocument();
   });
 
   it('renders user section in footer', () => {
@@ -488,8 +487,8 @@ describe('Feature-gated nav items (Story 0.2.3)', () => {
 
     renderWithProviders(<Sidebar />, { initialEntries: ['/home'] });
 
-    // Main section should still be visible because Home has no feature gate
-    expect(screen.getByText('Main')).toBeInTheDocument();
+    // Analytics section should still be visible because Home has no feature gate
+    expect(screen.getByText('Analytics')).toBeInTheDocument();
     expect(screen.getByText('Home')).toBeInTheDocument();
 
     // Builder and Insights should be hidden
