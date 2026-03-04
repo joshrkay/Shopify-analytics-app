@@ -5,6 +5,7 @@ UsageRecord: High-volume table for individual API calls
 UsageAggregate: Rolled-up usage for efficient querying
 """
 
+import enum
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -15,6 +16,13 @@ from sqlalchemy.orm import relationship
 
 from src.db_base import Base
 from src.models.base import TimestampMixin, TenantScopedMixin, generate_uuid
+
+
+class PeriodType(str, enum.Enum):
+    """Aggregation period granularity."""
+    HOURLY = "hourly"
+    DAILY = "daily"
+    MONTHLY = "monthly"
 
 
 class UsageRecord(Base, TenantScopedMixin):
@@ -144,9 +152,16 @@ class UsageAggregate(Base, TimestampMixin, TenantScopedMixin):
         nullable=False,
         comment="End of aggregation period"
     )
+    # NOTE: values_callable ensures SQLAlchemy sends lowercase enum values
+    # matching the PostgreSQL enum type, instead of Python enum .name (uppercase).
     period_type = Column(
-        Enum("hourly", "daily", "monthly", name="period_type"),
-        default="hourly",
+        Enum(
+            PeriodType,
+            name="period_type",
+            create_constraint=True,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        default=PeriodType.HOURLY,
         comment="Aggregation granularity"
     )
 

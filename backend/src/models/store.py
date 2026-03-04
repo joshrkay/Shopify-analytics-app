@@ -97,12 +97,16 @@ class ShopifyStore(Base, TimestampMixin, TenantScopedMixin):
     )
 
     # Installation status
+    # NOTE: values_callable ensures SQLAlchemy sends lowercase enum values
+    # matching the PostgreSQL enum type, instead of Python enum .name (uppercase).
     status = Column(
         Enum(
-            "installing", "active", "uninstalled", "suspended",
-            name="store_status"
+            StoreStatus,
+            name="store_status",
+            create_constraint=True,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
         ),
-        default="installing",
+        default=StoreStatus.ACTIVE,
         nullable=False,
         index=True,
         comment="Current installation status"
