@@ -36,7 +36,6 @@ from src.services.invite_service import (
     DuplicateInviteError,
     UserAlreadyMemberError,
     InvalidStateError,
-    UserNotFoundError,
 )
 from src.platform.audit import AuditAction, AuditLog
 
@@ -447,13 +446,15 @@ class TestAcceptInvite:
                 clerk_user_id=sample_user.clerk_user_id,
             )
 
-    def test_accept_invite_user_not_found(self, service, sample_invite):
-        """Test accepting invite with non-existent user."""
-        with pytest.raises(UserNotFoundError):
-            service.accept_invite(
-                invite_id=sample_invite.id,
-                clerk_user_id="nonexistent_user_id",
-            )
+    def test_accept_invite_auto_creates_user(self, service, sample_invite):
+        """Test accepting invite with non-existent user auto-creates the user."""
+        result = service.accept_invite(
+            invite_id=sample_invite.id,
+            clerk_user_id="nonexistent_user_id",
+        )
+        # The service now lazily creates a new user instead of raising
+        assert result["invite_id"] == sample_invite.id
+        assert result["user_id"] is not None
 
 
 # =============================================================================

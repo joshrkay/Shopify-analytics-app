@@ -121,9 +121,12 @@ class ExploreGuardrailException(Base, TimestampMixin, TenantScopedMixin):
     def is_active(self, now: Optional[datetime] = None) -> bool:
         """Check if the exception is currently active."""
         now = now or datetime.now(timezone.utc)
+        expires_at = self.expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
         return (
             self.status == GuardrailExceptionStatus.APPROVED
-            and self.expires_at > now
+            and expires_at > now
             and self.revoked_at is None
         )
 

@@ -20,10 +20,19 @@ export default defineConfig({
     // Explicit targets to ensure Safari 14+ / Firefox 78+ compatibility.
     // Vite 5 defaults are similar, but being explicit avoids silent regressions.
     target: ['es2020', 'chrome87', 'firefox78', 'safari14', 'edge88'],
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          polaris: ['@shopify/polaris'],
+          charts: ['recharts', 'react-grid-layout'],
+        },
+      },
+    },
   },
   test: {
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/tests/setup.ts',
+    exclude: ['e2e/**', 'node_modules/**'],
   },
 });

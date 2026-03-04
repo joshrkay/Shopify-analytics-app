@@ -259,6 +259,45 @@ class TestRBACEndpointContracts:
     def setup_clerk(self, monkeypatch):
         """Set up Clerk mock."""
         monkeypatch.setenv("CLERK_PUBLISHABLE_KEY", "test-client")
+        monkeypatch.setenv("CLERK_FRONTEND_API", "https://test.clerk.accounts.dev")
+
+    @pytest.fixture(autouse=True)
+    def mock_tenant_guard(self):
+        """Mock TenantGuard and DB to skip database calls in middleware."""
+        from src.services.tenant_guard import AuthorizationResult
+        import src.platform.tenant_context as tc_module
+
+        original_class = tc_module._tenant_guard_class
+        tc_module._tenant_guard_class = None
+
+        mock_guard = MagicMock()
+        mock_guard.enforce_authorization.return_value = AuthorizationResult(
+            is_authorized=True,
+            user_id="test-user-id",
+            tenant_id=None,
+            roles=None,
+            billing_tier="pro",
+            denial_reason=None,
+            error_code=None,
+            roles_changed=False,
+            previous_roles=[],
+            audit_action=None,
+            audit_metadata={},
+        )
+        mock_guard.emit_enforcement_audit_event.return_value = None
+
+        mock_guard_class = MagicMock(return_value=mock_guard)
+
+        with patch('src.platform.tenant_context._get_tenant_guard_class', return_value=mock_guard_class):
+            with patch('src.platform.tenant_context.get_db_session_sync') as mock_db:
+                mock_session = MagicMock()
+                # Return None for User query so data-driven permission resolution
+                # is skipped, falling back to hardcoded ROLE_PERMISSIONS matrix
+                mock_session.query.return_value.filter.return_value.first.return_value = None
+                mock_db.side_effect = lambda: iter([mock_session])
+                yield mock_guard
+
+        tc_module._tenant_guard_class = original_class
 
     @patch('src.platform.tenant_context.jwt.decode')
     @patch('src.platform.tenant_context.ClerkJWKSClient.get_signing_key')
@@ -273,7 +312,7 @@ class TestRBACEndpointContracts:
         mock_jwt_decode.return_value = {
             "org_id": "tenant-1",
             "sub": "user-1",
-            "roles": ["viewer"],  # Viewer cannot access admin
+            "metadata": {"roles": ["viewer"]},  # Viewer cannot access admin
             "aud": "test-client",
             "iss": "https://test.clerk.accounts.dev",
             "exp": 9999999999,
@@ -300,7 +339,7 @@ class TestRBACEndpointContracts:
         mock_jwt_decode.return_value = {
             "org_id": "tenant-1",
             "sub": "user-1",
-            "roles": ["admin"],
+            "metadata": {"roles": ["admin"]},
             "aud": "test-client",
             "iss": "https://test.clerk.accounts.dev",
             "exp": 9999999999,

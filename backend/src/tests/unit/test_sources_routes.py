@@ -241,11 +241,14 @@ class TestOAuthCallback:
     ):
         """Successful OAuth callback creates Airbyte source and connection."""
         # Set up state in fallback store
+        # Use google_ads (not meta_ads) because meta_ads triggers account
+        # selection flow which returns needs_account_selection instead of
+        # creating the connection directly.
         state = "test-csrf-state-123"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
-            "platform": "meta_ads",
+            "platform": "google_ads",
             "workspace_id": "ws-test-123",
         }
 
@@ -278,7 +281,7 @@ class TestOAuthCallback:
         data = response.json()
         assert data["success"] is True
         assert data["connection_id"] == "conn-001"
-        assert "Meta Ads" in data["message"]
+        assert "Google Ads" in data["message"]
 
         # Verify register_connection used the real connection ID, not source ID
         reg_call = mock_service.register_connection.call_args
@@ -294,11 +297,12 @@ class TestOAuthCallback:
         self, MockAirbyteService, mock_get_client, client
     ):
         """OAuth callback auto-provisions a destination when workspace has none."""
+        # Use google_ads to avoid meta_ads account-selection flow
         state = "test-state-no-dest"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
-            "platform": "meta_ads",
+            "platform": "google_ads",
             "workspace_id": "ws-test-123",
         }
 
@@ -350,11 +354,12 @@ class TestOAuthCallback:
         self, MockAirbyteService, mock_get_client, client
     ):
         """OAuth callback uses SourceCreationRequest, not keyword args."""
+        # Use google_ads to avoid meta_ads account-selection flow
         state = "test-state-request-pattern"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
-            "platform": "meta_ads",
+            "platform": "google_ads",
             "workspace_id": "ws-test-123",
         }
 
@@ -437,11 +442,12 @@ class TestOAuthCallback:
         self, MockAirbyteService, mock_get_client, client
     ):
         """OAuth callback does not leak internal error details to the client."""
+        # Use google_ads to avoid meta_ads account-selection flow
         state = "test-state-error-sanitize"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
-            "platform": "meta_ads",
+            "platform": "google_ads",
             "workspace_id": "ws-test-123",
         }
 

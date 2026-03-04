@@ -543,7 +543,7 @@ class TestSecurityConstraints:
 # =============================================================================
 
 
-from src.services.backfill_planner import (
+from src.services.backfill_planner import (  # noqa: E402
     BackfillPlanner,
     MODEL_REGISTRY,
     SOURCE_TO_STAGING,
@@ -744,7 +744,7 @@ class TestBackfillPlannerRegistry:
 # =============================================================================
 
 
-from src.services.backfill_executor import (
+from src.services.backfill_executor import (  # noqa: E402
     BackfillExecutor,
     calculate_backoff,
     compute_chunks,
@@ -752,7 +752,7 @@ from src.services.backfill_executor import (
     BASE_RETRY_DELAY_SECONDS,
     MAX_RETRY_DELAY_SECONDS,
 )
-from src.models.backfill_job import (
+from src.models.backfill_job import (  # noqa: E402
     BackfillJob,
     BackfillJobStatus,
 )
@@ -1245,11 +1245,11 @@ class TestBackfillWorkerStats:
 # Backfill State Guard Tests - Story 3.4 (downstream protection)
 # =============================================================================
 
-from src.services.backfill_state_guard import (
+from src.services.backfill_state_guard import (  # noqa: E402
     BackfillStateGuard,
     BackfillGuardStatus,
 )
-from src.models.data_availability import AvailabilityState, AvailabilityReason
+from src.models.data_availability import AvailabilityState, AvailabilityReason  # noqa: E402
 
 
 class TestBackfillGuardStatus:

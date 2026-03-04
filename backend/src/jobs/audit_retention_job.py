@@ -261,8 +261,13 @@ class AuditRetentionJob:
             logger.info(f"Found {len(tenants)} tenants to process")
 
             for tenant_id in tenants:
-                deleted = self.process_tenant(tenant_id)
-                self.stats["total_deleted"] += deleted
+                try:
+                    deleted = self.process_tenant(tenant_id)
+                    self.stats["total_deleted"] += deleted
+                except Exception as tenant_err:
+                    error_msg = f"Error processing tenant {tenant_id}: {str(tenant_err)}"
+                    logger.error(error_msg, exc_info=True)
+                    self.stats["errors"].append(error_msg)
                 self.stats["tenants_processed"] += 1
 
             end_time = datetime.now(timezone.utc)

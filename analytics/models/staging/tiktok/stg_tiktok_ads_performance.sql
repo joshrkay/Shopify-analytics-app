@@ -213,20 +213,26 @@ tiktok_ads_normalized as (
     from tiktok_ads_extracted
 ),
 
--- Join to tenant mapping to get tenant_id
+-- Tenant mapping: join on advertiser_id (normalized to ad_account_id) for multi-tenant isolation.
+-- TikTok Ads connections store advertiser_id in configuration JSONB.
+-- SECURITY: Without this join, all TikTok Ads data would be assigned to one arbitrary tenant.
+tiktok_tenant_mapping as (
+    select
+        tenant_id,
+        config_advertiser_id as mapped_account_id
+    from {{ ref('_tenant_airbyte_connections') }}
+    where source_type = 'source-tiktok-marketing'
+        and config_advertiser_id is not null
+        and config_advertiser_id != ''
+),
+
 tiktok_ads_with_tenant as (
     select
         ads.*,
-        coalesce(
-            (select tenant_id
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'source-tiktok-marketing'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            null
-        ) as tenant_id
+        tm.tenant_id
     from tiktok_ads_normalized ads
+    inner join tiktok_tenant_mapping tm
+        on ads.ad_account_id = tm.mapped_account_id
 ),
 
 -- Add internal IDs, canonical channel, and dedup

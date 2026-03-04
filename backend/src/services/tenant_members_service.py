@@ -270,7 +270,11 @@ class TenantMembersService:
         if self._is_last_admin(tenant.id, user.id):
             raise LastAdminError("Cannot remove the last admin from tenant")
 
-        # Initiate grace-period revocation (Story 5.5.4)
+        # Deactivate roles immediately
+        for role in roles:
+            role.is_active = False
+
+        # Also initiate grace-period revocation record for audit trail (Story 5.5.4)
         try:
             from src.services.access_revocation_service import AccessRevocationService
 
@@ -283,10 +287,12 @@ class TenantMembersService:
             if grace_period_hours is not None:
                 kwargs["grace_period_hours"] = grace_period_hours
             revocation_service.initiate_revocation(**kwargs)
-        except ImportError:
-            # Fallback: immediate deactivation if revocation service not available
-            for role in roles:
-                role.is_active = False
+        except (ImportError, Exception) as exc:
+            # Don't fail the revocation if the audit trail record fails
+            logger.warning(
+                "access_revocation.revocation_service_failed",
+                extra={"user_id": user.id, "tenant_id": tenant.id, "error": str(exc)},
+            )
 
         logger.info(
             "Revoked tenant access (grace period)",

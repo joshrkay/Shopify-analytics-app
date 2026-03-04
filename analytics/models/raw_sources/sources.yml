@@ -152,6 +152,52 @@ sources:
           - name: _airbyte_data
             description: JSONB column containing the actual ad data
 
+  - name: raw_pinterest_ads
+    description: Raw Pinterest Ads data ingested via Airbyte
+    schema: "{{ var('raw_pinterest_ads_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after:
+        count: "{{ var('freshness_sla', {}).get('pinterest_ads', {}).get(var('billing_tier', 'free'), {}).get('warn_after_minutes', 1440) }}"
+        period: minute
+      error_after:
+        count: "{{ var('freshness_sla', {}).get('pinterest_ads', {}).get(var('billing_tier', 'free'), {}).get('error_after_minutes', 2880) }}"
+        period: minute
+    tables:
+      - name: ad_reports
+        identifier: _airbyte_raw_pinterest_ads
+        description: Raw Pinterest Ads performance data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+
+  - name: raw_twitter_ads
+    description: Raw Twitter/X Ads data ingested via Airbyte
+    schema: "{{ var('raw_twitter_ads_schema', 'airbyte_raw') }}"
+    freshness:
+      warn_after:
+        count: "{{ var('freshness_sla', {}).get('twitter_ads', {}).get(var('billing_tier', 'free'), {}).get('warn_after_minutes', 1440) }}"
+        period: minute
+      error_after:
+        count: "{{ var('freshness_sla', {}).get('twitter_ads', {}).get(var('billing_tier', 'free'), {}).get('error_after_minutes', 2880) }}"
+        period: minute
+    tables:
+      - name: ad_reports
+        identifier: _airbyte_raw_twitter_ads
+        description: Raw Twitter/X Ads performance data from Airbyte
+        loaded_at_field: _airbyte_emitted_at
+        columns:
+          - name: _airbyte_ab_id
+            description: Airbyte record ID
+          - name: _airbyte_emitted_at
+            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_data
+            description: JSONB column containing the actual ad data
+
   - name: raw_email
     description: Raw email marketing data ingested via Airbyte (Klaviyo, Shopify Email)
     schema: "{{ var('raw_email_schema', 'airbyte_raw') }}"

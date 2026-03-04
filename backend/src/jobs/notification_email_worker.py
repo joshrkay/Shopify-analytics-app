@@ -63,7 +63,10 @@ def _build_email_html(notification: Notification) -> str:
     """Build HTML email body from notification."""
     action_link = ""
     if notification.action_url:
-        base_url = os.getenv("APP_BASE_URL", "https://app.example.com")
+        base_url = os.getenv("APP_BASE_URL", "")
+        if not base_url:
+            logger.warning("APP_BASE_URL not set — email links will be broken")
+            base_url = "https://app.example.com"
         full_url = f"{base_url}{notification.action_url}"
         action_link = f'<p><a href="{full_url}" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">View Details</a></p>'
 
@@ -103,7 +106,10 @@ def _build_email_text(notification: Notification) -> str:
     """Build plain text email body from notification."""
     text = f"{notification.title}\n\n{notification.message}"
     if notification.action_url:
-        base_url = os.getenv("APP_BASE_URL", "https://app.example.com")
+        base_url = os.getenv("APP_BASE_URL", "")
+        if not base_url:
+            logger.warning("APP_BASE_URL not set — email links will be broken")
+            base_url = "https://app.example.com"
         text += f"\n\nView details: {base_url}{notification.action_url}"
     return text
 

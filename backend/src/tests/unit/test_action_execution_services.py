@@ -95,6 +95,7 @@ def sample_action(tenant_id):
         action_params={"status": "paused"},
         status=ActionStatus.PENDING_APPROVAL,
         content_hash="xyz789",
+        retry_count=0,
     )
 
 
@@ -113,6 +114,9 @@ def sample_job(tenant_id):
         tenant_id=tenant_id,
         status=ActionJobStatus.QUEUED,
         action_ids=[str(uuid.uuid4()) for _ in range(3)],
+        actions_attempted=0,
+        actions_succeeded=0,
+        actions_failed=0,
     )
 
 
@@ -167,7 +171,11 @@ class TestActionApprovalService:
     def test_check_entitlement_calls_billing_service(
         self, mock_billing_class, mock_db_session, tenant_id
     ):
-        """Should check entitlement via BillingEntitlementsService."""
+        """Should check entitlement via BillingEntitlementsService.
+
+        _check_entitlement() returns None on success (no exception raised)
+        and raises ActionApprovalError when not entitled.
+        """
         mock_result = Mock()
         mock_result.is_entitled = True
         mock_billing = Mock()
@@ -175,9 +183,10 @@ class TestActionApprovalService:
         mock_billing_class.return_value = mock_billing
 
         service = ActionApprovalService(mock_db_session, tenant_id)
+        # _check_entitlement returns None on success (raises on failure)
         result = service._check_entitlement()
 
-        assert result is True
+        assert result is None  # No exception means entitled
         mock_billing.check_feature_entitlement.assert_called_once()
 
 
@@ -335,50 +344,47 @@ class TestJobProcessing:
 
     def test_job_start_and_finalize_success(self, sample_job):
         """Test job start and successful finalization."""
-        # Start job
-        sample_job.start()
+        # Start job (mark_running is the actual API method)
+        sample_job.mark_running()
         assert sample_job.status == ActionJobStatus.RUNNING
         assert sample_job.started_at is not None
 
-        # Process actions
-        sample_job.increment_succeeded()
-        sample_job.increment_succeeded()
-        sample_job.increment_succeeded()
-
-        # Finalize
-        sample_job.finalize()
+        # Finalize with all 3 actions succeeded, 0 failed
+        sample_job.finalize(actions_succeeded=3, actions_failed=0)
         assert sample_job.status == ActionJobStatus.SUCCEEDED
         assert sample_job.completed_at is not None
-        assert sample_job.succeeded_count == 3
-        assert sample_job.failed_count == 0
+        assert sample_job.actions_succeeded == 3
+        assert sample_job.actions_failed == 0
 
     def test_job_finalize_partial_success(self, sample_job):
         """Test job finalization with partial success."""
-        sample_job.start()
+        sample_job.mark_running()
 
-        # Some succeed, some fail
-        sample_job.increment_succeeded()
-        sample_job.increment_succeeded()
-        sample_job.increment_failed()
-
-        sample_job.finalize()
-        assert sample_job.status == ActionJobStatus.PARTIAL_SUCCESS
-        assert sample_job.succeeded_count == 2
-        assert sample_job.failed_count == 1
+        # Finalize with 2 succeeded, 1 failed
+        sample_job.finalize(actions_succeeded=2, actions_failed=1)
+        assert sample_job.status == ActionJobStatus.PARTIALLY_SUCCEEDED
+        assert sample_job.actions_succeeded == 2
+        assert sample_job.actions_failed == 1
 
     def test_job_finalize_all_failed(self, sample_job):
         """Test job finalization when all actions fail."""
-        sample_job.start()
+        sample_job.mark_running()
 
-        # All fail
-        sample_job.increment_failed()
-        sample_job.increment_failed()
-        sample_job.increment_failed()
-
-        sample_job.finalize()
+        # Finalize with 0 succeeded, 3 failed, providing error_summary
+        # so mark_failed populates the count fields.
+        error_summary = {
+            "action-1": "rate limit exceeded",
+            "action-2": "invalid credentials",
+            "action-3": "timeout",
+        }
+        sample_job.finalize(
+            actions_succeeded=0,
+            actions_failed=3,
+            error_summary=error_summary,
+        )
         assert sample_job.status == ActionJobStatus.FAILED
-        assert sample_job.succeeded_count == 0
-        assert sample_job.failed_count == 3
+        assert sample_job.actions_attempted == 3
+        assert sample_job.actions_failed == 3
 
 
 # =============================================================================

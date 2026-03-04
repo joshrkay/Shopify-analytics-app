@@ -139,7 +139,7 @@ async def get_verified_webhook_body(request: Request) -> tuple[dict, str]:
 
 
 # Import shared database session dependency
-from src.database.session import get_db_session
+from src.database.session import get_db_session  # noqa: E402
 
 
 @router.post("/subscription-update", response_model=WebhookResponse)

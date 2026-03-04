@@ -162,20 +162,26 @@ google_ads_normalized as (
     from google_ads_extracted
 ),
 
--- Join to tenant mapping to get tenant_id
+-- Tenant mapping: join on customer_id (normalized to ad_account_id) for multi-tenant isolation.
+-- Google Ads connections store customer_id in configuration JSONB.
+-- SECURITY: Without this join, all Google Ads data would be assigned to one arbitrary tenant.
+google_tenant_mapping as (
+    select
+        tenant_id,
+        config_customer_id as mapped_account_id
+    from {{ ref('_tenant_airbyte_connections') }}
+    where source_type = 'source-google-ads'
+        and config_customer_id is not null
+        and config_customer_id != ''
+),
+
 google_ads_with_tenant as (
     select
         ads.*,
-        coalesce(
-            (select tenant_id
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'source-google-ads'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            null
-        ) as tenant_id
+        tm.tenant_id
     from google_ads_normalized ads
+    inner join google_tenant_mapping tm
+        on ads.ad_account_id = tm.mapped_account_id
 ),
 
 -- Add internal IDs, canonical channel, and dedup

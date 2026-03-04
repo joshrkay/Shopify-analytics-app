@@ -2,17 +2,17 @@
     config(
         materialized='incremental',
         schema='staging',
-        unique_key=['tenant_id', 'ad_account_id', 'campaign_id', 'ad_squad_id', 'ad_id', 'date'],
+        unique_key=['tenant_id', 'ad_account_id', 'campaign_id', 'line_item_id', 'date'],
         incremental_strategy='delete+insert',
-        enabled=var('enable_snapchat_ads', true)
+        enabled=var('enable_twitter_ads', true)
     )
 }}
 
 {#
-    Staging model for Snapchat Ads with normalized fields and tenant isolation.
+    Staging model for Twitter/X Ads with normalized fields and tenant isolation.
 
     This model:
-    - Extracts and normalizes raw Snapchat Ads data from Airbyte
+    - Extracts and normalizes raw Twitter/X Ads data from Airbyte
     - Adds internal IDs for cross-platform joins (Option B ID normalization)
     - Maps to canonical channel taxonomy
     - Supports incremental processing with configurable lookback window
@@ -27,7 +27,7 @@
 #}
 
 -- Check if source table exists; if not, return empty result set
-{% if not source_exists('raw_snapchat_ads', 'ad_reports') %}
+{% if not source_exists('raw_twitter_ads', 'ad_reports') %}
 
 select
     cast(null as text) as tenant_id,
@@ -36,8 +36,7 @@ select
     cast(null as text) as source,
     cast(null as text) as ad_account_id,
     cast(null as text) as campaign_id,
-    cast(null as text) as ad_squad_id,
-    cast(null as text) as ad_id,
+    cast(null as text) as line_item_id,
     cast(null as text) as internal_account_id,
     cast(null as text) as internal_campaign_id,
     cast(null as text) as platform_channel,
@@ -54,11 +53,8 @@ select
     cast(null as numeric) as cpa,
     cast(null as numeric) as roas_platform,
     cast(null as text) as campaign_name,
-    cast(null as text) as ad_squad_name,
-    cast(null as text) as ad_name,
+    cast(null as text) as line_item_name,
     cast(null as text) as objective,
-    cast(null as integer) as reach,
-    cast(null as numeric) as frequency,
     cast(null as text) as platform,
     cast(null as text) as airbyte_record_id,
     cast(null as timestamp) as airbyte_emitted_at
@@ -66,49 +62,42 @@ where 1=0
 
 {% else %}
 
-with raw_snapchat_ads as (
+with raw_twitter_ads as (
     select
         _airbyte_ab_id as airbyte_record_id,
         _airbyte_emitted_at as airbyte_emitted_at,
         _airbyte_data as ad_data
-    from {{ source('raw_snapchat_ads', 'ad_reports') }}
+    from {{ source('raw_twitter_ads', 'ad_reports') }}
     {% if is_incremental() %}
-    where _airbyte_emitted_at >= current_timestamp - interval '{{ var("snapchat_ads_lookback_days", 3) }} days'
+    where _airbyte_emitted_at >= current_timestamp - interval '{{ var("lookback_days_twitter_ads", 3) }} days'
     {% endif %}
 ),
 
-snapchat_ads_extracted as (
+twitter_ads_extracted as (
     select
         raw.airbyte_record_id,
         raw.airbyte_emitted_at,
-        raw.ad_data->>'ad_account_id' as ad_account_id_raw,
+        raw.ad_data->>'account_id' as ad_account_id_raw,
         raw.ad_data->>'campaign_id' as campaign_id_raw,
-        raw.ad_data->>'ad_squad_id' as ad_squad_id_raw,
-        raw.ad_data->>'ad_id' as ad_id_raw,
-        raw.ad_data->>'start_time' as date_raw,
-        raw.ad_data->>'spend' as spend_raw,
+        raw.ad_data->>'line_item_id' as line_item_id_raw,
+        raw.ad_data->>'date' as date_raw,
+        -- Twitter provides spend in micro-amounts (billed_charge_amount_local_micro)
+        raw.ad_data->>'billed_charge_amount_local_micro' as spend_raw,
         raw.ad_data->>'impressions' as impressions_raw,
-        raw.ad_data->>'swipes' as clicks_raw,  -- Snapchat calls clicks "swipes"
-        raw.ad_data->>'conversion_purchases' as conversions_raw,
-        raw.ad_data->>'conversion_purchases_value' as conversion_value_raw,
+        raw.ad_data->>'clicks' as clicks_raw,
+        raw.ad_data->>'conversions' as conversions_raw,
+        raw.ad_data->>'conversions_value' as conversion_value_raw,
         raw.ad_data->>'currency' as currency_code,
         raw.ad_data->>'campaign_name' as campaign_name,
-        raw.ad_data->>'ad_squad_name' as ad_squad_name,
-        raw.ad_data->>'ad_name' as ad_name,
+        raw.ad_data->>'line_item_name' as line_item_name,
         raw.ad_data->>'objective' as objective,
-        raw.ad_data->>'uniques' as reach_raw,
-        raw.ad_data->>'frequency' as frequency_raw,
-        raw.ad_data->>'ecpm' as cpm_raw,
-        raw.ad_data->>'ecpc' as cpc_raw,
-        raw.ad_data->>'swipe_rate' as ctr_raw,
-        -- Platform channel: derive from objective or placement
-        coalesce(raw.ad_data->>'placement', raw.ad_data->>'objective', 'snap_ads') as platform_channel_raw
-    from raw_snapchat_ads raw
+        coalesce(raw.ad_data->>'placement', raw.ad_data->>'objective', 'twitter_ads') as platform_channel_raw
+    from raw_twitter_ads raw
 ),
 
-snapchat_ads_normalized as (
+twitter_ads_normalized as (
     select
-        -- Primary identifiers: normalize IDs
+        -- Primary identifiers
         case
             when ad_account_id_raw is null or trim(ad_account_id_raw) = '' then null
             else trim(ad_account_id_raw)
@@ -120,16 +109,11 @@ snapchat_ads_normalized as (
         end as campaign_id,
 
         case
-            when ad_squad_id_raw is null or trim(ad_squad_id_raw) = '' then null
-            else trim(ad_squad_id_raw)
-        end as ad_squad_id,
+            when line_item_id_raw is null or trim(line_item_id_raw) = '' then null
+            else trim(line_item_id_raw)
+        end as line_item_id,
 
-        case
-            when ad_id_raw is null or trim(ad_id_raw) = '' then null
-            else trim(ad_id_raw)
-        end as ad_id,
-
-        -- Date field: normalize to date type (Snapchat uses ISO timestamps)
+        -- Date field
         case
             when date_raw is null or trim(date_raw) = '' then null
             when date_raw ~ '^\d{4}-\d{2}-\d{2}'
@@ -137,7 +121,7 @@ snapchat_ads_normalized as (
             else null
         end as date,
 
-        -- Spend: Snapchat provides spend in micro-currency (divide by 1,000,000)
+        -- Spend: Twitter provides in micro-amounts (divide by 1,000,000)
         case
             when spend_raw is null or trim(spend_raw) = '' then 0.0
             when trim(spend_raw) ~ '^-?[0-9]+$' then
@@ -147,7 +131,7 @@ snapchat_ads_normalized as (
             else 0.0
         end as spend,
 
-        -- Impressions: convert to integer, handle nulls
+        -- Impressions
         case
             when impressions_raw is null or trim(impressions_raw) = '' then 0
             when trim(impressions_raw) ~ '^-?[0-9]+$'
@@ -155,7 +139,7 @@ snapchat_ads_normalized as (
             else 0
         end as impressions,
 
-        -- Clicks (swipes): convert to integer, handle nulls
+        -- Clicks
         case
             when clicks_raw is null or trim(clicks_raw) = '' then 0
             when trim(clicks_raw) ~ '^-?[0-9]+$'
@@ -163,7 +147,7 @@ snapchat_ads_normalized as (
             else 0
         end as clicks,
 
-        -- Conversions: convert to numeric, handle nulls
+        -- Conversions
         case
             when conversions_raw is null or trim(conversions_raw) = '' then 0.0
             when trim(conversions_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
@@ -171,17 +155,15 @@ snapchat_ads_normalized as (
             else 0.0
         end as conversions,
 
-        -- Conversion value: convert to numeric (also in micro-currency)
+        -- Conversion value
         case
             when conversion_value_raw is null or trim(conversion_value_raw) = '' then 0.0
-            when trim(conversion_value_raw) ~ '^-?[0-9]+$' then
-                least(greatest((trim(conversion_value_raw)::bigint / 1000000.0)::numeric, 0.0), 999999999.99)
             when trim(conversion_value_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' then
                 least(greatest(trim(conversion_value_raw)::numeric, 0.0), 999999999.99)
             else 0.0
         end as conversion_value,
 
-        -- Currency: standardize to uppercase, validate format
+        -- Currency
         case
             when currency_code is null or trim(currency_code) = '' then 'USD'
             when upper(trim(currency_code)) ~ '^[A-Z]{3}$'
@@ -191,120 +173,60 @@ snapchat_ads_normalized as (
 
         -- Additional fields
         campaign_name,
-        ad_squad_name,
-        ad_name,
+        line_item_name,
         objective,
 
-        -- Platform channel (raw value from platform)
-        coalesce(platform_channel_raw, 'snap_ads') as platform_channel,
-
-        -- Reach (uniques): convert to integer
-        case
-            when reach_raw is null or trim(reach_raw) = '' then null
-            when trim(reach_raw) ~ '^-?[0-9]+$'
-                then least(greatest(trim(reach_raw)::integer, 0), 2147483647)
-            else null
-        end as reach,
-
-        -- Frequency: convert to numeric
-        case
-            when frequency_raw is null or trim(frequency_raw) = '' then null
-            when trim(frequency_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(frequency_raw)::numeric, 0.0), 100.0)
-            else null
-        end as frequency,
-
-        -- eCPM: convert to numeric (in micro-currency)
-        case
-            when cpm_raw is null or trim(cpm_raw) = '' then null
-            when trim(cpm_raw) ~ '^-?[0-9]+$' then
-                least(greatest((trim(cpm_raw)::bigint / 1000000.0)::numeric, 0.0), 999999.99)
-            when trim(cpm_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' then
-                least(greatest(trim(cpm_raw)::numeric, 0.0), 999999.99)
-            else null
-        end as cpm_platform,
-
-        -- eCPC: convert to numeric (in micro-currency)
-        case
-            when cpc_raw is null or trim(cpc_raw) = '' then null
-            when trim(cpc_raw) ~ '^-?[0-9]+$' then
-                least(greatest((trim(cpc_raw)::bigint / 1000000.0)::numeric, 0.0), 999999.99)
-            when trim(cpc_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' then
-                least(greatest(trim(cpc_raw)::numeric, 0.0), 999999.99)
-            else null
-        end as cpc_platform,
-
-        -- Swipe rate (CTR): convert to numeric (percentage)
-        case
-            when ctr_raw is null or trim(ctr_raw) = '' then null
-            when trim(ctr_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(ctr_raw)::numeric * 100, 0.0), 100.0)  -- Convert to percentage
-            else null
-        end as ctr_platform,
+        -- Platform channel
+        coalesce(platform_channel_raw, 'twitter_ads') as platform_channel,
 
         -- Platform identifier
-        'snapchat_ads' as platform,
-
-        -- Source identifier (same as platform for consistency)
-        'snap_ads' as source,
+        'twitter_ads' as platform,
+        'twitter_ads' as source,
 
         -- Metadata
         airbyte_record_id,
         airbyte_emitted_at
 
-    from snapchat_ads_extracted
+    from twitter_ads_extracted
 ),
 
--- Tenant mapping: join on ad_account_id for multi-tenant isolation.
--- Snapchat Ads connections store account_id in configuration JSONB.
--- SECURITY: Without this join, all Snapchat Ads data would be assigned to one arbitrary tenant.
-snapchat_tenant_mapping as (
+-- Tenant mapping: join on ad_account_id for multi-tenant isolation
+twitter_tenant_mapping as (
     select
         tenant_id,
         config_account_id as mapped_account_id
     from {{ ref('_tenant_airbyte_connections') }}
-    where source_type = 'source-snapchat-marketing'
+    where source_type = 'source-twitter-ads'
         and config_account_id is not null
         and config_account_id != ''
 ),
 
-snapchat_ads_with_tenant as (
+twitter_ads_with_tenant as (
     select
         ads.*,
         tm.tenant_id
-    from snapchat_ads_normalized ads
-    inner join snapchat_tenant_mapping tm
+    from twitter_ads_normalized ads
+    inner join twitter_tenant_mapping tm
         on ads.ad_account_id = tm.mapped_account_id
 ),
 
 -- Add internal IDs and canonical channel
-snapchat_ads_final as (
+twitter_ads_final as (
     select
-        -- Tenant ID (required for multi-tenant isolation)
         tenant_id,
-
-        -- Date fields
         date,
-        date as report_date,  -- Alias for staging contract consistency
-
-        -- Source identifier
+        date as report_date,
         source,
-
-        -- Platform IDs (kept for backward compatibility)
         ad_account_id,
         campaign_id,
-        ad_squad_id,
-        ad_id,
+        line_item_id,
 
-        -- Internal IDs (Option B ID normalization)
         {{ generate_internal_id('tenant_id', 'source', 'ad_account_id') }} as internal_account_id,
         {{ generate_internal_id('tenant_id', 'source', 'campaign_id') }} as internal_campaign_id,
 
-        -- Channel taxonomy
         platform_channel,
         {{ map_canonical_channel('source', 'platform_channel') }} as canonical_channel,
 
-        -- Core metrics
         spend,
         impressions,
         clicks,
@@ -312,53 +234,40 @@ snapchat_ads_final as (
         conversion_value,
         currency,
 
-        -- Derived metrics (calculated where possible)
-        -- CPM: Cost Per Mille = (spend / impressions) * 1000
+        -- Derived metrics
         case
             when impressions > 0 then round((spend / impressions) * 1000, 4)
-            else cpm_platform
+            else null
         end as cpm,
 
-        -- CPC: Cost Per Click = spend / clicks
         case
             when clicks > 0 then round(spend / clicks, 4)
-            else cpc_platform
+            else null
         end as cpc,
 
-        -- CTR: Click Through Rate = (clicks / impressions) * 100
         case
             when impressions > 0 then round((clicks::numeric / impressions) * 100, 4)
-            else ctr_platform
+            else null
         end as ctr,
 
-        -- CPA: Cost Per Acquisition = spend / conversions
         case
             when conversions > 0 then round(spend / conversions, 4)
             else null
         end as cpa,
 
-        -- ROAS Platform: Return on Ad Spend = conversion_value / spend
         case
             when spend > 0 then round(conversion_value / spend, 4)
             else null
         end as roas_platform,
 
-        -- Additional fields
         campaign_name,
-        ad_squad_name,
-        ad_name,
+        line_item_name,
         objective,
-        reach,
-        frequency,
-
-        -- Platform identifier (kept for backward compatibility)
         platform,
-
-        -- Metadata
         airbyte_record_id,
         airbyte_emitted_at
 
-    from snapchat_ads_with_tenant
+    from twitter_ads_with_tenant
 )
 
 select
@@ -368,8 +277,7 @@ select
     source,
     ad_account_id,
     campaign_id,
-    ad_squad_id,
-    ad_id,
+    line_item_id,
     internal_account_id,
     internal_campaign_id,
     platform_channel,
@@ -386,15 +294,12 @@ select
     cpa,
     roas_platform,
     campaign_name,
-    ad_squad_name,
-    ad_name,
+    line_item_name,
     objective,
-    reach,
-    frequency,
     platform,
     airbyte_record_id,
     airbyte_emitted_at
-from snapchat_ads_final
+from twitter_ads_final
 where tenant_id is not null
     and ad_account_id is not null
     and trim(ad_account_id) != ''
@@ -402,7 +307,7 @@ where tenant_id is not null
     and trim(campaign_id) != ''
     and date is not null
     {% if is_incremental() %}
-    and date >= current_date - {{ var("snapchat_ads_lookback_days", 3) }}
+    and date >= current_date - {{ var("lookback_days_twitter_ads", 3) }}
     {% endif %}
 
 {% endif %}

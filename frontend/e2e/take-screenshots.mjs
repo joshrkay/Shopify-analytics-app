@@ -5,7 +5,7 @@
  * Connects to the Vite dev server running the test harness (port 4174).
  *
  * Usage:
- *   1. Start test harness: npx vite --config e2e/vite.config.ts
+ *   1. Start test harness: node e2e/start-server.mjs
  *   2. Run screenshots:    node e2e/take-screenshots.mjs
  */
 import { chromium } from 'playwright-core';

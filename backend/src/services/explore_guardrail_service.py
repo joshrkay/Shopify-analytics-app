@@ -109,7 +109,10 @@ class ExploreGuardrailService:
         if exception.status != GuardrailExceptionStatus.REQUESTED:
             raise ValueError("Exception is not in requested status")
 
-        remaining = exception.expires_at - datetime.now(timezone.utc)
+        expires_at = exception.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        remaining = expires_at - datetime.now(timezone.utc)
         if remaining > timedelta(minutes=self.MAX_DURATION_MINUTES):
             raise ValueError("Exception duration exceeds 60 minutes")
 
@@ -127,6 +130,13 @@ class ExploreGuardrailService:
         )
         return exception
 
+    @staticmethod
+    def _ensure_tz_aware(dt: datetime) -> datetime:
+        """Ensure a datetime is timezone-aware (SQLite strips tzinfo)."""
+        if dt is not None and dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+
     def list_active_exceptions(self, user_id: Optional[str] = None) -> List[ExploreGuardrailException]:
         """Return active guardrail exceptions, marking expired ones."""
         now = datetime.now(timezone.utc)
@@ -140,7 +150,8 @@ class ExploreGuardrailService:
         exceptions = query.all()
         active: List[ExploreGuardrailException] = []
         for exception in exceptions:
-            if exception.status == GuardrailExceptionStatus.APPROVED and exception.expires_at <= now:
+            exp_at = self._ensure_tz_aware(exception.expires_at)
+            if exception.status == GuardrailExceptionStatus.APPROVED and exp_at <= now:
                 exception.mark_expired()
                 self._audit_event(
                     action=AuditAction.EXPLORE_GUARDRAIL_BYPASS_EXPIRED,

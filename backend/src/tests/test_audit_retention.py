@@ -161,7 +161,7 @@ class TestTriggerManagement:
         live_job.execute()
 
         # Should have called execute with DISABLE
-        calls = [str(c) for c in mock_db.execute.call_args_list]
+        calls = [str(c[0][0]) if c[0] else "" for c in mock_db.execute.call_args_list]
         assert any("DISABLE" in c for c in calls)
 
     def test_trigger_re_enabled_after_deletion(self, live_job, mock_db):
@@ -175,7 +175,7 @@ class TestTriggerManagement:
         live_job.execute()
 
         # Should have called execute with ENABLE
-        calls = [str(c) for c in mock_db.execute.call_args_list]
+        calls = [str(c[0][0]) if c[0] else "" for c in mock_db.execute.call_args_list]
         assert any("ENABLE" in c for c in calls)
 
     def test_trigger_re_enabled_on_error(self, live_job, mock_db):
@@ -191,7 +191,7 @@ class TestTriggerManagement:
             live_job.execute()
 
         # Trigger should still be re-enabled
-        calls = [str(c) for c in mock_db.execute.call_args_list]
+        calls = [str(c[0][0]) if c[0] else "" for c in mock_db.execute.call_args_list]
         assert any("ENABLE" in c for c in calls)
 
 

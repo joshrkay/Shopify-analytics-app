@@ -431,6 +431,7 @@ class TestSyncExecutor:
 
         session = _mock_session()
         stats = ExecutorStats()
+        mock_update_ts.return_value = 0  # Return an int so `> 0` comparison works
 
         async def _process_queued(limit=10):
             return 3

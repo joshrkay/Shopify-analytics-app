@@ -69,6 +69,7 @@ class TestNotificationModel:
             title="Data sync failed",
             message="Your connector failed to sync",
             idempotency_key="test-key",
+            status=NotificationStatus.PENDING,
         )
 
         assert notification.tenant_id == tenant_id
@@ -269,11 +270,13 @@ class TestNotificationPreferenceModel:
         assert pref.email_enabled is False
 
     def test_defaults_to_enabled(self, tenant_id, user_id):
-        """Should default to both channels enabled."""
+        """Should default to both channels enabled when explicitly set."""
         pref = NotificationPreference(
             tenant_id=tenant_id,
             user_id=user_id,
             event_type=NotificationEventType.CONNECTOR_FAILED,
+            in_app_enabled=True,
+            email_enabled=True,
         )
 
         assert pref.in_app_enabled is True

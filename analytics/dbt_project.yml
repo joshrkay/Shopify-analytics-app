@@ -85,6 +85,8 @@ vars:
   raw_google_ads_schema: airbyte_raw
   raw_tiktok_ads_schema: airbyte_raw
   raw_snapchat_ads_schema: airbyte_raw
+  raw_pinterest_ads_schema: airbyte_raw
+  raw_twitter_ads_schema: airbyte_raw
   raw_email_schema: airbyte_raw
   raw_sms_schema: airbyte_raw
   platform_schema: platform
@@ -99,6 +101,7 @@ vars:
   lookback_days_tiktok_ads: 3
   lookback_days_pinterest_ads: 3
   lookback_days_snap_ads: 3
+  lookback_days_twitter_ads: 3
   lookback_days_amazon_ads: 3
   lookback_days_klaviyo: 3
   lookback_days_ga4: 3
@@ -133,6 +136,14 @@ vars:
       growth: {warn_after_minutes: 360, error_after_minutes: 720}
       enterprise: {warn_after_minutes: 60, error_after_minutes: 120}
     snapchat_ads:
+      free: {warn_after_minutes: 1440, error_after_minutes: 2880}
+      growth: {warn_after_minutes: 360, error_after_minutes: 720}
+      enterprise: {warn_after_minutes: 60, error_after_minutes: 120}
+    pinterest_ads:
+      free: {warn_after_minutes: 1440, error_after_minutes: 2880}
+      growth: {warn_after_minutes: 360, error_after_minutes: 720}
+      enterprise: {warn_after_minutes: 60, error_after_minutes: 120}
+    twitter_ads:
       free: {warn_after_minutes: 1440, error_after_minutes: 2880}
       growth: {warn_after_minutes: 360, error_after_minutes: 720}
       enterprise: {warn_after_minutes: 60, error_after_minutes: 120}

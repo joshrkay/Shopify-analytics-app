@@ -84,7 +84,10 @@ def db_engine():
     # Import Base from db_base
     from src.db_base import Base
 
-    # Import all models to ensure they're registered with Base
+    # Import all models to ensure they're registered with Base.
+    # Without this, Base.metadata.create_all() creates zero tables because
+    # SQLAlchemy only knows about models that have been imported into memory.
+    import src.models  # noqa: F401
 
     # Create all tables
     Base.metadata.create_all(bind=engine)

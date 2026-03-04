@@ -148,7 +148,9 @@ def _generate_jwt_token(
     import jwt
     import os
 
-    jwt_secret = os.getenv("JWT_SECRET", "development-secret-change-in-prod")
+    jwt_secret = os.getenv("JWT_SECRET")
+    if not jwt_secret:
+        raise ValueError("JWT_SECRET environment variable must be set")
 
     payload = {
         "sub": user_id,

@@ -392,9 +392,16 @@ class TestLLMRoutingServiceComplete:
         mock_client.chat_completion.return_value = mock_response
 
         # Setup mock queries
+        # _get_org_config() caches None but re-queries each time since result is None:
+        #   1. complete() calls _get_org_config() -> None
+        #   2. get_primary_model() calls _get_org_config() -> None
+        #   3. _get_default_model() calls _get_model_registry() -> mock_model
+        #   4. get_fallback_model() calls _get_org_config() -> None
         mock_session.query.return_value.filter.return_value.first.side_effect = [
-            None,        # No org config
-            mock_model,  # Default model
+            None,        # No org config (from complete())
+            None,        # No org config (from get_primary_model())
+            mock_model,  # Default model (from _get_default_model())
+            None,        # No org config (from get_fallback_model())
         ]
 
         service = LLMRoutingService(mock_session, tenant_id="tenant-123", client=mock_client)
@@ -436,6 +443,7 @@ class TestLLMRoutingServiceComplete:
             tenant_id="tenant-123",
             primary_model_id="openai/gpt-4",
             fallback_model_id="anthropic/claude-3-haiku",
+            temperature=Decimal("0.7"),
         )
 
         # Mock client: first call fails, second succeeds
@@ -453,11 +461,12 @@ class TestLLMRoutingServiceComplete:
         ]
 
         # Setup mock queries
+        # _get_org_config() caches the result after first hit, so subsequent calls
+        # to _get_org_config() don't query the DB again.
         mock_session.query.return_value.filter.return_value.first.side_effect = [
-            mock_config,     # Org config
-            primary_model,   # Primary model
-            mock_config,     # Org config again for fallback
-            fallback_model,  # Fallback model
+            mock_config,     # Org config (cached after this)
+            primary_model,   # Primary model from _get_model_registry()
+            fallback_model,  # Fallback model from _get_model_registry()
         ]
 
         service = LLMRoutingService(mock_session, tenant_id="tenant-123", client=mock_client)

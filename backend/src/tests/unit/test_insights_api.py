@@ -144,8 +144,7 @@ class TestInsightToResponse:
         assert response.severity == "warning"
         assert response.summary == "Marketing spend increased by 25% week-over-week"
         assert response.confidence_score == 0.85
-        assert response.period_type == "weekly"
-        assert response.comparison_type == "week_over_week"
+        assert response.timeframe == "Last 7 days"
         assert response.platform == "facebook"
         assert response.campaign_id == "campaign-abc"
         assert response.currency == "USD"
@@ -159,12 +158,11 @@ class TestInsightToResponse:
         assert len(response.supporting_metrics) == 1
         metric = response.supporting_metrics[0]
         assert isinstance(metric, SupportingMetricResponse)
-        assert metric.metric == "spend"
-        assert metric.current_value == 12500.0
-        assert metric.prior_value == 10000.0
-        assert metric.delta == 2500.0
-        assert metric.delta_pct == 25.0
-        assert metric.timeframe == "weekly"
+        assert metric.metric == "Marketing Spend"
+        assert metric.current == 12500.0
+        assert metric.previous == 10000.0
+        assert metric.change == 2500.0
+        assert metric.change_pct == 25.0
 
     def test_handles_empty_supporting_metrics(self, sample_insight):
         """Empty supporting metrics are handled gracefully."""

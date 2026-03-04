@@ -1397,6 +1397,43 @@ def emit_jwt_refresh(
         )
 
 
+def emit_tenant_context_switched(
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    previous_tenant_id: str | None = None,
+    *,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit tenant.context_switched when a user switches tenant context."""
+    try:
+        from src.platform.audit import (
+            AuditAction,
+            AuditOutcome,
+            log_system_audit_event_sync,
+        )
+
+        log_system_audit_event_sync(
+            db=db,
+            tenant_id=tenant_id,
+            action=AuditAction.TENANT_CONTEXT_SWITCHED,
+            metadata={
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "previous_tenant_id": previous_tenant_id,
+            },
+            correlation_id=correlation_id,
+            source="api",
+            outcome=AuditOutcome.SUCCESS,
+        )
+    except Exception:
+        logger.warning(
+            "audit_logger.emit_tenant_context_switched_failed",
+            extra={"tenant_id": tenant_id, "user_id": user_id},
+            exc_info=True,
+        )
+
+
 def emit_jwt_refresh_failed(
     db: Session,
     tenant_id: str,
@@ -1680,6 +1717,9 @@ def emit_agency_access_revoked(
     tenant_id: str,
     user_id: str,
     revocation_id: str | None = None,
+    revoked_by: str | None = None,
+    expires_at: Any = None,
+    grace_period_hours: int | None = None,
     *,
     correlation_id: str | None = None,
 ) -> None:
@@ -1691,18 +1731,28 @@ def emit_agency_access_revoked(
             log_system_audit_event_sync,
         )
 
+        metadata: dict[str, Any] = {
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "revocation_id": revocation_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        if revoked_by is not None:
+            metadata["revoked_by"] = revoked_by
+        if expires_at is not None:
+            metadata["expires_at"] = (
+                expires_at.isoformat() if hasattr(expires_at, "isoformat") else str(expires_at)
+            )
+        if grace_period_hours is not None:
+            metadata["grace_period_hours"] = grace_period_hours
+
         log_system_audit_event_sync(
             db=db,
             tenant_id=tenant_id,
             action=AuditAction.AGENCY_ACCESS_REVOKED,
             resource_type=_REVOCATION_RESOURCE_TYPE,
             resource_id=revocation_id,
-            metadata={
-                "user_id": user_id,
-                "tenant_id": tenant_id,
-                "revocation_id": revocation_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            },
+            metadata=metadata,
             correlation_id=correlation_id,
             source="worker",
             outcome=AuditOutcome.SUCCESS,

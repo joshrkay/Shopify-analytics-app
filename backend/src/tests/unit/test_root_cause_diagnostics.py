@@ -151,15 +151,19 @@ class TestIngestionDiagnostics:
         assert result.detected is True
         assert result.confidence_score >= 0.95
 
+    @patch("src.diagnostics.ingestion_diagnostics.datetime")
     @patch("src.diagnostics.ingestion_diagnostics._get_recent_failed_jobs")
     @patch("src.diagnostics.ingestion_diagnostics._get_running_jobs")
     @patch("src.diagnostics.ingestion_diagnostics._get_recent_sync_runs")
     def test_healthy_ingestion_not_detected(
-        self, mock_sync_runs, mock_running, mock_failed
+        self, mock_sync_runs, mock_running, mock_failed, mock_datetime
     ):
         mock_failed.return_value = []
         mock_running.return_value = []
         mock_sync_runs.return_value = []
+        # Pin datetime.now() so the gap calculation is stable
+        mock_datetime.now.return_value = _NOW
+        mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 
         db = _mock_db()
         connector = MagicMock()

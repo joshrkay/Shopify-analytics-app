@@ -8,6 +8,49 @@ vi.mock('../contexts/AgencyContext', () => ({
   useAgency: vi.fn(),
 }));
 
+vi.mock('../hooks/useDataSources', () => ({
+  useDataSources: vi.fn(() => ({
+    sources: [],
+    isLoading: false,
+    error: null,
+    hasConnectedSources: false,
+    refetch: vi.fn(),
+  })),
+}));
+
+vi.mock('../hooks/useTeamMembers', () => ({
+  useTeamMembers: vi.fn(() => ({
+    members: [],
+    isLoading: false,
+    error: null,
+  })),
+  useInviteMember: vi.fn(() => ({
+    mutate: vi.fn(),
+    isLoading: false,
+  })),
+  useUpdateMemberRole: vi.fn(() => ({
+    mutate: vi.fn(),
+    isLoading: false,
+  })),
+  useRemoveMember: vi.fn(() => ({
+    mutate: vi.fn(),
+    isLoading: false,
+  })),
+  useResendInvite: vi.fn(() => ({
+    mutate: vi.fn(),
+    isLoading: false,
+  })),
+  TEAM_MEMBERS_QUERY_KEY: 'team-members',
+  REMOVE_UNDO_WINDOW_MS: 5000,
+}));
+
+// Prevent any real fetch calls from hanging
+vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+  ok: true,
+  json: () => Promise.resolve({}),
+  headers: new Headers({ 'content-type': 'application/json' }),
+})));
+
 import { useAgency } from '../contexts/AgencyContext';
 
 const mockedUseAgency = vi.mocked(useAgency);

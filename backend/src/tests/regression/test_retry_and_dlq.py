@@ -133,8 +133,8 @@ class TestBackoffCalculation:
         policy = RetryPolicy(base_delay_seconds=60.0)
         delay = calculate_backoff(attempt=0, policy=policy, retry_after=120)
 
-        # Should be around 120 with small jitter (-5 to +10)
-        assert 115.0 <= delay <= 130.0
+        # With 25% default jitter, delay is 120 +/- (0.25 * 120) = [90, 150]
+        assert 90.0 <= delay <= 150.0
 
     def test_minimum_delay_is_one_second(self):
         """Delay never goes below 1 second."""

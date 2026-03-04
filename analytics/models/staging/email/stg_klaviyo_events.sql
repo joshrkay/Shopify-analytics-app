@@ -219,20 +219,25 @@ klaviyo_events_normalized as (
     from klaviyo_events_extracted
 ),
 
--- Join to tenant mapping to get tenant_id
+-- LIMITATION: Klaviyo event data lacks a per-record account identifier.
+-- Tenant mapping assumes at most one active Klaviyo connection exists.
+-- The dbt test 'test_single_connection_per_source_type' enforces this constraint.
+-- For multi-tenant with multiple Klaviyo accounts, migrate to per-tenant
+-- Airbyte destination schemas so raw data is pre-isolated.
+klaviyo_tenant_mapping as (
+    select tenant_id
+    from {{ ref('_tenant_airbyte_connections') }}
+    where source_type = 'source-klaviyo'
+    order by tenant_id
+    limit 1
+),
+
 klaviyo_events_with_tenant as (
     select
         events.*,
-        coalesce(
-            (select tenant_id
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'source-klaviyo'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            null
-        ) as tenant_id
+        tm.tenant_id
     from klaviyo_events_normalized events
+    cross join klaviyo_tenant_mapping tm
 ),
 
 -- Add internal IDs and canonical channel

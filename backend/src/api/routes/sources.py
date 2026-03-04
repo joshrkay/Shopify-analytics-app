@@ -104,8 +104,11 @@ def _get_redis_client():
         client = RedisClient()
         if client.available:
             return client
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Redis unavailable for OAuth state — falling back to in-memory storage",
+            extra={"error": str(exc)},
+        )
     return None
 
 
@@ -214,6 +217,11 @@ PLATFORM_TO_AIRBYTE_SOURCE_TYPE: dict[str, str] = {
     "snapchat_ads": "source-snapchat-marketing",
     "pinterest_ads": "source-pinterest-ads",
     "twitter_ads": "source-twitter-ads",
+    # API-key platforms
+    "klaviyo": "source-klaviyo",
+    "attentive": "source-attentive",
+    "postscript": "source-postscript",
+    "smsbump": "source-smsbump",
 }
 
 

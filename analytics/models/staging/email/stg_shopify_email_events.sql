@@ -197,20 +197,25 @@ shopify_email_normalized as (
     from shopify_email_extracted
 ),
 
--- Join to tenant mapping to get tenant_id
+-- LIMITATION: Shopify Email activity data lacks a per-record account identifier.
+-- Tenant mapping assumes at most one active Shopify connection exists.
+-- The dbt test 'test_single_connection_per_source_type' enforces this constraint.
+-- For multi-tenant with multiple Shopify stores, the stg_shopify_orders model
+-- properly joins on shop_domain. This email model inherits the same tenant.
+shopify_email_tenant_mapping as (
+    select tenant_id
+    from {{ ref('_tenant_airbyte_connections') }}
+    where source_type in ('shopify', 'source-shopify')
+    order by tenant_id
+    limit 1
+),
+
 shopify_email_with_tenant as (
     select
         events.*,
-        coalesce(
-            (select tenant_id
-             from {{ ref('_tenant_airbyte_connections') }}
-             where source_type = 'source-shopify'
-               and status = 'active'
-               and is_enabled = true
-             limit 1),
-            null
-        ) as tenant_id
+        tm.tenant_id
     from shopify_email_normalized events
+    cross join shopify_email_tenant_mapping tm
 ),
 
 -- Add internal IDs and canonical channel

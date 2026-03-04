@@ -323,15 +323,16 @@ class TestAuditAlertIntegration:
         )
         ac = AuditAccessControl(ctx)
 
-        with patch("src.services.audit_access_control.get_audit_alert_manager") as mock_get_manager:
-            mock_manager = MagicMock()
-            mock_get_manager.return_value = mock_manager
+        with patch("src.platform.audit.log_system_audit_event_sync"):
+            with patch("src.monitoring.audit_alerts.get_audit_alert_manager") as mock_get_manager:
+                mock_manager = MagicMock()
+                mock_get_manager.return_value = mock_manager
 
-            with pytest.raises(Exception):
-                ac.validate_access("tenant-2", db_session=MagicMock())
+                with pytest.raises(Exception):
+                    ac.validate_access("tenant-2", db_session=MagicMock())
 
-            mock_manager.alert_cross_tenant_access.assert_called_once_with(
-                requesting_tenant="tenant-1",
-                target_tenant="tenant-2",
-                user_id="user-1",
-            )
+                mock_manager.alert_cross_tenant_access.assert_called_once_with(
+                    requesting_tenant="tenant-1",
+                    target_tenant="tenant-2",
+                    user_id="user-1",
+                )

@@ -77,6 +77,22 @@ services:
       retries: 5
 
   # =============================================================================
+  # Airbyte OSS (Data Ingestion)
+  # =============================================================================
+  # Airbyte API server provides the REST API used by AirbyteClient.
+  # See: https://docs.airbyte.com/deploying-airbyte/docker-compose
+  #
+  # For full Airbyte OSS stack, run:
+  #   git clone https://github.com/airbytehq/airbyte.git /tmp/airbyte
+  #   cd /tmp/airbyte && docker compose up -d
+  # Then set AIRBYTE_BASE_URL=http://localhost:8006/v1 in backend env.
+  #
+  # This minimal config starts just the API server for development.
+  # It requires the full Airbyte stack running externally or uses
+  # the env vars below to point to an existing Airbyte instance.
+  # =============================================================================
+
+  # =============================================================================
   # Backend API (FastAPI)
   # =============================================================================
   backend:
@@ -98,8 +114,11 @@ services:
       - SHOPIFY_API_SECRET=${SHOPIFY_API_SECRET:-test-webhook-secret-for-hmac}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-test-openrouter-key}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGVzdGVuY3J5cHRpb25rZXkxMjM0NTY3ODkwMTI=}
-      - AIRBYTE_WORKSPACE_ID=${AIRBYTE_WORKSPACE_ID:-test-workspace}
-      - AIRBYTE_API_TOKEN=${AIRBYTE_API_TOKEN:-test-token}
+      # Airbyte OSS — set AIRBYTE_BASE_URL to your Airbyte API server
+      - AIRBYTE_BASE_URL=${AIRBYTE_BASE_URL:-http://host.docker.internal:8006/v1}
+      - AIRBYTE_USERNAME=${AIRBYTE_USERNAME:-airbyte}
+      - AIRBYTE_PASSWORD=${AIRBYTE_PASSWORD:-password}
+      - AIRBYTE_WORKSPACE_ID=${AIRBYTE_WORKSPACE_ID:-}
       # Enable test mode
       - SHOPIFY_BILLING_TEST_MODE=true
     depends_on:
