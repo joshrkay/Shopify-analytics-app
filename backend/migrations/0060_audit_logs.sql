@@ -75,8 +75,7 @@ CREATE INDEX IF NOT EXISTS ix_ga_audit_tenant_user
 
 -- Retention job: efficient deletion of old records per tenant
 CREATE INDEX IF NOT EXISTS ix_ga_audit_retention
-    ON ga_audit_logs (created_at)
-    WHERE created_at < NOW() - INTERVAL '90 days';
+    ON ga_audit_logs (created_at);
 
 -- ==========================================================================
 -- Immutability trigger (defense in depth)
