@@ -70,6 +70,8 @@ class PacingResponse(BaseModel):
 
 
 @router.get("/budgets", response_model=List[BudgetResponse])
+@check_billing_entitlement_decorator(BillingFeature.BUDGET_PACING)
+async def list_budgets(request: Request, db: Session = Depends(_get_db)):
 async def list_budgets(request: Request, db: Session = Depends(check_budget_pacing_entitlement)):
     tenant_ctx = get_tenant_context(request)
     svc = BudgetPacingService(db, tenant_ctx.tenant_id)
