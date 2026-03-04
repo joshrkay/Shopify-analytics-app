@@ -37,6 +37,7 @@ class NotificationEventType(str, enum.Enum):
     SYNC_COMPLETED = "sync_completed"
     INSIGHT_GENERATED = "insight_generated"
     RECOMMENDATION_CREATED = "recommendation_created"
+    ALERT_TRIGGERED = "alert_triggered"
 
 
 class NotificationImportance(str, enum.Enum):
@@ -74,6 +75,7 @@ EVENT_IMPORTANCE_MAP = {
     NotificationEventType.SYNC_COMPLETED: NotificationImportance.ROUTINE,
     NotificationEventType.INSIGHT_GENERATED: NotificationImportance.ROUTINE,
     NotificationEventType.RECOMMENDATION_CREATED: NotificationImportance.ROUTINE,
+    NotificationEventType.ALERT_TRIGGERED: NotificationImportance.IMPORTANT,
 }
 
 
