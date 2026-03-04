@@ -50,6 +50,7 @@ class CohortAnalysisResponse(BaseModel):
 
 
 @router.get("", response_model=CohortAnalysisResponse)
+@check_billing_entitlement_decorator(BillingFeature.COHORT_ANALYSIS)
 async def get_cohort_analysis(
     request: Request,
     timeframe: str = Query("12m", description="Lookback: 3m, 6m, 12m"),
