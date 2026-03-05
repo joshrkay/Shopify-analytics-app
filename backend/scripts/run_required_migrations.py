@@ -48,8 +48,6 @@ MIGRATIONS = [
     "add_report_templates.sql",
     "performance_indexes.sql",
     "raw_schema.sql",
-    "ad_budgets_schema.sql",
-    "alerts_schema.sql",
 ]
 
 

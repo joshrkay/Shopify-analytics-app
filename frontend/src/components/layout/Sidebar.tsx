@@ -56,13 +56,13 @@ interface NavSection {
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: 'Analytics',
+    title: 'Main',
     items: [
       { label: 'Home', path: '/home', icon: HomeIcon },
       { label: 'Attribution', path: '/attribution', icon: ChartLineIcon },
       { label: 'Orders', path: '/orders', icon: ListBulletedIcon },
-      { label: 'Cohort Analysis', path: '/cohort-analysis', icon: ChartVerticalIcon, feature: 'cohort_analysis' },
-      { label: 'Budget Pacing', path: '/budget-pacing', icon: ChartVerticalIcon, feature: 'budget_pacing' },
+      { label: 'Builder', path: '/dashboards', icon: ChartVerticalIcon, matchPrefix: true, feature: 'custom_reports' },
+      { label: 'Insights', path: '/insights', icon: LightbulbIcon, feature: 'ai_insights' },
     ],
   },
   {
@@ -78,19 +78,15 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'Tools',
+    title: 'Connections',
     items: [
-      { label: 'Builder', path: '/dashboards', icon: ChartVerticalIcon, matchPrefix: true, feature: 'custom_reports' },
       { label: 'Sources', path: '/data-sources', icon: DatabaseIcon },
-      { label: 'Insights', path: '/insights', icon: LightbulbIcon, feature: 'ai_insights' },
     ],
   },
   {
-    title: 'System',
+    title: 'Settings',
     items: [
       { label: 'Settings', path: '/settings', icon: SettingsIcon },
-      { label: 'Alerts', path: '/alerts', icon: LightbulbIcon, feature: 'alerts' },
-      { label: "What's New", path: '/whats-new', icon: LightbulbIcon },
     ],
   },
 ];

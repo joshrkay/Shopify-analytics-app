@@ -12,14 +12,12 @@
  * Phase 1 - Header & ProfileSwitcher
  */
 
-import { useState } from 'react';
 import { InlineStack, Box, Icon } from '@shopify/polaris';
-import { MenuIcon, SearchIcon } from '@shopify/polaris-icons';
+import { MenuIcon } from '@shopify/polaris-icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChangelogBadge } from '../changelog/ChangelogBadge';
 import { WhatChangedButton } from '../whatChanged/WhatChangedButton';
 import { NotificationBadge } from '../common/NotificationBadge';
-import { GlobalSearch } from './GlobalSearch';
 import { ProfileMenu } from './ProfileMenu';
 import { useSidebar } from './RootLayout';
 import { getUnreadInsightsCount } from '../../services/insightsApi';
@@ -29,7 +27,6 @@ export function AppHeader() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isOpen, toggle } = useSidebar();
-  const [searchOpen, setSearchOpen] = useState(false);
 
   const handleWhatsNewClick = () => {
     navigate('/whats-new');
@@ -63,19 +60,6 @@ export function AppHeader() {
         >
           <Icon source={MenuIcon} />
         </button>
-
-        {/* Center: search trigger */}
-        <button
-          type="button"
-          onClick={() => setSearchOpen(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: '1px solid #d2d5d8', borderRadius: '4px', padding: '4px 12px', cursor: 'pointer', color: '#6d7175', fontSize: '13px' }}
-          aria-label="Search (Cmd+K)"
-        >
-          <Icon source={SearchIcon} />
-          <span>Search</span>
-          <kbd style={{ marginLeft: '8px', padding: '0 4px', border: '1px solid #d2d5d8', borderRadius: '3px', fontSize: '11px' }}>⌘K</kbd>
-        </button>
-        <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
 
         {/* Right: Status indicators + profile */}
         <InlineStack gap="400" blockAlign="center">

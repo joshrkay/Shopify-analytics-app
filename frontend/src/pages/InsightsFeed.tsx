@@ -65,13 +65,6 @@ const severityOptions = [
   { label: 'Info', value: 'info' },
 ];
 
-const SUGGESTED_PROMPTS = [
-  'What drove revenue this week?',
-  'Which channel has best ROAS?',
-  'Show me customer retention trends',
-  'Compare ad spend efficiency',
-];
-
 export function InsightsFeed() {
   const navigate = useNavigate();
 
@@ -281,31 +274,6 @@ export function InsightsFeed() {
           title="AI Insights"
           subtitle="AI-generated insights about your advertising performance"
         >
-      <Layout>
-        <Layout.Section>
-          <InlineStack gap="200" wrap>
-            {SUGGESTED_PROMPTS.map(prompt => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => handleNewPrompt(prompt)}
-                style={{
-                  background: '#f6f6f7',
-                  border: '1px solid #d2d5d8',
-                  borderRadius: '16px',
-                  padding: '6px 14px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  color: '#2E72D2',
-                }}
-              >
-                {prompt}
-              </button>
-            ))}
-          </InlineStack>
-        </Layout.Section>
-      </Layout>
-
       <Layout>
         <Layout.Section>
           <Card>

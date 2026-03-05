@@ -32,7 +32,6 @@ import { useEntitlements } from './hooks/useEntitlements';
 import { isFeatureEntitled } from './services/entitlementsApi';
 import type { EntitlementsResponse } from './services/entitlementsApi';
 import { DashboardBuilderProvider } from './contexts/DashboardBuilderContext';
-import { DateRangeProvider } from './contexts/DateRangeContext';
 
 // Default route — loaded eagerly (users always land here)
 import { Dashboard } from './pages/Dashboard';
@@ -58,10 +57,6 @@ const Attribution = lazy(() => import('./pages/Attribution').then(m => ({ defaul
 const Orders = lazy(() => import('./pages/Orders').then(m => ({ default: m.Orders })));
 const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
 const ChannelAnalytics = lazy(() => import('./pages/ChannelAnalytics').then(m => ({ default: m.ChannelAnalytics })));
-const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
-const CohortAnalysis = lazy(() => import('./pages/CohortAnalysis').then(m => ({ default: m.CohortAnalysis })));
-const BudgetPacing = lazy(() => import('./pages/BudgetPacing').then(m => ({ default: m.BudgetPacing })));
-const Alerts = lazy(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })));
 
 const PageLoader = () => (
   <SkeletonPage primaryAction={false}>
@@ -165,7 +160,6 @@ function AppWithOrg() {
   return (
     <AgencyProvider>
       <DataHealthProvider>
-        <DateRangeProvider>
         <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* Onboarding wizard — full-screen, no sidebar */}
@@ -194,21 +188,6 @@ function AppWithOrg() {
             <Route path="/attribution" element={<Attribution />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/channels/:platform" element={<ChannelAnalytics />} />
-            <Route path="/cohort-analysis" element={
-              <FeatureGateRoute feature="cohort_analysis" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
-                <CohortAnalysis />
-              </FeatureGateRoute>
-            } />
-            <Route path="/budget-pacing" element={
-              <FeatureGateRoute feature="budget_pacing" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
-                <BudgetPacing />
-              </FeatureGateRoute>
-            } />
-            <Route path="/alerts" element={
-              <FeatureGateRoute feature="alerts" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
-                <Alerts />
-              </FeatureGateRoute>
-            } />
             <Route path="/whats-new" element={<WhatsNew />} />
             <Route path="/data-sources" element={<DataSources />} />
             <Route path="/admin/plans" element={<AdminPlans />} />
@@ -243,11 +222,9 @@ function AppWithOrg() {
             />
             {/* View route is NOT gated — shared dashboards viewable on any plan */}
             <Route path="/dashboards/:dashboardId" element={<DashboardView />} />
-            <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
         </Suspense>
-        </DateRangeProvider>
       </DataHealthProvider>
     </AgencyProvider>
   );

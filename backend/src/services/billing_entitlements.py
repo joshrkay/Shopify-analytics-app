@@ -41,9 +41,6 @@ class BillingFeature:
     CUSTOM_REPORTS = "custom_reports"
     LLM_ROUTING = "llm_routing"  # Story 8.8
     CUSTOM_PROMPTS = "custom_prompts"  # Story 8.8 - Enterprise only
-    COHORT_ANALYSIS = "cohort_analysis"
-    BUDGET_PACING = "budget_pacing"
-    ALERTS = "alerts"
 
 
 # Billing tier feature matrix
@@ -60,13 +57,9 @@ BILLING_TIER_FEATURES = {
         BillingFeature.CUSTOM_REPORTS: False,
         BillingFeature.LLM_ROUTING: False,  # Story 8.8
         BillingFeature.CUSTOM_PROMPTS: False,  # Story 8.8
-        BillingFeature.COHORT_ANALYSIS: False,
-        BillingFeature.BUDGET_PACING: False,
-        BillingFeature.ALERTS: False,
         'max_dashboard_access': 3,
         'max_dashboard_shares': 0,
         'max_users': 2,
-        'max_alert_rules': 3,
     },
     'growth': {
         BillingFeature.AGENCY_ACCESS: True,  # Limited (agency_viewer only)
@@ -80,14 +73,10 @@ BILLING_TIER_FEATURES = {
         BillingFeature.CUSTOM_REPORTS: True,
         BillingFeature.LLM_ROUTING: True,   # Story 8.8
         BillingFeature.CUSTOM_PROMPTS: False,  # Story 8.8 - Enterprise only
-        BillingFeature.COHORT_ANALYSIS: True,
-        BillingFeature.BUDGET_PACING: True,
-        BillingFeature.ALERTS: True,
         'max_dashboard_access': 10,
         'max_dashboard_shares': 5,
         'max_users': 10,
         'max_agency_stores': 5,
-        'max_alert_rules': 10,
     },
     'enterprise': {
         BillingFeature.AGENCY_ACCESS: True,   # Full (agency_admin + agency_viewer)
@@ -101,14 +90,10 @@ BILLING_TIER_FEATURES = {
         BillingFeature.CUSTOM_REPORTS: True,
         BillingFeature.LLM_ROUTING: True,    # Story 8.8
         BillingFeature.CUSTOM_PROMPTS: True,  # Story 8.8 - Custom prompt templates
-        BillingFeature.COHORT_ANALYSIS: True,
-        BillingFeature.BUDGET_PACING: True,
-        BillingFeature.ALERTS: True,
         'max_dashboard_access': 999,
         'max_dashboard_shares': 999,
         'max_users': 999,
         'max_agency_stores': 999,
-        'max_alert_rules': -1,
     },
 }
 

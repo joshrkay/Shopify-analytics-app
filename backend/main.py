@@ -64,10 +64,6 @@ from src.api.routes import custom_dashboards
 from src.api.routes import dashboard_shares
 from src.api.routes import report_templates
 from src.api.routes import report_execute
-from src.api.routes import cohort_analysis
-from src.api.routes import budget_pacing
-from src.api.routes import alerts
-from src.api.routes import search
 from src.platform.db_readiness import REQUIRED_IDENTITY_TABLES, check_required_tables
 from src.database.session import get_db_session_sync
 
@@ -367,18 +363,6 @@ app.include_router(orders.router)
 # Include agency routes (requires authentication and agency role)
 # Story 5.5.1 - Agency Store Management
 app.include_router(agency.router)
-
-# Include cohort analysis routes (requires authentication + cohort_analysis entitlement)
-app.include_router(cohort_analysis.router)
-
-# Include budget pacing routes (requires authentication + budget_pacing entitlement)
-app.include_router(budget_pacing.router)
-
-# Include alerts routes (requires authentication + alerts entitlement)
-app.include_router(alerts.router)
-
-# Include global search routes (requires authentication)
-app.include_router(search.router)
 
 
 # ---------------------------------------------------------------------------
