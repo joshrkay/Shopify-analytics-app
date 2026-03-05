@@ -12,7 +12,7 @@
  * Phase 3 - Dashboard Builder UI
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import {
   Card,
   BlockStack,
@@ -40,7 +40,7 @@ interface ReportCardProps {
   report: Report;
 }
 
-export function ReportCard({ report }: ReportCardProps) {
+function ReportCardBase({ report }: ReportCardProps) {
   const { openReportConfig, removeReport } = useDashboardBuilder();
 
   const [previewData, setPreviewData] = useState<Record<string, unknown>[] | null>(null);
@@ -252,3 +252,13 @@ export function ReportCard({ report }: ReportCardProps) {
     </div>
   );
 }
+
+// Memoised export: skip re-render when parent re-renders due to unrelated state
+// changes (auto-save status, wizard step, etc.). Only re-render when the report
+// data itself changes.
+export const ReportCard = memo(ReportCardBase, (prev, next) => {
+  return (
+    prev.report.id === next.report.id &&
+    prev.report.updated_at === next.report.updated_at
+  );
+});
