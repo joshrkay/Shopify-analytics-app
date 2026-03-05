@@ -7,7 +7,7 @@
  * Story 9.8 - "What Changed?" Debug Panel
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Modal,
   BlockStack,
@@ -61,35 +61,36 @@ export function WhatChangedPanel({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
     setIsLoading(true);
     setError(null);
 
-    try {
-      const [summaryData, syncsData, actionsData, changesData] = await Promise.all([
-        getSummary(days),
-        getRecentSyncs(days),
-        getAIActions(days),
-        getConnectorStatusChanges(days),
-      ]);
+    Promise.all([
+      getSummary(days),
+      getRecentSyncs(days),
+      getAIActions(days),
+      getConnectorStatusChanges(days),
+    ])
+      .then(([summaryData, syncsData, actionsData, changesData]) => {
+        if (cancelled) return;
+        setSummary(summaryData);
+        setSyncs(syncsData.syncs);
+        setAIActions(actionsData.actions);
+        setConnectorChanges(changesData.changes);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Failed to fetch what changed data:', err);
+        setError('Failed to load data. Please try again.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
 
-      setSummary(summaryData);
-      setSyncs(syncsData.syncs);
-      setAIActions(actionsData.actions);
-      setConnectorChanges(changesData.changes);
-    } catch (err) {
-      console.error('Failed to fetch what changed data:', err);
-      setError('Failed to load data. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [days]);
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchData();
-    }
-  }, [isOpen, fetchData]);
+    return () => { cancelled = true; };
+  }, [isOpen, days]);
 
   const handleTabChange = (tabIndex: number) => {
     const tabIds: TabId[] = ['overview', 'syncs', 'ai-actions', 'connectors'];

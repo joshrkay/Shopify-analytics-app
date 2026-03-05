@@ -57,10 +57,17 @@ export function PendingApprovalsBadge({
   useEffect(() => {
     fetchCount();
 
-    if (refreshInterval > 0) {
-      const interval = setInterval(fetchCount, refreshInterval);
-      return () => clearInterval(interval);
-    }
+    if (refreshInterval <= 0) return;
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (timer) return; timer = setInterval(fetchCount, refreshInterval); };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const onVisibility = () => (document.hidden ? stop() : start());
+
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshInterval]);
 
   if (isLoading) {

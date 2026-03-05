@@ -6,7 +6,7 @@
  * Shows estimated scope and warnings about rate limits.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Modal,
   BlockStack,
@@ -59,6 +59,7 @@ const BackfillModal: React.FC<BackfillModalProps> = ({
   const [estimating, setEstimating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const estimateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Initialize dates (default to last 7 days)
   useEffect(() => {
@@ -75,17 +76,42 @@ const BackfillModal: React.FC<BackfillModalProps> = ({
     }
   }, [open]);
 
-  // Validate date range when dates change
+  // Fetch backfill estimate (debounced to prevent rapid concurrent requests)
+  const fetchEstimate = useCallback(async (connectorId: string, start: string, end: string) => {
+    let cancelled = false;
+    setEstimating(true);
+    try {
+      const result = await estimateBackfill(connectorId, start, end);
+      if (!cancelled) {
+        setEstimate(result);
+        setError(null);
+      }
+    } catch (err) {
+      if (!cancelled) {
+        console.error('Failed to fetch estimate:', err);
+        // Don't show error for estimate failure, just clear estimate
+        setEstimate(null);
+      }
+    } finally {
+      if (!cancelled) setEstimating(false);
+    }
+    return () => { cancelled = true; };
+  }, []);
+
+  // Validate date range when dates change; debounce the estimate call
   useEffect(() => {
+    if (estimateDebounceRef.current) clearTimeout(estimateDebounceRef.current);
+
     if (startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
       const result = calculateBackfillDateRange(start, end);
       setValidation(result);
 
-      // Fetch estimate if valid
       if (result.isValid) {
-        fetchEstimate();
+        estimateDebounceRef.current = setTimeout(() => {
+          fetchEstimate(connector.connector_id, startDate, endDate);
+        }, 300);
       } else {
         setEstimate(null);
       }
@@ -93,29 +119,9 @@ const BackfillModal: React.FC<BackfillModalProps> = ({
       setValidation(null);
       setEstimate(null);
     }
-  }, [startDate, endDate]);
 
-  // Fetch backfill estimate
-  const fetchEstimate = useCallback(async () => {
-    if (!startDate || !endDate) return;
-
-    setEstimating(true);
-    try {
-      const result = await estimateBackfill(
-        connector.connector_id,
-        startDate,
-        endDate
-      );
-      setEstimate(result);
-      setError(null);
-    } catch (err) {
-      console.error('Failed to fetch estimate:', err);
-      // Don't show error for estimate failure, just clear estimate
-      setEstimate(null);
-    } finally {
-      setEstimating(false);
-    }
-  }, [connector.connector_id, startDate, endDate]);
+    return () => { if (estimateDebounceRef.current) clearTimeout(estimateDebounceRef.current); };
+  }, [startDate, endDate, connector.connector_id, fetchEstimate]);
 
   // Handle form submission
   const handleSubmit = async () => {

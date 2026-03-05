@@ -199,6 +199,7 @@ def _emit_rbac_denied_audit(
             )
             session.commit()
         except Exception:
+            logger.warning("rbac_middleware.audit_emit_failed", exc_info=True)
             session.rollback()
         finally:
             session.close()

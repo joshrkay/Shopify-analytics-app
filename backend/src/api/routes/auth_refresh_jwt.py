@@ -148,7 +148,7 @@ async def refresh_jwt(request: Request, body: RefreshJWTRequest):
                 tenant_id=target_tenant_id,
             )
         except Exception:
-            logger.debug(
+            logger.warning(
                 "Active tenant metadata update skipped",
                 extra={"user_id": tenant_context.user_id},
                 exc_info=True,
@@ -169,7 +169,7 @@ async def refresh_jwt(request: Request, body: RefreshJWTRequest):
                     previous_tenant_id=previous_tenant_id,
                 )
         except Exception:
-            logger.debug("Audit event emission skipped", exc_info=True)
+            logger.warning("Audit event emission skipped", exc_info=True)
 
         db.commit()
 

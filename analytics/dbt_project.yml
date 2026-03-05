@@ -25,6 +25,7 @@ models:
       +enabled: true
     staging:
       +materialized: view
+      +on_schema_change: sync_all_columns
       shopify:
         +schema: staging
       ads:

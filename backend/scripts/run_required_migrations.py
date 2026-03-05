@@ -50,6 +50,7 @@ MIGRATIONS = [
     "raw_schema.sql",
     "ad_budgets_schema.sql",
     "alerts_schema.sql",
+    "add_missing_fk_indexes.sql",
 ]
 
 

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Crown, Eye, Plus, Shield, Trash2, X } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Crown, Eye, Plus, Shield, Trash2, X, type IconComponent } from '../../icons';
 import {
   useInviteMember,
   useRemoveMember,
@@ -12,7 +11,7 @@ import type { TeamInviteRole, TeamMember } from '../../types/settingsTypes';
 interface RoleDefinition {
   id: TeamMember['role'];
   name: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   permissions: string[];
 }
 

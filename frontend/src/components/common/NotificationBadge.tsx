@@ -82,10 +82,16 @@ export function NotificationBadge({
   useEffect(() => {
     loadCount();
 
-    if (refreshInterval > 0) {
-      const interval = setInterval(loadCount, refreshInterval);
-      return () => clearInterval(interval);
-    }
+    if (refreshInterval <= 0) return;
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => { if (timer) return; timer = setInterval(loadCount, refreshInterval); };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+    const onVisibility = () => (document.hidden ? stop() : start());
+
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [loadCount, refreshInterval]);
 
   // Loading state

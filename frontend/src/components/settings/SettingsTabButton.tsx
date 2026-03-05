@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import type { LucideIcon } from 'lucide-react';
+import type { IconComponent } from '../../icons';
 
 interface SettingsTabButtonProps {
-  icon: LucideIcon;
+  icon: IconComponent;
   active: boolean;
   onClick: () => void;
   children: ReactNode;

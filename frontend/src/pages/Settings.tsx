@@ -8,8 +8,8 @@ import {
   Sparkles,
   User,
   Users,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+  type IconComponent,
+} from '../icons';
 import { useSearchParams } from 'react-router-dom';
 import { useAgency } from '../contexts/AgencyContext';
 import type { SettingsTab } from '../types/settingsTypes';
@@ -29,7 +29,7 @@ type RequiredRole = keyof typeof ROLE_RANK;
 interface SettingsTabDefinition {
   id: SettingsTab;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   requiredRole: RequiredRole;
 }
 

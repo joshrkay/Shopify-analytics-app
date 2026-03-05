@@ -51,6 +51,22 @@ class ChangelogService:
         self.user_id = user_id
 
     # =========================================================================
+    # Private Helpers
+    # =========================================================================
+
+    def _get_read_entry_ids(self) -> set:
+        """Return the set of changelog_entry_ids already read by this user."""
+        return set(
+            r[0]
+            for r in self.db.query(ChangelogReadStatus.changelog_entry_id)
+            .filter(
+                ChangelogReadStatus.tenant_id == self.tenant_id,
+                ChangelogReadStatus.user_id == self.user_id,
+            )
+            .all()
+        )
+
+    # =========================================================================
     # Public Read Operations (any authenticated user)
     # =========================================================================
 
@@ -90,14 +106,7 @@ class ChangelogService:
             )
 
         # Get user's read entries
-        read_entry_ids = set(
-            r[0] for r in self.db.query(ChangelogReadStatus.changelog_entry_id)
-            .filter(
-                ChangelogReadStatus.tenant_id == self.tenant_id,
-                ChangelogReadStatus.user_id == self.user_id,
-            )
-            .all()
-        )
+        read_entry_ids = self._get_read_entry_ids()
 
         # Get total count
         total = query.count()
@@ -195,14 +204,7 @@ class ChangelogService:
             Dict with total count and count by feature area
         """
         # Get user's read entry IDs
-        read_entry_ids = set(
-            r[0] for r in self.db.query(ChangelogReadStatus.changelog_entry_id)
-            .filter(
-                ChangelogReadStatus.tenant_id == self.tenant_id,
-                ChangelogReadStatus.user_id == self.user_id,
-            )
-            .all()
-        )
+        read_entry_ids = self._get_read_entry_ids()
 
         # Build base query for published entries
         base_query = self.db.query(ChangelogEntry).filter(
@@ -252,14 +254,7 @@ class ChangelogService:
             List of unread entries for the feature area
         """
         # Get user's read entry IDs
-        read_entry_ids = set(
-            r[0] for r in self.db.query(ChangelogReadStatus.changelog_entry_id)
-            .filter(
-                ChangelogReadStatus.tenant_id == self.tenant_id,
-                ChangelogReadStatus.user_id == self.user_id,
-            )
-            .all()
-        )
+        read_entry_ids = self._get_read_entry_ids()
 
         # Query unread entries for feature area
         query = self.db.query(ChangelogEntry).filter(
@@ -355,14 +350,7 @@ class ChangelogService:
             Count of entries marked as read
         """
         # Get user's already-read entry IDs
-        read_entry_ids = set(
-            r[0] for r in self.db.query(ChangelogReadStatus.changelog_entry_id)
-            .filter(
-                ChangelogReadStatus.tenant_id == self.tenant_id,
-                ChangelogReadStatus.user_id == self.user_id,
-            )
-            .all()
-        )
+        read_entry_ids = self._get_read_entry_ids()
 
         # Get all published entry IDs that haven't been read
         unread_query = self.db.query(ChangelogEntry.id).filter(

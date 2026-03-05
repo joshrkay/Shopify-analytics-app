@@ -62,10 +62,14 @@ export function useClerkToken(): { isTokenReady: boolean } {
       // Clerk session tokens expire after ~60s.
       // Refresh the cached localStorage token periodically
       // so sync createHeaders() callers always have a valid token.
-      const refreshInterval = setInterval(() => {
-        tokenProvider();
-      }, 50_000);
-      return () => clearInterval(refreshInterval);
+      // Pause refreshing when the tab is hidden to avoid unnecessary calls.
+      let timer: ReturnType<typeof setInterval> | null = null;
+      const start = () => { if (timer) return; timer = setInterval(() => { tokenProvider(); }, 50_000); };
+      const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+      const onVisibility = () => (document.hidden ? stop() : start());
+      if (!document.hidden) start();
+      document.addEventListener('visibilitychange', onVisibility);
+      return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
     } else {
       // Clear token on sign out
       setTokenProvider(null);

@@ -51,6 +51,9 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
     }
   }, []);
 
+  // Clear pending debounce on unmount to prevent state updates on unmounted component
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
   const handleInputChange = (value: string) => {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);

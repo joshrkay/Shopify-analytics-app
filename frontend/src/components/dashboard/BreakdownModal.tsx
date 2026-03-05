@@ -17,7 +17,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, ArrowLeft } from 'lucide-react';
+import { X, ArrowLeft } from '../../icons';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -79,25 +79,29 @@ export function BreakdownModal({ open, onClose, metric, timeframe, title }: Prop
   // Load L1 whenever the modal opens or metric/timeframe changes
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     setView('all-channels');
     setSelectedChannel(null);
     setSummary(null);
     setLoadingL1(true);
     getChannelBreakdown(metric, timeframe)
-      .then(data => setSummary(data))
+      .then(data => { if (!cancelled) setSummary(data); })
       .catch(() => {/* silently leave summary null — no data for period */})
-      .finally(() => setLoadingL1(false));
+      .finally(() => { if (!cancelled) setLoadingL1(false); });
+    return () => { cancelled = true; };
   }, [open, metric, timeframe]);
 
   // Load L2 whenever a channel is selected
   useEffect(() => {
     if (!selectedChannel) return;
+    let cancelled = false;
     setDrilldown(null);
     setLoadingL2(true);
     getChannelDrilldown(selectedChannel, timeframe)
-      .then(data => setDrilldown(data))
+      .then(data => { if (!cancelled) setDrilldown(data); })
       .catch(() => {/* silently leave drilldown null */})
-      .finally(() => setLoadingL2(false));
+      .finally(() => { if (!cancelled) setLoadingL2(false); });
+    return () => { cancelled = true; };
   }, [selectedChannel, timeframe]);
 
   if (!open) return null;

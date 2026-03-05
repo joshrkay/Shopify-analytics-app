@@ -41,7 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only dependency files first for caching
+# Copy only runtime requirements — test packages are excluded from the production image.
+# See requirements-dev.txt for the full install used in CI.
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 

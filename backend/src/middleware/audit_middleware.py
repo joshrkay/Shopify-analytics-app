@@ -85,7 +85,7 @@ class GAAuditMiddleware(BaseHTTPMiddleware):
             await self._emit_audit_events(request, response, path, correlation_id)
         except Exception:
             # Never crash the request flow due to audit
-            logger.debug(
+            logger.warning(
                 "ga_audit_middleware_emit_failed",
                 extra={"path": path},
                 exc_info=True,

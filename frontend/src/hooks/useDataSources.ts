@@ -71,12 +71,23 @@ export function useDataSources(): UseDataSourcesResult {
   const refetchRef = useRef(query.refetch);
   refetchRef.current = query.refetch;
 
-  // 30s polling interval
+  // 30s polling, paused when the browser tab is hidden
   useEffect(() => {
-    const interval = setInterval(() => {
-      refetchRef.current().catch(() => {});
-    }, 30_000);
-    return () => clearInterval(interval);
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(() => refetchRef.current().catch(() => {}), 30_000);
+    };
+    const stop = () => {
+      if (timer) { clearInterval(timer); timer = null; }
+    };
+
+    const onVisibility = () => (document.hidden ? stop() : start());
+
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
   }, []);
 
   const sources = query.data ?? [];
