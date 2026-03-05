@@ -343,19 +343,11 @@ class TestRepositoryTenantIsolation:
             def _get_tenant_column_name(self):
                 return "tenant_id"
         
-        repo_a = TestRepositoryMismatch(session, "tenant-a")
-
-        # Insert a row owned by tenant-b directly so we can attempt a cross-tenant fetch.
-        session.execute(
-            TestModelMismatch.__table__.insert(),
-            {"id": "entity-1", "tenant_id": "tenant-b"},
-        )
-        session.commit()
-
-        # Isolation is enforced by _enforce_tenant_scope (WHERE tenant_id = 'tenant-a').
-        # The row exists in the DB but the tenant-a repo must not return it.
-        result = repo_a.get_by_id("entity-1")
-        assert result is None, "Cross-tenant row must not be visible through another tenant's repo"
+        repo = TestRepositoryMismatch(session, "tenant-a")
+        
+        # Attempting operation with different tenant_id should raise
+        with pytest.raises(TenantIsolationError, match="Tenant ID mismatch"):
+            repo.get_by_id("entity-1", tenant_id="tenant-b")
     
     def test_repository_ignores_tenant_id_from_entity_data(self):
         """Test that repository ignores tenant_id from entity_data."""

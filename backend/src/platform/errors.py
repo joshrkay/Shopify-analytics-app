@@ -1,7 +1,23 @@
-"""Application error classes with consistent API response format. Stack traces are never returned to clients."""
+"""
+Consistent error handling for AI Growth Analytics.
+
+All API errors MUST use these standard error classes and shapes.
+Stack traces are NEVER returned to clients.
+
+Standard HTTP status codes:
+- 400: Bad Request (validation errors)
+- 401: Unauthorized (auth failures - no/expired token)
+- 402: Payment Required (paywalled features)
+- 403: Forbidden (permission denied, cross-tenant access)
+- 404: Not Found
+- 409: Conflict (duplicate, concurrency error)
+- 422: Unprocessable Entity (semantic validation errors)
+- 429: Too Many Requests (rate limit)
+- 500: Internal Server Error
+- 503: Service Unavailable
+"""
 
 import logging
-import re
 import uuid
 from typing import Any, Optional
 from fastapi import Request, HTTPException, status
@@ -172,33 +188,22 @@ def generate_correlation_id() -> str:
     return str(uuid.uuid4())
 
 
-_CORR_ID_SAFE = re.compile(r"[^a-zA-Z0-9_\-]")
-_CORR_ID_MAX_LEN = 64
-
-
-def _sanitize_correlation_id(raw: str) -> str:
-    """
-    Strip any character that is not alphanumeric, dash, or underscore, then
-    truncate to 64 chars.
-
-    Client-supplied X-Correlation-ID values must be sanitised before they reach
-    log records or response headers; unvalidated pass-through enables header
-    injection and log-forging attacks.
-    """
-    sanitized = _CORR_ID_SAFE.sub("", raw)[:_CORR_ID_MAX_LEN]
-    # If sanitisation ate the whole string, generate a safe replacement.
-    return sanitized if sanitized else generate_correlation_id()
-
-
 def get_correlation_id(request: Request) -> str:
-    """Get correlation ID from request headers (sanitised) or generate a fresh one."""
-    raw = request.headers.get("X-Correlation-ID")
-    if raw:
-        return _sanitize_correlation_id(raw)
+    """
+    Get correlation ID from request or generate new one.
 
+    Checks X-Correlation-ID header first, then request state.
+    """
+    # Check header first (from upstream services/load balancer)
+    correlation_id = request.headers.get("X-Correlation-ID")
+    if correlation_id:
+        return correlation_id
+
+    # Check request state (set by middleware)
     if hasattr(request.state, "correlation_id"):
         return request.state.correlation_id
 
+    # Generate new one
     return generate_correlation_id()
 
 

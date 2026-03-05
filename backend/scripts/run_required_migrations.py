@@ -209,29 +209,11 @@ def run() -> None:
 
     with engine.begin() as conn:
         conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
-        # Tracking table: records which migrations have been successfully applied.
-        # Once a migration is recorded here it is never re-executed, so the runner
-        # can be called on every deploy without re-running completed DDL.
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                migration_file  VARCHAR(255) PRIMARY KEY,
-                applied_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-            )
-        """))
 
     for migration_file in MIGRATIONS:
         path = migrations_dir / migration_file
         if not path.exists():
             raise FileNotFoundError(f"Required migration missing: {path}")
-
-        with engine.connect() as conn:
-            already_applied = conn.execute(
-                text("SELECT 1 FROM schema_migrations WHERE migration_file = :f"),
-                {"f": migration_file},
-            ).fetchone()
-        if already_applied:
-            logger.info("Skipping already-applied migration %s", migration_file)
-            continue
 
         sql = path.read_text(encoding="utf-8")
         statements = split_sql_statements(sql)
@@ -245,15 +227,6 @@ def run() -> None:
         except SQLAlchemyError as e:
             logger.exception("Failed migration %s", migration_file)
             raise RuntimeError(f"Migration failed: {migration_file}: {e}") from e
-
-        with engine.begin() as conn:
-            conn.execute(
-                text(
-                    "INSERT INTO schema_migrations (migration_file) VALUES (:f)"
-                    " ON CONFLICT DO NOTHING"
-                ),
-                {"f": migration_file},
-            )
 
     logger.info("Required migrations completed")
 

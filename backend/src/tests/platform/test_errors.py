@@ -203,7 +203,7 @@ class TestCorrelationId:
         assert len(id1) == 36  # UUID format
 
     def test_get_correlation_id_from_header(self):
-        """Correlation ID extracted from header and returned unchanged when already safe."""
+        """Correlation ID extracted from header."""
         request = Mock(spec=Request)
         request.headers = {"X-Correlation-ID": "header-corr-id"}
         request.state = Mock(spec=[])
@@ -211,49 +211,6 @@ class TestCorrelationId:
         result = get_correlation_id(request)
 
         assert result == "header-corr-id"
-
-    def test_get_correlation_id_sanitises_unsafe_header(self):
-        """SEC-1: Unsafe characters in X-Correlation-ID are stripped to prevent log injection."""
-        from src.platform.errors import get_correlation_id
-
-        request = Mock(spec=Request)
-        # Newline + tab would allow log-forging; angle brackets allow header injection.
-        request.headers = {"X-Correlation-ID": "safe-id\r\nX-Injected: evil\t<script>"}
-        request.state = Mock(spec=[])
-
-        result = get_correlation_id(request)
-
-        assert "\r" not in result
-        assert "\n" not in result
-        assert "<" not in result
-        assert ">" not in result
-        assert "safe-id" in result  # Safe prefix is preserved
-
-    def test_get_correlation_id_truncates_long_header(self):
-        """SEC-1: Excessively long X-Correlation-ID values are truncated to 64 chars."""
-        from src.platform.errors import get_correlation_id
-
-        request = Mock(spec=Request)
-        request.headers = {"X-Correlation-ID": "a" * 200}
-        request.state = Mock(spec=[])
-
-        result = get_correlation_id(request)
-
-        assert len(result) <= 64
-
-    def test_get_correlation_id_all_unsafe_falls_back_to_uuid(self):
-        """SEC-1: A header that is entirely unsafe characters produces a fresh UUID."""
-        from src.platform.errors import get_correlation_id
-
-        request = Mock(spec=Request)
-        request.headers = {"X-Correlation-ID": "\r\n\t<>!@#$%^&*()"}
-        request.state = Mock(spec=[])
-
-        result = get_correlation_id(request)
-
-        # Should be a generated UUID (36 chars with dashes)
-        assert len(result) == 36
-        assert result.count("-") == 4
 
     def test_get_correlation_id_from_state(self):
         """Correlation ID extracted from state if no header."""

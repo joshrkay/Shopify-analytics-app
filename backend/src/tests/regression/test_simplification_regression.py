@@ -417,14 +417,13 @@ class TestSecretRedactionContract:
             assert is_secret_key(key), f"Failed to detect {key}"
 
     def test_mask_secret_format(self):
-        """mask_secret must show first N chars and mask the rest."""
+        """mask_secret must return masked format."""
         from src.platform.secrets import mask_secret
 
         result = mask_secret("abcdefghijklmnop", visible_chars=4)
 
-        # SEC-2: prefix visible so callers can identify key type; suffix masked.
-        assert result.startswith("abcd")
-        assert result.endswith("*")
+        assert result.endswith("mnop")
+        assert result.startswith("*")
         assert len(result) == 16
 
 

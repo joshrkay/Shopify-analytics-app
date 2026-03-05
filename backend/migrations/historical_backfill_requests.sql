@@ -32,13 +32,10 @@ CREATE INDEX IF NOT EXISTS idx_hist_backfill_tenant_source_status
 CREATE INDEX IF NOT EXISTS idx_hist_backfill_tenant_created
     ON historical_backfill_requests(tenant_id, created_at);
 
--- Status constraint (idempotent: DO...EXCEPTION handles re-runs)
-DO $$ BEGIN
-    ALTER TABLE historical_backfill_requests
-        ADD CONSTRAINT chk_hist_backfill_status
-        CHECK (status IN ('pending', 'approved', 'running', 'completed', 'failed', 'cancelled', 'rejected'));
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- Status constraint
+ALTER TABLE historical_backfill_requests
+    ADD CONSTRAINT chk_hist_backfill_status
+    CHECK (status IN ('pending', 'approved', 'running', 'completed', 'failed', 'cancelled', 'rejected'));
 
 -- Auto-update updated_at trigger
 DROP TRIGGER IF EXISTS update_historical_backfill_requests_updated_at ON historical_backfill_requests;

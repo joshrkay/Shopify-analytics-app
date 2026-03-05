@@ -239,23 +239,20 @@ class TestSecretMasking:
     """Test secret masking for display."""
 
     def test_mask_secret_default(self):
-        """Mask secret showing first 4 characters (type-hint prefix)."""
+        """Mask secret showing last 4 characters."""
         secret = "sk-abcdefghijklmnopqrstuvwxyz"
         masked = mask_secret(secret)
 
-        # SEC-2: show the PREFIX so callers can identify the key type (e.g. "sk-a"),
-        # not the high-entropy suffix which would be more useful to an attacker.
-        assert masked.startswith("sk-a")
-        assert masked.endswith("*")
+        assert masked.endswith("wxyz")
         assert masked.count("*") == len(secret) - 4
+        assert "sk-" not in masked
 
     def test_mask_secret_custom_visible(self):
-        """Mask secret with custom visible characters at the start."""
+        """Mask secret with custom visible characters."""
         secret = "password123"
         masked = mask_secret(secret, visible_chars=6)
 
-        assert masked.startswith("passwo")
-        assert masked.endswith("*")
+        assert masked.endswith("ord123")
         assert masked.count("*") == len(secret) - 6
 
     def test_mask_short_secret(self):

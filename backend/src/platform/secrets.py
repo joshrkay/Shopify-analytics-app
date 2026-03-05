@@ -1,4 +1,30 @@
-"""Fernet-based secret encryption and log redaction. Set ENCRYPTION_KEY env var to enable."""
+"""
+Secrets management and encryption for AI Growth Analytics.
+
+CRITICAL SECURITY REQUIREMENTS:
+- NEVER store secrets in plaintext in DB, logs, or frontend
+- All encrypt/decrypt operations MUST use this module
+- Any variable name containing token/secret/key MUST be redacted from logs
+- Do not print environment variables or secrets, EVER
+- Use Render environment variables for encryption key management
+
+This module supports:
+1. Render environment variables for encryption key (ENCRYPTION_KEY)
+2. Fernet symmetric encryption for secure storage
+3. Automatic secret redaction from logs
+
+Usage:
+    from src.platform.secrets import encrypt_secret, decrypt_secret, redact_secrets
+
+    # Encrypt a secret before storing in DB
+    encrypted_api_key = await encrypt_secret(api_key)
+
+    # Decrypt a secret after reading from DB
+    api_key = await decrypt_secret(encrypted_api_key)
+
+    # Redact secrets from log data
+    safe_data = redact_secrets({"api_key": "sk-123", "name": "test"})
+"""
 
 import base64
 import hashlib
@@ -9,17 +35,26 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Single compiled pattern that matches any key name that likely holds a secret.
-# Combining into one alternation is ~18x faster than iterating 18 separate patterns.
+# Patterns for detecting secrets in logs
 SECRET_PATTERNS = [
-    re.compile(
-        r"(api[_-]?key|secret[_-]?key|access[_-]?token|refresh[_-]?token"
-        r"|bearer[_-]?token|password|private[_-]?key|client[_-]?secret"
-        r"|auth[_-]?token|jwt[_-]?token|session[_-]?token|encryption[_-]?key"
-        r"|signing[_-]?key|hmac[_-]?secret|webhook[_-]?secret|database[_-]?url"
-        r"|connection[_-]?string|credentials)",
-        re.IGNORECASE,
-    )
+    re.compile(r"(api[_-]?key)", re.IGNORECASE),
+    re.compile(r"(secret[_-]?key)", re.IGNORECASE),
+    re.compile(r"(access[_-]?token)", re.IGNORECASE),
+    re.compile(r"(refresh[_-]?token)", re.IGNORECASE),
+    re.compile(r"(bearer[_-]?token)", re.IGNORECASE),
+    re.compile(r"(password)", re.IGNORECASE),
+    re.compile(r"(private[_-]?key)", re.IGNORECASE),
+    re.compile(r"(client[_-]?secret)", re.IGNORECASE),
+    re.compile(r"(auth[_-]?token)", re.IGNORECASE),
+    re.compile(r"(jwt[_-]?token)", re.IGNORECASE),
+    re.compile(r"(session[_-]?token)", re.IGNORECASE),
+    re.compile(r"(encryption[_-]?key)", re.IGNORECASE),
+    re.compile(r"(signing[_-]?key)", re.IGNORECASE),
+    re.compile(r"(hmac[_-]?secret)", re.IGNORECASE),
+    re.compile(r"(webhook[_-]?secret)", re.IGNORECASE),
+    re.compile(r"(database[_-]?url)", re.IGNORECASE),
+    re.compile(r"(connection[_-]?string)", re.IGNORECASE),
+    re.compile(r"(credentials)", re.IGNORECASE),
 ]
 
 # Common secret value patterns to redact
@@ -264,15 +299,21 @@ def redact_secrets(data: Any, _depth: int = 0) -> Any:
 
 def mask_secret(secret: str, visible_chars: int = 4) -> str:
     """
-    Mask a secret, keeping only the first `visible_chars` for type identification.
+    Mask a secret showing only the last few characters.
 
-    Shows the leading prefix (e.g. "sk-*", "shpat_****") rather than the trailing
-    high-entropy suffix, which would be more useful to an attacker.
-    Returns "****" for short or empty secrets.
+    Useful for displaying secrets in UIs.
+
+    Args:
+        secret: The secret to mask
+        visible_chars: Number of characters to show at the end
+
+    Returns:
+        Masked string like "****abcd"
     """
     if not secret or len(secret) <= visible_chars:
         return "*" * max(len(secret) if secret else 0, 4)
-    return secret[:visible_chars] + "*" * (len(secret) - visible_chars)
+
+    return "*" * (len(secret) - visible_chars) + secret[-visible_chars:]
 
 
 class SecretRedactingFilter(logging.Filter):
