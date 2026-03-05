@@ -32,9 +32,11 @@ AttributeError: <module 'src.api.routes.action_proposals'> does not have the att
 AttributeError: <module 'src.api.routes.actions'> does not have the attribute 'get_db_session'
 ```
 
-### Root Cause B — No PostgreSQL → 503 (34 integration tests) — INFRA, NOT CODE
+### Root Cause B — No PostgreSQL → 503 (34 integration tests) — INFRA PROBLEM
 
-No `DATABASE_URL` in local env. `TenantContextMiddleware` can't create a DB engine → 503. Affects `test_audit_api.py` (10 tests) and `test_notifications_api.py` (9 tests) and others. These pass in CI where PostgreSQL runs.
+No `DATABASE_URL` in local env. `TenantContextMiddleware` can't create a DB engine → 503. Affects `test_audit_api.py` (10 tests) and `test_notifications_api.py` (9 tests) and others.
+
+These pass in CI but **cannot be run locally without a database**, meaning developers cannot verify them before pushing. Fix: either add a `docker-compose` local dev database or convert these to proper unit tests with mocked DB sessions.
 
 ### Root Cause C — No auth mock → 403 (12 integration tests) — TEST BUG
 
@@ -200,19 +202,21 @@ TypeError: 'succeeded_count' is an invalid keyword argument for ActionJob
 
 **Failures by type:**
 
-No-DB failures (19) — pass in CI, not code bugs:
-- `test_audit_api.py`: 10 tests → 503 (no PostgreSQL)
-- `test_notifications_api.py`: 9 tests → 503 (no PostgreSQL)
+No-DB failures (19) — infra problem:
+- `test_audit_api.py`: 10 tests → 503 (no PostgreSQL locally)
+- `test_notifications_api.py`: 9 tests → 503 (no PostgreSQL locally)
+- These are integration tests that require a live database. Developers cannot run them locally without a running Postgres instance. There is no `docker-compose up` documented as a prerequisite for running these tests.
 
 Code bug (1):
 - `TestAuditRBAC::test_cross_tenant_attempt_logs_audit_event`
 - `AttributeError: <module 'src.services.audit_access_control'> does not have the attribute 'log_system_audit_event_sync'`
 - Function is called in test but doesn't exist on the module
 
-**Fix:**
-- Check `audit_access_control.py` — either the function was renamed, removed, or the test is calling the wrong name. Align test with what exists.
+**Fixes:**
+- `audit_access_control.py` — check whether `log_system_audit_event_sync` was renamed or removed, align test with what exists
+- 19 DB-dependent tests — either: (a) add a local Postgres setup step to CLAUDE.md/Makefile, or (b) convert to proper unit tests that mock the DB session so they can run without infrastructure
 
-**Deploy safe:** Yes for routes. The missing `log_system_audit_event_sync` is a test bug, not a route bug. The audit routes themselves don't call that function.
+**Deploy safe:** Yes for routes. The missing `log_system_audit_event_sync` is a test bug, not a route bug.
 
 ---
 
@@ -240,9 +244,31 @@ All auto-fixable with `ruff check src/ --fix`. Breakdown:
 
 ---
 
-## E2E Tests — All Skipped
+## Infra Gaps
 
-51 tests decorated to skip. Nothing runs. Not a failure, but there is zero E2E coverage executing locally.
+### E2E Tests — 51 skipped, nothing executes
+
+Every E2E test is decorated with skip. Zero end-to-end coverage runs in any environment — local or CI. The test files exist but provide no signal.
+
+### Platform tests — 15 skipped (raw RLS)
+
+`test_raw_rls.py` tests require PostgreSQL. Skipped locally and in CI unless the PostgreSQL service job is running. These cover row-level security on the raw warehouse — a security-critical path.
+
+### Regression tests — 42 skipped
+
+`test_billing_regression.py` and `test_job_isolation.py` skip without PostgreSQL. Billing regression is a CI quality gate but only runs in the PostgreSQL CI job, not on every PR check.
+
+### Frontend tests — 2 timeout at full parallelism
+
+`Phase1.regression.test.tsx` and `Phase3.regression.test.tsx` hit the 5000ms timeout when all 84 test files run simultaneously. They pass in isolation. Fix: increase `testTimeout` in Vitest config to 15000ms, or run with `--pool=forks --poolOptions.forks.singleFork`.
+
+### No local database bootstrap
+
+No documented or scripted way to spin up PostgreSQL locally for test development. The 19 DB-dependent integration tests and 57 skipped DB-dependent tests cannot be developed or verified without manually running `docker-compose up` (which is not documented as a test prerequisite in CLAUDE.md or the Makefile).
+
+### No frontend CI job
+
+The frontend build, lint, and tests are not in `.github/workflows/ci.yml`. A broken frontend build can merge undetected.
 
 ---
 
@@ -259,6 +285,10 @@ All auto-fixable with `ruff check src/ --fix`. Breakdown:
 | P1 | Fix `log_system_audit_event_sync` — rename or create the function | `audit_access_control.py` | — |
 | P1 | Fix `test_platform_credentials_service.py` async wrapper | `test_platform_credentials_service.py` | — |
 | P2 | `ruff check src/ --fix` | all | — |
+| P2 | Increase Vitest `testTimeout` to 15000ms to fix timeout flakes | `frontend/vite.config.ts` or `vitest.config.ts` | — |
+| P2 | Add local Postgres bootstrap to Makefile / CLAUDE.md so DB-dependent tests can run locally | `Makefile`, `CLAUDE.md` | — |
+| P3 | Add frontend CI job (build + lint + test) | `.github/workflows/ci.yml` | — |
+| P3 | Unskip or delete 51 E2E tests — they provide zero coverage | `src/tests/e2e/` | — |
 
 ---
 
