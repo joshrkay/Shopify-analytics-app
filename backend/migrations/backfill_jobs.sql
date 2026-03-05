@@ -35,10 +35,13 @@ CREATE INDEX IF NOT EXISTS idx_hist_backfill_jobs_tenant_status
 CREATE INDEX IF NOT EXISTS idx_hist_backfill_jobs_retry
     ON historical_backfill_jobs(status, next_retry_at);
 
--- Status constraint
-ALTER TABLE historical_backfill_jobs
-    ADD CONSTRAINT chk_hist_backfill_jobs_status
-    CHECK (status IN ('queued', 'running', 'success', 'failed', 'cancelled', 'paused'));
+-- Status constraint (idempotent: DO...EXCEPTION handles re-runs)
+DO $$ BEGIN
+    ALTER TABLE historical_backfill_jobs
+        ADD CONSTRAINT chk_hist_backfill_jobs_status
+        CHECK (status IN ('queued', 'running', 'success', 'failed', 'cancelled', 'paused'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Auto-update updated_at trigger
 DROP TRIGGER IF EXISTS update_historical_backfill_jobs_updated_at ON historical_backfill_jobs;

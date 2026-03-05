@@ -97,25 +97,32 @@ CREATE TRIGGER ga_audit_log_immutable
 
 -- ==========================================================================
 -- Validate event_type values via CHECK constraint
+-- Wrapped in DO...EXCEPTION so re-running this migration is safe.
 -- ==========================================================================
 
-ALTER TABLE ga_audit_logs
-    ADD CONSTRAINT chk_ga_audit_event_type
-    CHECK (event_type IN (
-        'auth.login_success',
-        'auth.login_failed',
-        'auth.jwt_issued',
-        'auth.jwt_refresh',
-        'auth.jwt_revoked',
-        'dashboard.viewed',
-        'dashboard.load_failed',
-        'dashboard.access_denied'
-    ));
+DO $$ BEGIN
+    ALTER TABLE ga_audit_logs
+        ADD CONSTRAINT chk_ga_audit_event_type
+        CHECK (event_type IN (
+            'auth.login_success',
+            'auth.login_failed',
+            'auth.jwt_issued',
+            'auth.jwt_refresh',
+            'auth.jwt_revoked',
+            'dashboard.viewed',
+            'dashboard.load_failed',
+            'dashboard.access_denied'
+        ));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Validate access_surface values
-ALTER TABLE ga_audit_logs
-    ADD CONSTRAINT chk_ga_audit_access_surface
-    CHECK (access_surface IN ('shopify_embed', 'external_app'));
+DO $$ BEGIN
+    ALTER TABLE ga_audit_logs
+        ADD CONSTRAINT chk_ga_audit_access_surface
+        CHECK (access_surface IN ('shopify_embed', 'external_app'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ==========================================================================
 -- Table and column comments
