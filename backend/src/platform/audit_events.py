@@ -1,33 +1,4 @@
-"""
-Canonical Audit Event Registry for AI Growth Analytics.
-
-This module defines the single source of truth for all auditable events in the
-analytics platform. It is designed to be imported by other modules for event
-validation, ensuring consistency across logging, alerting, and compliance systems.
-
-ARCHITECTURE:
-- Superset-based analytics with embedded dashboards
-- JWT authentication with tenant isolation
-- Row-Level Security (RLS) enforcement
-- Multi-tenant data access patterns
-
-COMPLIANCE CONSIDERATIONS:
-- SOC2 Type II: 90-day minimum retention, change tracking
-- GDPR: Right to deletion, PII handling
-- Data governance: Metric versioning, approval workflows
-
-USAGE:
-    from src.platform.audit_events import AUDITABLE_EVENTS, validate_event_metadata
-
-    # Validate before logging
-    if validate_event_metadata("auth.jwt_issued", metadata):
-        logger.log_event("auth.jwt_issued", user_id, tenant_id, metadata)
-
-NOTE: This module defines the EVENT SCHEMA only. It does NOT implement:
-- Logging logic (see audit_logger.py)
-- Database persistence (see audit.py)
-- Alert routing (see alert_rules.yaml)
-"""
+"""Canonical registry of all auditable event types and their required metadata fields. Schema only — logging/persistence is in audit.py."""
 
 from typing import Final
 

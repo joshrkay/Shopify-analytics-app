@@ -49,24 +49,33 @@ def get_engine():
     """
     Get or create the database engine singleton.
 
-    Uses connection pooling with sensible defaults for production:
-    - pool_size: 5 connections
-    - max_overflow: 10 additional connections under load
+    Uses connection pooling configured via environment variables:
+    - DB_POOL_SIZE: base connections kept open (default 20)
+    - DB_POOL_MAX_OVERFLOW: extra connections allowed under spike load (default 40)
     - pool_pre_ping: Verify connections before use
+
+    TenantContextMiddleware opens 2 sessions per request, so at N concurrent users
+    the pool needs at least 2N connections. Default of 20/40 handles ~30 concurrent
+    users safely before queuing.
     """
     global _engine
     if _engine is None:
         try:
             database_url = _get_database_url()
+            pool_size = int(os.getenv("DB_POOL_SIZE", "20"))
+            max_overflow = int(os.getenv("DB_POOL_MAX_OVERFLOW", "40"))
             _engine = create_engine(
                 database_url,
                 poolclass=QueuePool,
-                pool_size=5,
-                max_overflow=10,
+                pool_size=pool_size,
+                max_overflow=max_overflow,
                 pool_pre_ping=True,  # Verify connection health
                 pool_recycle=1800,   # Recycle connections after 30 minutes
             )
-            logger.info("Database engine created with connection pooling")
+            logger.info(
+                "Database engine created with connection pooling",
+                extra={"pool_size": pool_size, "max_overflow": max_overflow},
+            )
         except ValueError as e:
             logger.error("Failed to create database engine", extra={"error": str(e)})
             raise

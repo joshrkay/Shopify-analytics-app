@@ -96,20 +96,22 @@ vars:
   platform_schema: platform
 
   # Lookback window configuration for incremental models
-  # Controls how far back to look for late-arriving data during incremental runs
-  # Override per-source as needed based on data latency characteristics
-  lookback_days_default: 3
-  lookback_days_shopify: 3
-  lookback_days_meta_ads: 3
-  lookback_days_google_ads: 3
-  lookback_days_tiktok_ads: 3
-  lookback_days_pinterest_ads: 3
-  lookback_days_snap_ads: 3
-  lookback_days_twitter_ads: 3
-  lookback_days_amazon_ads: 3
-  lookback_days_klaviyo: 3
-  lookback_days_ga4: 3
-  lookback_days_recharge: 3
+  # Controls how far back to look for late-arriving data during incremental runs.
+  # Shopify refunds/fulfillment updates can arrive up to 30 days after order creation;
+  # ad platform stats are typically finalised within 7 days.
+  # Override per-source as needed based on data latency characteristics.
+  lookback_days_default: 14
+  lookback_days_shopify: 30
+  lookback_days_meta_ads: 7
+  lookback_days_google_ads: 7
+  lookback_days_tiktok_ads: 7
+  lookback_days_pinterest_ads: 7
+  lookback_days_snap_ads: 7
+  lookback_days_twitter_ads: 7
+  lookback_days_amazon_ads: 7
+  lookback_days_klaviyo: 14
+  lookback_days_ga4: 7
+  lookback_days_recharge: 30
 
   # Rolling rebuild window configuration for v1 canonical models
   # Controls how far back to reprocess on incremental runs (business-date based)

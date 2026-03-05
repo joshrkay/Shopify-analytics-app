@@ -8,7 +8,7 @@
  * Phase 3 - Dashboard Builder UI
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import {
   Card,
   BlockStack,
@@ -40,11 +40,18 @@ interface ViewReportCardProps {
   filterVersion?: number;
 }
 
-export function ViewReportCard({ report, activeFilters = [], filterVersion = 0 }: ViewReportCardProps) {
+function ViewReportCardBase({ report, activeFilters = [], filterVersion = 0 }: ViewReportCardProps) {
   const [previewData, setPreviewData] = useState<Record<string, unknown>[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
+
+  // Keep activeFilters in a ref so the effect can read the latest value without
+  // depending on array identity. Refetches are gated on filterVersion (a number)
+  // which only increments when filter content actually changes, preventing the
+  // cascade where a new array reference from the parent re-fetches all cards.
+  const activeFiltersRef = useRef(activeFilters);
+  activeFiltersRef.current = activeFilters;
 
   // Fetch chart preview on mount
   useEffect(() => {
@@ -97,8 +104,9 @@ export function ViewReportCard({ report, activeFilters = [], filterVersion = 0 }
             value: f.value as string | number | boolean | null,
           }));
 
-        // Merge dashboard-level active filters that apply to this report's dataset
-        for (const af of activeFilters) {
+        // Merge dashboard-level active filters that apply to this report's dataset.
+        // Read from ref to avoid stale closure without adding activeFilters to deps.
+        for (const af of activeFiltersRef.current) {
           if (af.dataset_names.includes(report.dataset_name) && af.value) {
             filterDefs.push({
               column: af.column,
@@ -142,7 +150,10 @@ export function ViewReportCard({ report, activeFilters = [], filterVersion = 0 }
     return () => {
       cancelled = true;
     };
-  }, [report, activeFilters, filterVersion]);
+  // Depend on filterVersion (number) rather than activeFilters (array) so that
+  // only intentional filter changes — not incidental re-renders of the parent —
+  // trigger a refetch across all report cards.
+  }, [report, filterVersion]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -215,3 +226,13 @@ export function ViewReportCard({ report, activeFilters = [], filterVersion = 0 }
     </div>
   );
 }
+
+// Memoised export: re-render only when the report itself changes or when the
+// filter version increments (content-level change), not on every parent render.
+export const ViewReportCard = memo(ViewReportCardBase, (prev, next) => {
+  return (
+    prev.report.id === next.report.id &&
+    prev.report.updated_at === next.report.updated_at &&
+    prev.filterVersion === next.filterVersion
+  );
+});
