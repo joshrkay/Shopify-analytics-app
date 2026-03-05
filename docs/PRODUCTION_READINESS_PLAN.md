@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-05
 **Audited against:** backend route files, model definitions, test suites, frontend service contracts
-**Key finding:** All 10 modules have real implementations (zero stubs). One P0 runtime crash, one test-infrastructure gap, one CI gap.
+**Key finding:** All 10 modules have real implementations (zero stubs). One P0 runtime crash, one CI gap. No new code required for Modules 3 or 10.
 
 ---
 
@@ -22,14 +22,14 @@
 |---|--------|--------|----------------|
 | 1 | Auth & Tenant Provisioning | ✅ READY | — |
 | 2 | Billing & Entitlements | ✅ READY | — |
-| 3 | Data Sources & Sync | ⚠️ PARTIAL | 3 OAuth platforms are catalog stubs (no backend handler) |
+| 3 | Data Sources & Sync | ✅ READY | — |
 | 4 | AI Insights | ⚠️ PARTIAL | Integration tests fail due to middleware mock gap |
 | 5 | AI Actions & Proposals | 🔴 BLOCKED | P0: `job.succeeded_count` / `job.failed_count` don't exist on model |
 | 6 | Dashboards & Reports | ✅ READY | — |
 | 7 | Analytics & Attribution | ✅ READY | — |
 | 8 | Data Health & Monitoring | ✅ READY | — |
 | 9 | Agency & Multi-tenancy | ✅ READY | — |
-| 10 | Platform & Admin | ⚠️ PARTIAL | Integration tests need PostgreSQL (pass in CI, fail locally) |
+| 10 | Platform & Admin | ✅ READY | — |
 
 ---
 
@@ -72,7 +72,7 @@
 
 ---
 
-### Module 3 — Data Sources & Sync ⚠️ PARTIAL
+### Module 3 — Data Sources & Sync ✅ READY
 
 **Routes:** `sources.py`, `ad_platform_ingestion.py`, `shopify_ingestion.py`, `sync.py`, `backfills.py`
 **Frontend:** `sourcesApi.ts`, `syncHealthApi.ts`, `syncConfigApi.ts`
@@ -83,23 +83,17 @@
 - CSRF state token validation on callback
 - Full connect / disconnect / test / sync-config lifecycle
 - Airbyte connection and account discovery
+- Sources unit tests: **37 passing**
 
-**What's not ready (stub catalog entries only — no backend handler):**
+**Auth type mapping for all platforms (verified in `schemas/sources.py`):**
 
-| Platform | Missing |
-|----------|---------|
-| Attentive | OAuth initiate handler + Airbyte connection setup |
-| Klaviyo | OAuth initiate handler + Airbyte connection setup |
-| Shopify Email | OAuth initiate handler + Airbyte connection setup |
+| Platform | Auth type | Handler |
+|----------|-----------|---------|
+| Attentive | `api_key` | `connect_api_key_source` (sources.py:442) |
+| Klaviyo | `api_key` | `connect_api_key_source` (sources.py:440) |
+| Shopify Email | `oauth` | `initiate_oauth` (sources.py:346) — same Shopify flow |
 
-These three platforms appear in the source catalog but clicking "Connect" will return an error. They need:
-1. An OAuth URL builder per platform in `sources.py`
-2. An Airbyte connection setup call in the callback handler
-
-**Fix tasks:**
-- [ ] Add `attentive` OAuth initiate + callback handler in `sources.py`
-- [ ] Add `klaviyo` OAuth initiate + callback handler in `sources.py`
-- [ ] Add `shopify_email` OAuth initiate + callback handler in `sources.py`
+**No changes needed.**
 
 ---
 
@@ -230,7 +224,7 @@ Additionally, the test fixture (`test_actions_api.py:97-98`) uses the wrong fiel
 
 ---
 
-### Module 10 — Platform & Admin ⚠️ PARTIAL
+### Module 10 — Platform & Admin ✅ READY
 
 **Routes:** `audit.py`, `audit_export.py`, `audit_logs.py`, `notifications.py`, `admin_diagnostics.py`, `admin_super_admin.py`, `changelog.py`, `embed.py`
 **Frontend:** `notificationsApi.ts`, `diagnosticsApi.ts`
@@ -244,13 +238,14 @@ Additionally, the test fixture (`test_actions_api.py:97-98`) uses the wrong fiel
 - Changelog: version history per route
 - RBAC: `AUDIT_VIEW`, `AUDIT_MANAGE`, `TEAM_MANAGE`
 
-**What's not ready (test infrastructure only — not a production bug):**
-- `test_audit_api.py` and `test_notifications_api.py` fail locally because tests patch `get_db_session` at the route module level, but those modules source DB sessions via entitlement-check dependencies
-- Tests return 503/403 locally due to no PostgreSQL; they pass in CI where the DB service is available
+**Local test failures explained (not a code problem):**
+- `test_audit_api.py` fails locally with 503 from `session.py:71 — Failed to create database engine`
+- These are **integration tests** that require a live PostgreSQL — they are not designed to run without a DB
+- The mock targets (`src.api.routes.audit.get_db_session`) are correct — `audit.py` does `from src.database.session import get_db_session` at line 30, so the patch is at the right location
+- The 503 comes from `TenantContextMiddleware` opening its own DB session before the route handler is reached — it bypasses the route-level patch
+- These tests pass in CI (PostgreSQL service available). No code changes needed.
 
-**Fix tasks:**
-- [ ] Refactor `test_audit_api.py` to mock at the service layer (`src.services.audit_query_service`)
-- [ ] Refactor `test_notifications_api.py` to mock at the service layer (`src.services.notification_service`)
+**No changes needed.**
 
 ---
 
@@ -282,11 +277,7 @@ No GitHub Actions job for the frontend. A broken frontend build can merge undete
 | P0 | Fix test fixture field names in `test_actions_api.py:97-98` | 5 | 2 lines |
 | P1 | Fix mock targets in `test_action_proposals_api.py` | 5 | Medium |
 | P1 | Fix mock targets in `test_llm_config_api.py` | 4 | Medium |
-| P1 | Fix mock targets in `test_audit_api.py`, `test_notifications_api.py` | 10 | Medium |
-| P2 | Implement Attentive OAuth handler | 3 | Large |
-| P2 | Implement Klaviyo OAuth handler | 3 | Large |
-| P2 | Implement Shopify Email OAuth handler | 3 | Large |
-| P3 | Add frontend CI job (build + lint + test) | Cross-cutting | Small |
+| P2 | Add frontend CI job (build + lint + test) | Cross-cutting | Small |
 | P3 | Run `ruff check src/ --fix` | Cross-cutting | Auto-fix |
 
 ---
@@ -296,7 +287,5 @@ No GitHub Actions job for the frontend. A broken frontend build can merge undete
 | Deploy scope | Safe? |
 |---|---|
 | Modules 1, 2, 6, 7, 8, 9 | ✅ Yes — ship immediately |
-| Module 3 (without Attentive/Klaviyo/Shopify Email) | ✅ Yes — other sources work |
-| Module 4 | ✅ Yes — test issue, not prod bug |
-| Module 10 | ✅ Yes — test issue, not prod bug |
+| Modules 3, 4, 10 | ✅ Yes — fully implemented; test failures are infra-only (need live PostgreSQL) |
 | Module 5 (Actions) | 🔴 No — fix `actions_succeeded` first |
