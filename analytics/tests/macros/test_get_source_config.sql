@@ -21,13 +21,13 @@ with test_cases as (
 
 assertions as (
     select
-        -- Lookback days should be 3 for configured sources
-        case when lookback_meta_ads = 3 then 'PASS' else 'FAIL: meta_ads lookback=' || lookback_meta_ads::text end as test_lookback_meta,
+        -- meta_ads and google_ads are explicitly configured to 7 days in dbt_project.yml
+        case when lookback_meta_ads = 7 then 'PASS' else 'FAIL: meta_ads lookback=' || lookback_meta_ads::text end as test_lookback_meta,
 
-        case when lookback_google_ads = 3 then 'PASS' else 'FAIL: google_ads lookback=' || lookback_google_ads::text end as test_lookback_google,
+        case when lookback_google_ads = 7 then 'PASS' else 'FAIL: google_ads lookback=' || lookback_google_ads::text end as test_lookback_google,
 
-        -- Unknown source should get default (3)
-        case when lookback_unknown = 3 then 'PASS' else 'FAIL: unknown lookback=' || lookback_unknown::text end as test_lookback_unknown,
+        -- Unknown source falls back to lookback_days_default (14) in dbt_project.yml
+        case when lookback_unknown = 14 then 'PASS' else 'FAIL: unknown lookback=' || lookback_unknown::text end as test_lookback_unknown,
 
         -- Freshness warn should be 1440 minutes (24h) for free tier
         case when freshness_warn_shopify = 1440 then 'PASS' else 'FAIL: warn_minutes=' || freshness_warn_shopify::text end as test_freshness_warn,
