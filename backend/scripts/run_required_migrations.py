@@ -198,6 +198,24 @@ def split_sql_statements(sql: str) -> list[str]:
     return statements
 
 
+def _get_real_connection(pool_conn):
+    """Unwrap SQLAlchemy pool proxy to get the actual DBAPI (psycopg2) connection.
+
+    engine.raw_connection() returns a PoolProxiedConnection in SQLAlchemy 2.x.
+    Setting .autocommit on the proxy may not propagate to the underlying psycopg2
+    connection.  This helper returns the real psycopg2 connection object so that
+    autocommit and other driver-level attributes work correctly.
+    """
+    # SQLAlchemy 2.x
+    if hasattr(pool_conn, "dbapi_connection"):
+        return pool_conn.dbapi_connection
+    # SQLAlchemy 1.x / older 2.x
+    if hasattr(pool_conn, "connection"):
+        return pool_conn.connection
+    # Already a raw connection
+    return pool_conn
+
+
 def run() -> None:
     backend_root = Path(__file__).resolve().parents[1]
     migrations_dir = backend_root / "migrations"
@@ -209,9 +227,6 @@ def run() -> None:
 
     with engine.begin() as conn:
         conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
-        # Tracking table: records which migrations have been successfully applied.
-        # Once a migration is recorded here it is never re-executed, so the runner
-        # can be called on every deploy without re-running completed DDL.
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 migration_file  VARCHAR(255) PRIMARY KEY,
@@ -239,13 +254,13 @@ def run() -> None:
 
         has_concurrently = any("CONCURRENTLY" in s.upper() for s in statements)
 
-        # Use raw psycopg2 connection for ALL migrations to avoid any
-        # SQLAlchemy text() or connection-management quirks.
-        raw_conn = engine.raw_connection()
+        pool_conn = engine.raw_connection()
         try:
+            raw_conn = _get_real_connection(pool_conn)
+
             if has_concurrently:
-                # CREATE INDEX CONCURRENTLY cannot run inside a transaction.
                 raw_conn.autocommit = True
+                logger.info("  [%s] autocommit=True (CONCURRENTLY detected)", migration_file)
             else:
                 raw_conn.autocommit = False
 
@@ -254,8 +269,6 @@ def run() -> None:
                 for idx, statement in enumerate(statements, 1):
                     logger.info("  [%s] executing statement %d/%d", migration_file, idx, len(statements))
                     cur.execute(statement)
-                    # Log row counts for INSERT/UPDATE/DELETE to aid debugging
-                    # Strip leading SQL comments to find the actual command
                     stripped = statement.strip()
                     while stripped.startswith("--"):
                         stripped = stripped.split("\n", 1)[-1].strip() if "\n" in stripped else ""
@@ -276,7 +289,7 @@ def run() -> None:
             logger.exception("Failed migration %s at statement %d", migration_file, idx)
             raise RuntimeError(f"Migration failed: {migration_file}: {e}") from e
         finally:
-            raw_conn.close()
+            pool_conn.close()
 
         with engine.begin() as conn:
             conn.execute(
