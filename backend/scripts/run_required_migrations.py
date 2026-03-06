@@ -235,15 +235,33 @@ def run() -> None:
 
         sql = path.read_text(encoding="utf-8")
         statements = split_sql_statements(sql)
-        logger.info("Applying migration %s", migration_file)
+        logger.info("Applying migration %s (%d statements)", migration_file, len(statements))
+
+        has_concurrently = any("CONCURRENTLY" in s.upper() for s in statements)
+
         try:
-            with engine.begin() as conn:
-                raw = conn.connection
-                with raw.cursor() as cur:
-                    for statement in statements:
-                        cur.execute(statement)
-        except SQLAlchemyError as e:
-            logger.exception("Failed migration %s", migration_file)
+            if has_concurrently:
+                # CREATE INDEX CONCURRENTLY cannot run inside a transaction.
+                # Use a raw psycopg2 connection in autocommit mode.
+                raw_conn = engine.raw_connection()
+                try:
+                    raw_conn.autocommit = True
+                    with raw_conn.cursor() as cur:
+                        for idx, statement in enumerate(statements, 1):
+                            logger.info("  [%s] executing statement %d/%d", migration_file, idx, len(statements))
+                            cur.execute(statement)
+                finally:
+                    raw_conn.close()
+            else:
+                # Normal transactional execution via SQLAlchemy.
+                # Using conn.execute(text()) ensures proper transaction participation
+                # (raw cursor bypass can lose transaction state in SQLAlchemy 2.x).
+                with engine.begin() as conn:
+                    for idx, statement in enumerate(statements, 1):
+                        logger.info("  [%s] executing statement %d/%d", migration_file, idx, len(statements))
+                        conn.execute(text(statement))
+        except Exception as e:
+            logger.exception("Failed migration %s at statement %d", migration_file, idx)
             raise RuntimeError(f"Migration failed: {migration_file}: {e}") from e
 
         with engine.begin() as conn:
