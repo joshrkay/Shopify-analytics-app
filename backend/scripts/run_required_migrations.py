@@ -46,7 +46,7 @@ MIGRATIONS = [
     "oauth_shop_domain_unique_constraint.sql",
     "add_dashboard_metric_bindings.sql",
     "add_report_templates.sql",
-    "performance_indexes.sql",
+    # "performance_indexes.sql",  # Depends on analytics/semantic schemas created by dbt — run after dbt
     "raw_schema.sql",
     "ad_budgets_schema.sql",
     "alerts_schema.sql",
