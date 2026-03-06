@@ -3,6 +3,13 @@
 --
 -- NO DOWN MIGRATION: Append-only schema design for compliance
 
+-- Clean up stale tables from previous failed deploy attempts.
+-- Drop in reverse-dependency order to handle FK constraints.
+DROP TABLE IF EXISTS llm_usage_log CASCADE;
+DROP TABLE IF EXISTS llm_prompt_template CASCADE;
+DROP TABLE IF EXISTS llm_org_config CASCADE;
+DROP TABLE IF EXISTS llm_model_registry CASCADE;
+
 -- Model registry: Available LLM models via OpenRouter
 -- No hardcoded models - all models configured here
 CREATE TABLE IF NOT EXISTS llm_model_registry (

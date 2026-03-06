@@ -15,6 +15,14 @@
 -- Enable UUID extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Clean up stale tables from previous failed deploy attempts.
+-- Drop in reverse-dependency order to handle FK constraints.
+DROP TABLE IF EXISTS dq_incidents CASCADE;
+DROP TABLE IF EXISTS dq_results CASCADE;
+DROP TABLE IF EXISTS dq_checks CASCADE;
+DROP TABLE IF EXISTS sync_runs CASCADE;
+DROP TABLE IF EXISTS backfill_jobs CASCADE;
+
 -- =============================================================================
 -- Enums
 -- =============================================================================
