@@ -17,14 +17,14 @@ BEGIN
     -- Add configuration column if missing
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'platform'
+        WHERE table_schema = 'public'
         AND table_name = 'tenant_airbyte_connections'
         AND column_name = 'configuration'
     ) THEN
-        ALTER TABLE platform.tenant_airbyte_connections
+        ALTER TABLE public.tenant_airbyte_connections
         ADD COLUMN configuration JSONB DEFAULT '{}'::jsonb;
 
-        COMMENT ON COLUMN platform.tenant_airbyte_connections.configuration IS
+        COMMENT ON COLUMN public.tenant_airbyte_connections.configuration IS
             'Non-sensitive connection configuration metadata (e.g., shop_domain for Shopify)';
 
         RAISE NOTICE 'Added configuration column to tenant_airbyte_connections';
@@ -35,11 +35,11 @@ BEGIN
     -- Add connection_name column if missing (for consistency)
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'platform'
+        WHERE table_schema = 'public'
         AND table_name = 'tenant_airbyte_connections'
         AND column_name = 'connection_name'
     ) THEN
-        ALTER TABLE platform.tenant_airbyte_connections
+        ALTER TABLE public.tenant_airbyte_connections
         ADD COLUMN connection_name VARCHAR(255);
 
         RAISE NOTICE 'Added connection_name column to tenant_airbyte_connections';
