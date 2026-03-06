@@ -197,7 +197,7 @@ class DataChangeEvent(Base, TimestampMixin, TenantScopedMixin):
         Index(
             "ix_data_change_events_connector",
             "tenant_id", "affected_connector_id",
-            postgresql_where=(affected_connector_id is not None)
+            postgresql_where=affected_connector_id.isnot(None)
         ),
     )
 

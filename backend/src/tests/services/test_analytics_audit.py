@@ -16,7 +16,7 @@ from unittest.mock import patch, MagicMock
 from src.platform.audit import AuditAction, AuditOutcome
 from src.platform.audit_events import AUDITABLE_EVENTS
 from src.services.audit_logger import (
-    emit_dashboard_viewed,
+    emit_analytics_dashboard_viewed,
     emit_explore_accessed,
     emit_access_denied,
     emit_cross_tenant_blocked,
@@ -118,7 +118,7 @@ class TestEmitDashboardViewed:
         with patch(
             "src.platform.audit.log_system_audit_event_sync"
         ) as mock_log:
-            emit_dashboard_viewed(
+            emit_analytics_dashboard_viewed(
                 db=db,
                 tenant_id="tenant_abc",
                 user_id="user_001",
@@ -138,7 +138,7 @@ class TestEmitDashboardViewed:
             side_effect=Exception("DB down"),
         ):
             # Should not raise
-            emit_dashboard_viewed(
+            emit_analytics_dashboard_viewed(
                 db=db,
                 tenant_id="tenant_abc",
                 user_id="user_001",
@@ -387,7 +387,7 @@ class TestCorrelationId:
         with patch(
             "src.platform.audit.log_system_audit_event_sync"
         ) as mock_log:
-            emit_dashboard_viewed(
+            emit_analytics_dashboard_viewed(
                 db=db,
                 tenant_id="t",
                 user_id="u",
