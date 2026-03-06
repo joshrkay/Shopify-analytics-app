@@ -239,30 +239,44 @@ def run() -> None:
 
         has_concurrently = any("CONCURRENTLY" in s.upper() for s in statements)
 
+        # Use raw psycopg2 connection for ALL migrations to avoid any
+        # SQLAlchemy text() or connection-management quirks.
+        raw_conn = engine.raw_connection()
         try:
             if has_concurrently:
                 # CREATE INDEX CONCURRENTLY cannot run inside a transaction.
-                # Use a raw psycopg2 connection in autocommit mode.
-                raw_conn = engine.raw_connection()
-                try:
-                    raw_conn.autocommit = True
-                    with raw_conn.cursor() as cur:
-                        for idx, statement in enumerate(statements, 1):
-                            logger.info("  [%s] executing statement %d/%d", migration_file, idx, len(statements))
-                            cur.execute(statement)
-                finally:
-                    raw_conn.close()
+                raw_conn.autocommit = True
             else:
-                # Normal transactional execution via SQLAlchemy.
-                # Using conn.execute(text()) ensures proper transaction participation
-                # (raw cursor bypass can lose transaction state in SQLAlchemy 2.x).
-                with engine.begin() as conn:
-                    for idx, statement in enumerate(statements, 1):
-                        logger.info("  [%s] executing statement %d/%d", migration_file, idx, len(statements))
-                        conn.execute(text(statement))
+                raw_conn.autocommit = False
+
+            cur = raw_conn.cursor()
+            try:
+                for idx, statement in enumerate(statements, 1):
+                    logger.info("  [%s] executing statement %d/%d", migration_file, idx, len(statements))
+                    cur.execute(statement)
+                    # Log row counts for INSERT/UPDATE/DELETE to aid debugging
+                    # Strip leading SQL comments to find the actual command
+                    stripped = statement.strip()
+                    while stripped.startswith("--"):
+                        stripped = stripped.split("\n", 1)[-1].strip() if "\n" in stripped else ""
+                    first_word = stripped.upper()[:6]
+                    if first_word.startswith(("INSERT", "UPDATE", "DELETE")):
+                        logger.info("  [%s] statement %d affected %d rows", migration_file, idx, cur.rowcount)
+
+                if not has_concurrently:
+                    raw_conn.commit()
+                    logger.info("  [%s] transaction committed", migration_file)
+            except Exception:
+                if not has_concurrently:
+                    raw_conn.rollback()
+                raise
+            finally:
+                cur.close()
         except Exception as e:
             logger.exception("Failed migration %s at statement %d", migration_file, idx)
             raise RuntimeError(f"Migration failed: {migration_file}: {e}") from e
+        finally:
+            raw_conn.close()
 
         with engine.begin() as conn:
             conn.execute(
