@@ -267,8 +267,13 @@ def run() -> None:
             cur = raw_conn.cursor()
             try:
                 for idx, statement in enumerate(statements, 1):
-                    if not statement.strip():
-                        logger.info("  [%s] skipping empty statement %d/%d", migration_file, idx, len(statements))
+                    # Skip empty or comment-only statements
+                    _stripped = statement.strip()
+                    _cleaned = _stripped
+                    while _cleaned.startswith("--"):
+                        _cleaned = _cleaned.split("\n", 1)[-1].strip() if "\n" in _cleaned else ""
+                    if not _cleaned:
+                        logger.info("  [%s] skipping empty/comment statement %d/%d", migration_file, idx, len(statements))
                         continue
                     logger.info("  [%s] executing statement %d/%d", migration_file, idx, len(statements))
                     cur.execute(statement)
