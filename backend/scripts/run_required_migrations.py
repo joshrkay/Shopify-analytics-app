@@ -267,6 +267,9 @@ def run() -> None:
             cur = raw_conn.cursor()
             try:
                 for idx, statement in enumerate(statements, 1):
+                    if not statement.strip():
+                        logger.info("  [%s] skipping empty statement %d/%d", migration_file, idx, len(statements))
+                        continue
                     logger.info("  [%s] executing statement %d/%d", migration_file, idx, len(statements))
                     cur.execute(statement)
                     stripped = statement.strip()
