@@ -11,7 +11,6 @@ import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import SQLAlchemyError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -240,7 +239,7 @@ def run() -> None:
                 with raw.cursor() as cur:
                     for statement in statements:
                         cur.execute(statement)
-        except SQLAlchemyError as e:
+        except Exception as e:
             logger.exception("Failed migration %s", migration_file)
             raise RuntimeError(f"Migration failed: {migration_file}: {e}") from e
 
