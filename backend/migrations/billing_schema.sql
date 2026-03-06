@@ -253,7 +253,7 @@ VALUES
     ('plan_growth', 'growth', 'Growth', 'For growing businesses with advanced analytics', 2900, 29000, TRUE),
     ('plan_pro', 'pro', 'Pro', 'Professional tier with all features', 7900, 79000, TRUE),
     ('plan_enterprise', 'enterprise', 'Enterprise', 'Custom solutions with dedicated support', NULL, NULL, TRUE)
-ON CONFLICT (id) DO UPDATE SET
+ON CONFLICT (name) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     description = EXCLUDED.description,
     price_monthly_cents = EXCLUDED.price_monthly_cents,
