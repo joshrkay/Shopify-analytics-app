@@ -24,8 +24,8 @@ MIGRATIONS = [
     "0056_agency_access.sql",
     "0057_access_revocation.sql",
     "0060_audit_logs.sql",
-    "add_insight_dollar_impact.sql",
     "add_tenant_airbyte_workspace.sql",
+    "create_tenant_airbyte_connections.sql",   # Must precede add_configuration_column.sql
     "add_configuration_column.sql",
     "create_shopify_stores.sql",
     "billing_schema.sql",
@@ -33,6 +33,7 @@ MIGRATIONS = [
     "ingestion_jobs.sql",
     "notifications_schema.sql",
     "ai_insights_schema.sql",
+    "add_insight_dollar_impact.sql",           # Moved: requires ai_insights table from above
     "ai_insights_explainability.sql",
     "ai_recommendations_schema.sql",
     "ai_actions_schema.sql",

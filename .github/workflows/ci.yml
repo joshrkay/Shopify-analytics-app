@@ -484,11 +484,129 @@ jobs:
           echo ""
           echo "Schema/logic changes validated before merge."
 
+  # Migration validation: runs all SQL migrations against a fresh PostgreSQL
+  migration-validation:
+    name: Migration Validation
+    runs-on: ubuntu-latest
+    needs: quality-gates
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_migrations_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create prerequisite schemas and stub tables
+        env:
+          PGHOST: localhost
+          PGUSER: test
+          PGPASSWORD: test
+          PGPORT: 5432
+          PGDATABASE: test_migrations_db
+        run: |
+          echo "=========================================="
+          echo "Creating schemas and stub tables for migrations"
+          echo "=========================================="
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          -- Schemas that dbt normally creates but migrations reference
+          CREATE SCHEMA IF NOT EXISTS analytics;
+          CREATE SCHEMA IF NOT EXISTS semantic;
+
+          -- Stub tables referenced by performance_indexes.sql
+          CREATE TABLE IF NOT EXISTS analytics.orders (
+            tenant_id TEXT,
+            date DATE,
+            source_platform TEXT
+          );
+          CREATE TABLE IF NOT EXISTS analytics.marketing_spend (
+            tenant_id TEXT,
+            date DATE,
+            channel TEXT
+          );
+          CREATE TABLE IF NOT EXISTS analytics.campaign_performance (
+            tenant_id TEXT,
+            date DATE,
+            channel TEXT
+          );
+          SQL
+
+      - name: Run migration runner
+        working-directory: ./backend
+        env:
+          DATABASE_URL: "postgresql://test:test@localhost:5432/test_migrations_db"
+          PYTHONPATH: "${{ github.workspace }}/backend"
+        run: |
+          echo "=========================================="
+          echo "Running migration runner (same as deploy)"
+          echo "=========================================="
+          python scripts/run_required_migrations.py
+
+      - name: Verify migrations were recorded
+        env:
+          PGHOST: localhost
+          PGUSER: test
+          PGPASSWORD: test
+          PGPORT: 5432
+          PGDATABASE: test_migrations_db
+        run: |
+          echo "=========================================="
+          echo "Verifying all migrations were applied"
+          echo "=========================================="
+          APPLIED=$(psql -t -A -c "SELECT COUNT(*) FROM schema_migrations")
+          EXPECTED=$(python3 -c "
+          import sys; sys.path.insert(0, 'backend/scripts')
+          # Count migrations in the MIGRATIONS list
+          import ast, re
+          with open('backend/scripts/run_required_migrations.py') as f:
+              content = f.read()
+          # Find MIGRATIONS list
+          match = re.search(r'MIGRATIONS\s*=\s*\[(.*?)\]', content, re.DOTALL)
+          items = re.findall(r'\"([^\"]+)\"', match.group(1))
+          print(len(items))
+          ")
+          echo "Applied: $APPLIED / Expected: $EXPECTED"
+          if [ "$APPLIED" -ne "$EXPECTED" ]; then
+            echo "::error::Not all migrations were applied! Applied $APPLIED of $EXPECTED"
+            psql -c "SELECT migration_file, applied_at FROM schema_migrations ORDER BY applied_at"
+            exit 1
+          fi
+          echo "✓ All $APPLIED migrations applied successfully"
+
   # Block PR merge if quality gates fail
   pr-check:
     name: PR Merge Gate
     runs-on: ubuntu-latest
-    needs: [quality-gates, platform-tests, billing-regression-tests, dbt-validation]
+    needs: [quality-gates, platform-tests, billing-regression-tests, dbt-validation, migration-validation]
     if: github.event_name == 'pull_request'
     
     steps:

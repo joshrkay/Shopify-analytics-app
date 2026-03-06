@@ -16,45 +16,56 @@
 --
 -- SAFETY: All changes are scoped to analytics_reader and superset_service.
 --         Admin and migration roles are NOT affected.
+--
+-- NOTE: analytics.* and semantic schemas are created by dbt, not by migrations.
+--       All schema/table-dependent operations are wrapped in existence checks
+--       so this migration succeeds even if dbt hasn't run yet.
 -- =============================================================================
 
-BEGIN;
+-- Note: No explicit BEGIN/COMMIT needed — the migration runner wraps each migration in a transaction.
 
 -- ---------------------------------------------------------------------------
--- 1. Composite Indexes on analytics.orders (canonical table for sem_orders_v1)
+-- 1-3. Composite Indexes on analytics tables (only if they exist)
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX IF NOT EXISTS ix_orders_tenant_date
-    ON analytics.orders (tenant_id, date DESC);
+DO $$
+BEGIN
+    -- Only create indexes if the analytics schema and tables exist (created by dbt)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'orders') THEN
+        CREATE INDEX IF NOT EXISTS ix_orders_tenant_date
+            ON analytics.orders (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_orders_tenant_date_source_platform
+            ON analytics.orders (tenant_id, date DESC, source_platform);
+        RAISE NOTICE 'Created indexes on analytics.orders';
+    ELSE
+        RAISE NOTICE 'analytics.orders does not exist yet (dbt not run) — skipping indexes';
+    END IF;
 
-CREATE INDEX IF NOT EXISTS ix_orders_tenant_date_source_platform
-    ON analytics.orders (tenant_id, date DESC, source_platform);
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'marketing_spend') THEN
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date
+            ON analytics.marketing_spend (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_channel
+            ON analytics.marketing_spend (tenant_id, channel);
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date_channel
+            ON analytics.marketing_spend (tenant_id, date DESC, channel);
+        RAISE NOTICE 'Created indexes on analytics.marketing_spend';
+    ELSE
+        RAISE NOTICE 'analytics.marketing_spend does not exist yet (dbt not run) — skipping indexes';
+    END IF;
 
--- ---------------------------------------------------------------------------
--- 2. Composite Indexes on analytics.marketing_spend (canonical for sem_marketing_spend_v1)
--- ---------------------------------------------------------------------------
-
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date
-    ON analytics.marketing_spend (tenant_id, date DESC);
-
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_channel
-    ON analytics.marketing_spend (tenant_id, channel);
-
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date_channel
-    ON analytics.marketing_spend (tenant_id, date DESC, channel);
-
--- ---------------------------------------------------------------------------
--- 3. Composite Indexes on analytics.campaign_performance (canonical for sem_campaign_performance_v1)
--- ---------------------------------------------------------------------------
-
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date
-    ON analytics.campaign_performance (tenant_id, date DESC);
-
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_channel
-    ON analytics.campaign_performance (tenant_id, channel);
-
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date_channel
-    ON analytics.campaign_performance (tenant_id, date DESC, channel);
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'campaign_performance') THEN
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date
+            ON analytics.campaign_performance (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_channel
+            ON analytics.campaign_performance (tenant_id, channel);
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date_channel
+            ON analytics.campaign_performance (tenant_id, date DESC, channel);
+        RAISE NOTICE 'Created indexes on analytics.campaign_performance';
+    ELSE
+        RAISE NOTICE 'analytics.campaign_performance does not exist yet (dbt not run) — skipping indexes';
+    END IF;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 4. Analytics Reader Role and Schema Access
@@ -68,31 +79,48 @@ BEGIN
 END
 $$;
 
--- Analytics schema (canonical tables)
-GRANT USAGE ON SCHEMA analytics TO analytics_reader;
-GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_reader;
-ALTER DEFAULT PRIVILEGES IN SCHEMA analytics
-    GRANT SELECT ON TABLES TO analytics_reader;
+-- Grant schema access only if schemas exist (created by dbt)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'analytics') THEN
+        GRANT USAGE ON SCHEMA analytics TO analytics_reader;
+        GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO analytics_reader;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA analytics
+            GRANT SELECT ON TABLES TO analytics_reader;
+        RAISE NOTICE 'Granted analytics schema access to analytics_reader';
+    ELSE
+        RAISE NOTICE 'analytics schema does not exist yet — skipping grants';
+    END IF;
 
--- Semantic schema (Superset-facing views: sem_*_v1, fact_*_current)
-GRANT USAGE ON SCHEMA semantic TO analytics_reader;
-GRANT SELECT ON ALL TABLES IN SCHEMA semantic TO analytics_reader;
-ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
-    GRANT SELECT ON TABLES TO analytics_reader;
+    IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'semantic') THEN
+        GRANT USAGE ON SCHEMA semantic TO analytics_reader;
+        GRANT SELECT ON ALL TABLES IN SCHEMA semantic TO analytics_reader;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
+            GRANT SELECT ON TABLES TO analytics_reader;
+        RAISE NOTICE 'Granted semantic schema access to analytics_reader';
+    ELSE
+        RAISE NOTICE 'semantic schema does not exist yet — skipping grants';
+    END IF;
 
-ALTER ROLE analytics_reader SET statement_timeout = '20s';
-ALTER ROLE analytics_reader SET analytics.max_rows = '50000';
+    ALTER ROLE analytics_reader SET statement_timeout = '20s';
+    ALTER ROLE analytics_reader SET analytics.max_rows = '50000';
+END
+$$;
 
 -- Superset service role: same schema access for metadata and query execution
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'superset_service') THEN
-        GRANT USAGE ON SCHEMA analytics TO superset_service;
-        GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO superset_service;
-        GRANT USAGE ON SCHEMA semantic TO superset_service;
-        GRANT SELECT ON ALL TABLES IN SCHEMA semantic TO superset_service;
-        ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
-            GRANT SELECT ON TABLES TO superset_service;
+        IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'analytics') THEN
+            GRANT USAGE ON SCHEMA analytics TO superset_service;
+            GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO superset_service;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'semantic') THEN
+            GRANT USAGE ON SCHEMA semantic TO superset_service;
+            GRANT SELECT ON ALL TABLES IN SCHEMA semantic TO superset_service;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
+                GRANT SELECT ON TABLES TO superset_service;
+        END IF;
     END IF;
 END
 $$;
@@ -101,16 +129,25 @@ $$;
 -- 5. Max Result Size Guard (row_limit enforcement at DB level)
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION analytics.enforce_row_limit(
-    max_rows INTEGER DEFAULT 50000
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
+DO $$
 BEGIN
-    PERFORM set_config('analytics.max_rows', max_rows::TEXT, TRUE);
-END;
+    IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'analytics') THEN
+        CREATE OR REPLACE FUNCTION analytics.enforce_row_limit(
+            max_rows INTEGER DEFAULT 50000
+        )
+        RETURNS VOID
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        AS $func$
+        BEGIN
+            PERFORM set_config('analytics.max_rows', max_rows::TEXT, TRUE);
+        END;
+        $func$;
+        RAISE NOTICE 'Created analytics.enforce_row_limit function';
+    ELSE
+        RAISE NOTICE 'analytics schema does not exist yet — skipping enforce_row_limit';
+    END IF;
+END
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -143,4 +180,4 @@ EXCEPTION WHEN OTHERS THEN
 END
 $$;
 
-COMMIT;
+-- Migration runner handles commit.
