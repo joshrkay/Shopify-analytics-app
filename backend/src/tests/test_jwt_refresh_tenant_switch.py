@@ -11,9 +11,7 @@ Test classes:
 
 import uuid
 from datetime import datetime, timezone
-
 import pytest
-
 from sqlalchemy.orm import Session
 
 from src.models.user import User
