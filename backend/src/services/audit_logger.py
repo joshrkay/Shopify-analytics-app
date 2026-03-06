@@ -551,7 +551,7 @@ def emit_quality_recovered(
 _ANALYTICS_RESOURCE_TYPE = "superset_analytics"
 
 
-def emit_dashboard_viewed(
+def emit_analytics_dashboard_viewed(
     db: Session,
     tenant_id: str,
     user_id: str,
@@ -1520,7 +1520,7 @@ def emit_jwt_revoked(
         )
 
 
-def emit_custom_dashboard_viewed(
+def emit_dashboard_viewed(
     db: Session,
     tenant_id: str,
     user_id: str,
