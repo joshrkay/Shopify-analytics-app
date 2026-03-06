@@ -56,7 +56,7 @@ END$$;
 -- Run this query to identify connections needing backfill:
 --
 -- SELECT id, tenant_id, airbyte_connection_id, source_type, configuration
--- FROM platform.tenant_airbyte_connections
+-- FROM public.tenant_airbyte_connections
 -- WHERE source_type IN ('shopify', 'source-shopify')
 --   AND (configuration->>'shop_domain' IS NULL OR configuration->>'shop_domain' = '');
 

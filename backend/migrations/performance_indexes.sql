@@ -18,7 +18,7 @@
 --         Admin and migration roles are NOT affected.
 -- =============================================================================
 
-BEGIN;
+-- Note: No explicit BEGIN/COMMIT needed — the migration runner wraps each migration in a transaction.
 
 -- ---------------------------------------------------------------------------
 -- 1. Composite Indexes on analytics.orders (canonical table for sem_orders_v1)
@@ -143,4 +143,4 @@ EXCEPTION WHEN OTHERS THEN
 END
 $$;
 
-COMMIT;
+-- Migration runner handles commit.
