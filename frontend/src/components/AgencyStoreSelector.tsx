@@ -145,7 +145,7 @@ export function AgencyStoreSelector({
         }));
       }
     },
-    [state.selectedTenantId, onStoreChange]
+    [state.selectedTenantId, state.stores, onStoreChange]
   );
 
   // Don't render anything for non-agency users

@@ -44,7 +44,7 @@ const MAX_RETRIES = 3;
  */
 export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = ({
   dashboardId,
-  tenantId,
+  tenantId: _tenantId,
   height = DEFAULT_HEIGHT,
   className = '',
   onLoad,
@@ -68,6 +68,7 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const refreshManagerRef = useRef<UnifiedTokenRefreshManager | null>(null);
   const retryCountRef = useRef(0);
+  const fetchTokenRef = useRef<(() => Promise<void>) | null>(null);
 
   /**
    * Handle successful token generation/refresh.
@@ -105,7 +106,7 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
         console.log(
           `[EmbeddedSuperset] Retrying token fetch (attempt ${retryCountRef.current}/${MAX_RETRIES})`
         );
-        setTimeout(() => fetchToken(), RETRY_DELAY_MS);
+        setTimeout(() => fetchTokenRef.current?.(), RETRY_DELAY_MS);
       } else {
         setState((prev) => ({
           ...prev,
@@ -152,6 +153,11 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
       onError?.(error as Error);
     }
   }, [dashboardId, handleTokenSuccess, handleRefreshError, onError]);
+
+  // Keep ref in sync so handleRefreshError always calls the latest fetchToken
+  useEffect(() => {
+    fetchTokenRef.current = fetchToken;
+  }, [fetchToken]);
 
   /**
    * Handle iframe load event.
@@ -232,7 +238,7 @@ export const ShopifyEmbeddedSuperset: React.FC<ShopifyEmbeddedSupersetProps> = (
         refreshManagerRef.current.stop();
       }
     };
-  }, [dashboardId, tenantId]); // Re-fetch when dashboard or tenant changes
+  }, [fetchToken, handleParentMessage]); // both stable useCallback refs encoding dashboardId
 
   /**
    * Handle retry button click.

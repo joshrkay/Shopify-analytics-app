@@ -240,6 +240,10 @@ export function InsightsFeed() {
     }
   };
 
+  const handleNewPrompt = useCallback((prompt: string) => {
+    navigate(`/insights?q=${encodeURIComponent(prompt)}`);
+  }, [navigate]);
+
   const tabs = [
     {
       id: 'active',

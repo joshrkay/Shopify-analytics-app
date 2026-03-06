@@ -41,8 +41,8 @@ export function useWidgetCatalog(category: WidgetCategory = 'all'): UseWidgetCat
     queryFn: getWidgetCategories,
   });
 
-  const widgets = widgetsQuery.data ?? [];
-  const categories = categoriesQuery.data ?? [];
+  const widgets = useMemo(() => widgetsQuery.data ?? [], [widgetsQuery.data]);
+  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
 
   const isLoading = widgetsQuery.isLoading || categoriesQuery.isLoading;
 

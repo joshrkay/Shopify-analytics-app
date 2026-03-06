@@ -75,26 +75,6 @@ const BackfillModal: React.FC<BackfillModalProps> = ({
     }
   }, [open]);
 
-  // Validate date range when dates change
-  useEffect(() => {
-    if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const result = calculateBackfillDateRange(start, end);
-      setValidation(result);
-
-      // Fetch estimate if valid
-      if (result.isValid) {
-        fetchEstimate();
-      } else {
-        setEstimate(null);
-      }
-    } else {
-      setValidation(null);
-      setEstimate(null);
-    }
-  }, [startDate, endDate]);
-
   // Fetch backfill estimate
   const fetchEstimate = useCallback(async () => {
     if (!startDate || !endDate) return;
@@ -116,6 +96,26 @@ const BackfillModal: React.FC<BackfillModalProps> = ({
       setEstimating(false);
     }
   }, [connector.connector_id, startDate, endDate]);
+
+  // Validate date range when dates change
+  useEffect(() => {
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const result = calculateBackfillDateRange(start, end);
+      setValidation(result);
+
+      // Fetch estimate if valid
+      if (result.isValid) {
+        fetchEstimate();
+      } else {
+        setEstimate(null);
+      }
+    } else {
+      setValidation(null);
+      setEstimate(null);
+    }
+  }, [startDate, endDate, fetchEstimate]);
 
   // Handle form submission
   const handleSubmit = async () => {

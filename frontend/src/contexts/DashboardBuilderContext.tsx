@@ -351,7 +351,8 @@ export function DashboardBuilderProvider({
     setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
     try {
-      const { dashboard, wizardState } = state;
+      const dashboard = state.dashboard;
+      const wizardState = state.wizardState;
 
       // WIZARD MODE: Create new dashboard with selected widgets
       if (wizardState.isWizardMode && !dashboard) {

@@ -55,7 +55,7 @@ export function useTemplates(filters: TemplateFilters = {}): UseTemplatesResult 
     } finally {
       setLoading(false);
     }
-  }, [filters.category]);
+  }, [filters]);
 
   useEffect(() => {
     loadTemplates();
