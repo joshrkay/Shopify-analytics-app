@@ -9,7 +9,6 @@ Test classes:
 - TestAuditEvents: auth.jwt_refresh and tenant.context_switched emitted
 """
 
-import pytest
 import uuid
 from datetime import datetime, timezone
 
