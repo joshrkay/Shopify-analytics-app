@@ -203,7 +203,7 @@ class AirbyteService:
                 connection_name,
                 airbyte_connection_id,
                 id
-            FROM platform.tenant_airbyte_connections
+            FROM public.tenant_airbyte_connections
             WHERE lower(
                     trim(
                         trailing '/' from
