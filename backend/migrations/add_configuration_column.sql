@@ -17,14 +17,14 @@ BEGIN
     -- Add configuration column if missing
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public'
+        WHERE table_schema = 'platform'
         AND table_name = 'tenant_airbyte_connections'
         AND column_name = 'configuration'
     ) THEN
-        ALTER TABLE public.tenant_airbyte_connections
+        ALTER TABLE platform.tenant_airbyte_connections
         ADD COLUMN configuration JSONB DEFAULT '{}'::jsonb;
 
-        COMMENT ON COLUMN public.tenant_airbyte_connections.configuration IS
+        COMMENT ON COLUMN platform.tenant_airbyte_connections.configuration IS
             'Non-sensitive connection configuration metadata (e.g., shop_domain for Shopify)';
 
         RAISE NOTICE 'Added configuration column to tenant_airbyte_connections';
@@ -35,11 +35,11 @@ BEGIN
     -- Add connection_name column if missing (for consistency)
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public'
+        WHERE table_schema = 'platform'
         AND table_name = 'tenant_airbyte_connections'
         AND column_name = 'connection_name'
     ) THEN
-        ALTER TABLE public.tenant_airbyte_connections
+        ALTER TABLE platform.tenant_airbyte_connections
         ADD COLUMN connection_name VARCHAR(255);
 
         RAISE NOTICE 'Added connection_name column to tenant_airbyte_connections';
@@ -56,7 +56,7 @@ END$$;
 -- Run this query to identify connections needing backfill:
 --
 -- SELECT id, tenant_id, airbyte_connection_id, source_type, configuration
--- FROM public.tenant_airbyte_connections
+-- FROM platform.tenant_airbyte_connections
 -- WHERE source_type IN ('shopify', 'source-shopify')
 --   AND (configuration->>'shop_domain' IS NULL OR configuration->>'shop_domain' = '');
 

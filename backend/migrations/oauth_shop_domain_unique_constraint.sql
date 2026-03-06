@@ -20,8 +20,10 @@
 -- - Only applies to active + enabled Shopify connections
 --
 -- Rollback:
--- DROP INDEX IF EXISTS ix_tenant_airbyte_connections_shop_domain_unique;
+-- DROP INDEX IF EXISTS platform.ix_tenant_airbyte_connections_shop_domain_unique;
 -- ============================================================================
+
+BEGIN;
 
 -- =============================================================================
 -- Pre-Migration Validation: Check for Existing Duplicates
@@ -48,7 +50,7 @@ BEGIN
                 )
             ) as normalized_shop_domain,
             COUNT(*) as tenant_count
-        FROM public.tenant_airbyte_connections
+        FROM platform.tenant_airbyte_connections
         WHERE source_type IN ('shopify', 'source-shopify')
           AND status = 'active'
           AND is_enabled = true
@@ -85,7 +87,7 @@ BEGIN
                 array_agg(connection_name ORDER BY connection_name) as connection_names,
                 array_agg(id ORDER BY id) as connection_ids,
                 COUNT(*) as count
-            FROM public.tenant_airbyte_connections
+            FROM platform.tenant_airbyte_connections
             WHERE source_type IN ('shopify', 'source-shopify')
               AND status = 'active'
               AND is_enabled = true
@@ -106,7 +108,7 @@ BEGIN
         RAISE WARNING 'ACTION REQUIRED:';
         RAISE WARNING '1. Review which tenant legitimately owns each shop';
         RAISE WARNING '2. Disable or delete duplicate connections:';
-        RAISE WARNING '   UPDATE public.tenant_airbyte_connections';
+        RAISE WARNING '   UPDATE platform.tenant_airbyte_connections';
         RAISE WARNING '   SET is_enabled = false WHERE id = ''<connection_id>'';';
         RAISE WARNING '3. Re-run this migration after cleanup';
         RAISE WARNING '─────────────────────────────────────────────────────────────';
@@ -122,6 +124,8 @@ END $$;
 -- Create Unique Index on shop_domain
 -- =============================================================================
 
+RAISE NOTICE 'Creating unique index on shop_domain...';
+
 -- Partial unique index: Ensures no two ACTIVE Shopify connections can have the same shop_domain
 -- This prevents data leakage via duplicate shop_domain mappings in DBT
 --
@@ -130,10 +134,8 @@ END $$;
 -- - strip leading https:// or http://
 -- - strip trailing /
 --
--- Note: Cannot use CREATE INDEX CONCURRENTLY inside a transaction, so we use
--- a regular CREATE UNIQUE INDEX here.
-CREATE UNIQUE INDEX IF NOT EXISTS ix_tenant_airbyte_connections_shop_domain_unique
-    ON public.tenant_airbyte_connections (
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ix_tenant_airbyte_connections_shop_domain_unique
+    ON platform.tenant_airbyte_connections (
         lower(
             trim(
                 trailing '/' from
@@ -152,6 +154,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_tenant_airbyte_connections_shop_domain_uniq
       AND configuration->>'shop_domain' IS NOT NULL
       AND configuration->>'shop_domain' != '';
 
+COMMENT ON INDEX platform.ix_tenant_airbyte_connections_shop_domain_unique IS
+    'SECURITY: Ensures each shop_domain can only be connected to one tenant at a time. '
+    'Prevents data leakage via DBT JOIN on shop_domain. '
+    'Uses same normalization as DBT staging models (analytics/models/staging/stg_shopify_orders.sql). '
+    'Only applies to active, enabled Shopify connections. '
+    'Created: 2026-01-31 for OAuth plan implementation.';
+
+RAISE NOTICE '✓ Unique index created successfully';
+
 -- =============================================================================
 -- Post-Migration Validation
 -- =============================================================================
@@ -165,7 +176,7 @@ BEGIN
     SELECT EXISTS (
         SELECT 1
         FROM pg_indexes
-        WHERE schemaname = 'public'
+        WHERE schemaname = 'platform'
           AND tablename = 'tenant_airbyte_connections'
           AND indexname = 'ix_tenant_airbyte_connections_shop_domain_unique'
     ) INTO index_exists;
@@ -178,7 +189,7 @@ BEGIN
 
     -- Count active Shopify connections
     SELECT COUNT(*) INTO active_shopify_count
-    FROM public.tenant_airbyte_connections
+    FROM platform.tenant_airbyte_connections
     WHERE source_type IN ('shopify', 'source-shopify')
       AND status = 'active'
       AND is_enabled = true
@@ -189,4 +200,24 @@ BEGIN
     RAISE NOTICE '═══════════════════════════════════════════════════════════════';
     RAISE NOTICE 'Migration completed successfully';
     RAISE NOTICE '═══════════════════════════════════════════════════════════════';
+    RAISE NOTICE '';
+    RAISE NOTICE 'SECURITY IMPACT:';
+    RAISE NOTICE '- Duplicate shop_domain connections now BLOCKED at database level';
+    RAISE NOTICE '- Prevents data leakage via DBT JOIN on shop_domain';
+    RAISE NOTICE '- Application-level validation should also be deployed';
+    RAISE NOTICE '';
+    RAISE NOTICE 'TESTING:';
+    RAISE NOTICE 'Verify constraint works:';
+    RAISE NOTICE '  -- This should FAIL:';
+    RAISE NOTICE '  INSERT INTO platform.tenant_airbyte_connections (';
+    RAISE NOTICE '    id, tenant_id, airbyte_connection_id, connection_name,';
+    RAISE NOTICE '    source_type, status, is_enabled, configuration';
+    RAISE NOTICE '  ) VALUES (';
+    RAISE NOTICE '    gen_random_uuid()::text, ''test-tenant-2'', ''test-conn-2'',';
+    RAISE NOTICE '    ''Duplicate Test'', ''shopify'', ''active'', true,';
+    RAISE NOTICE '    ''{"shop_domain": "<existing-shop-domain>"}''::jsonb';
+    RAISE NOTICE '  );';
+    RAISE NOTICE '';
 END $$;
+
+COMMIT;
