@@ -1,9 +1,8 @@
 """
 Airbyte API client for data synchronization management.
 
-Supports Airbyte OSS (self-hosted) and Airbyte Cloud:
-- OSS v2: Client credentials via AIRBYTE_CLIENT_ID / AIRBYTE_CLIENT_SECRET (recommended)
-- OSS legacy: Basic auth via AIRBYTE_USERNAME / AIRBYTE_PASSWORD
+Supports both Airbyte OSS (self-hosted) and Airbyte Cloud:
+- OSS: Basic auth via AIRBYTE_USERNAME / AIRBYTE_PASSWORD
 - Cloud: Bearer token via AIRBYTE_API_TOKEN
 
 This client handles:
@@ -69,9 +68,8 @@ class AirbyteClient:
     Async client for the Airbyte API (OSS and Cloud).
 
     Authentication modes (checked in order):
-    1. Client credentials — set AIRBYTE_CLIENT_ID + AIRBYTE_CLIENT_SECRET (Airbyte OSS v2)
-    2. Basic auth — set AIRBYTE_USERNAME + AIRBYTE_PASSWORD (Airbyte OSS legacy)
-    3. Bearer token — set AIRBYTE_API_TOKEN (Airbyte Cloud / static token)
+    1. Basic auth — set AIRBYTE_USERNAME + AIRBYTE_PASSWORD (Airbyte OSS default)
+    2. Bearer token — set AIRBYTE_API_TOKEN (Airbyte Cloud / OSS with token auth)
 
     workspace_id is optional in the constructor. When not set the instance
     has no default workspace; callers pass workspace_id per-call. This
@@ -88,8 +86,6 @@ class AirbyteClient:
         workspace_id: Optional[str] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT_SECONDS,
     ):
@@ -103,13 +99,11 @@ class AirbyteClient:
                           Per-tenant workspace IDs are passed explicitly per call instead.
             username: Basic auth username (default: from AIRBYTE_USERNAME env)
             password: Basic auth password (default: from AIRBYTE_PASSWORD env)
-            client_id: OSS v2 client ID (default: from AIRBYTE_CLIENT_ID env)
-            client_secret: OSS v2 client secret (default: from AIRBYTE_CLIENT_SECRET env)
             timeout: Request timeout in seconds
             connect_timeout: Connection timeout in seconds
 
         Raises:
-            ValueError: If no valid authentication credentials are configured
+            ValueError: If neither Basic auth credentials nor a Bearer token are configured
         """
         self.base_url = (
             base_url or os.getenv("AIRBYTE_BASE_URL") or DEFAULT_BASE_URL
@@ -118,138 +112,33 @@ class AirbyteClient:
         # workspace_id is optional — per-tenant model stores it on the Tenant record
         self.workspace_id = workspace_id or os.getenv("AIRBYTE_WORKSPACE_ID")
 
-        # Auth mode detection (checked in priority order):
-        # 1. OSS v2 client credentials (AIRBYTE_CLIENT_ID + AIRBYTE_CLIENT_SECRET)
-        # 2. Basic auth (AIRBYTE_USERNAME + AIRBYTE_PASSWORD)
-        # 3. Static Bearer token (AIRBYTE_API_TOKEN)
-        self._client_id = client_id or os.getenv("AIRBYTE_CLIENT_ID")
-        self._client_secret = client_secret or os.getenv("AIRBYTE_CLIENT_SECRET")
-        self._auth_mode: str = "none"
-        self._static_auth_header: Optional[str] = None
-
-        # OSS v2 token state (refreshed dynamically)
-        self._oss_token: Optional[str] = None
-        self._oss_token_expires_at: float = 0.0
-        self._token_lock = asyncio.Lock()
-
+        # Resolve auth header — Basic auth takes precedence over Bearer token
         _username = username or os.getenv("AIRBYTE_USERNAME")
         _password = password or os.getenv("AIRBYTE_PASSWORD")
 
-        if self._client_id and self._client_secret:
-            # OSS v2: token will be fetched on first request via _ensure_token()
-            self._auth_mode = "oss_v2"
-            logger.info("Airbyte client using OSS v2 client credentials auth")
-        elif _username and _password:
+        if _username and _password:
             credentials = base64.b64encode(
                 f"{_username}:{_password}".encode()
             ).decode()
-            self._static_auth_header = f"Basic {credentials}"
-            self._auth_mode = "basic"
-            logger.info("Airbyte client using Basic auth")
+            auth_header = f"Basic {credentials}"
         else:
             self.api_token = api_token or os.getenv("AIRBYTE_API_TOKEN")
             if not self.api_token:
                 raise ValueError(
-                    "Airbyte authentication is required. Set one of: "
-                    "AIRBYTE_CLIENT_ID + AIRBYTE_CLIENT_SECRET (OSS v2), "
-                    "AIRBYTE_USERNAME + AIRBYTE_PASSWORD (OSS Basic auth), "
-                    "or AIRBYTE_API_TOKEN (Cloud / static token)."
+                    "Airbyte authentication is required. Set either "
+                    "AIRBYTE_USERNAME + AIRBYTE_PASSWORD (Airbyte OSS Basic auth) "
+                    "or AIRBYTE_API_TOKEN (Bearer token for Cloud / OSS token auth)."
                 )
-            self._static_auth_header = f"Bearer {self.api_token}"
-            self._auth_mode = "bearer"
-            logger.info("Airbyte client using static Bearer token auth")
+            auth_header = f"Bearer {self.api_token}"
 
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=connect_timeout),
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "Authorization": auth_header,
             },
         )
-
-    async def _ensure_token(self) -> str:
-        """
-        Ensure a valid OSS v2 Bearer token is available.
-
-        Uses client_id + client_secret to fetch a short-lived token from
-        POST /api/v1/applications/token. Tokens are cached and refreshed
-        60 seconds before expiry. Thread-safe via asyncio.Lock.
-
-        Returns:
-            Valid Bearer token string
-        """
-        # Fast path: token is still fresh (with 60s buffer)
-        if self._oss_token and time.time() < (self._oss_token_expires_at - 60):
-            return self._oss_token
-
-        async with self._token_lock:
-            # Double-check after acquiring lock
-            if self._oss_token and time.time() < (self._oss_token_expires_at - 60):
-                return self._oss_token
-
-            return await self._fetch_oss_token()
-
-    async def _fetch_oss_token(self) -> str:
-        """
-        Exchange client credentials for a short-lived Bearer token.
-
-        POST {base_url}/applications/token
-        Body: {"client_id": "...", "client_secret": "..."}
-        Response: {"access_token": "...", "expires_in": 300}
-        """
-        token_url = f"{self.base_url}/applications/token"
-        try:
-            response = await self._client.post(
-                token_url,
-                json={
-                    "client_id": self._client_id,
-                    "client_secret": self._client_secret,
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-            )
-
-            if response.status_code != 200:
-                logger.error(
-                    "OSS v2 token exchange failed",
-                    extra={
-                        "status_code": response.status_code,
-                        "response": response.text[:500],
-                    },
-                )
-                raise AirbyteAuthenticationError(
-                    message=f"OSS v2 token exchange failed (HTTP {response.status_code})",
-                    status_code=response.status_code,
-                )
-
-            data = response.json()
-            self._oss_token = data["access_token"]
-            expires_in = data.get("expires_in", 300)
-            self._oss_token_expires_at = time.time() + expires_in
-
-            logger.debug(
-                "OSS v2 token refreshed",
-                extra={"expires_in": expires_in},
-            )
-            return self._oss_token
-
-        except httpx.RequestError as exc:
-            logger.error(
-                "OSS v2 token exchange connection error",
-                extra={"error": str(exc)},
-            )
-            raise AirbyteConnectionError(
-                message=f"Failed to reach Airbyte token endpoint: {exc}"
-            )
-
-    async def _get_auth_header(self) -> str:
-        """Get the Authorization header value for the current auth mode."""
-        if self._auth_mode == "oss_v2":
-            token = await self._ensure_token()
-            return f"Bearer {token}"
-        return self._static_auth_header
 
     async def close(self) -> None:
         """Close the HTTP client."""
@@ -286,34 +175,12 @@ class AirbyteClient:
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
 
         try:
-            # Inject auth header per-request (supports dynamic OSS v2 tokens)
-            auth_header = await self._get_auth_header()
-            request_headers = {"Authorization": auth_header}
-
             response = await self._client.request(
                 method=method,
                 url=url,
                 json=json,
                 params=params,
-                headers=request_headers,
             )
-
-            # On 401, retry once with a fresh token (OSS v2 tokens expire)
-            if response.status_code == 401 and self._auth_mode == "oss_v2":
-                logger.warning(
-                    "Airbyte 401 — refreshing OSS v2 token and retrying",
-                    extra={"endpoint": endpoint},
-                )
-                self._oss_token = None  # Force refresh
-                auth_header = await self._get_auth_header()
-                request_headers = {"Authorization": auth_header}
-                response = await self._client.request(
-                    method=method,
-                    url=url,
-                    json=json,
-                    params=params,
-                    headers=request_headers,
-                )
 
             if response.status_code == 401:
                 logger.error(
@@ -989,16 +856,13 @@ def get_airbyte_client(
     workspace_id: Optional[str] = None,
     username: Optional[str] = None,
     password: Optional[str] = None,
-    client_id: Optional[str] = None,
-    client_secret: Optional[str] = None,
 ) -> AirbyteClient:
     """
     Factory function to create an AirbyteClient.
 
     Auth is resolved automatically from environment variables when not passed:
-    - Client credentials: AIRBYTE_CLIENT_ID + AIRBYTE_CLIENT_SECRET (OSS v2, recommended)
-    - Basic auth: AIRBYTE_USERNAME + AIRBYTE_PASSWORD (OSS legacy)
-    - Bearer token: AIRBYTE_API_TOKEN (Cloud / static token)
+    - Basic auth: AIRBYTE_USERNAME + AIRBYTE_PASSWORD (Airbyte OSS)
+    - Bearer token: AIRBYTE_API_TOKEN (Airbyte Cloud / OSS token auth)
 
     workspace_id is optional — the per-tenant model resolves workspace IDs
     from Tenant records and passes them explicitly to each call.
@@ -1009,8 +873,6 @@ def get_airbyte_client(
         workspace_id: Optional default workspace ID (default: AIRBYTE_WORKSPACE_ID env)
         username: Override Basic auth username (default: AIRBYTE_USERNAME env)
         password: Override Basic auth password (default: AIRBYTE_PASSWORD env)
-        client_id: Override OSS v2 client ID (default: AIRBYTE_CLIENT_ID env)
-        client_secret: Override OSS v2 client secret (default: AIRBYTE_CLIENT_SECRET env)
 
     Returns:
         Configured AirbyteClient instance
@@ -1021,6 +883,4 @@ def get_airbyte_client(
         workspace_id=workspace_id,
         username=username,
         password=password,
-        client_id=client_id,
-        client_secret=client_secret,
     )

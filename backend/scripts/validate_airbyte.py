@@ -2,7 +2,7 @@
 """
 Airbyte deployment validation script.
 
-This script validates that the Airbyte deployment (OSS v2 or Cloud) is accessible
+This script validates that the Airbyte Cloud deployment is accessible
 and properly configured for the AI Growth Analytics platform.
 
 Usage:
@@ -10,8 +10,7 @@ Usage:
 
 Prerequisites:
     - AIRBYTE_BASE_URL environment variable (or uses default)
-    - Auth: AIRBYTE_CLIENT_ID + AIRBYTE_CLIENT_SECRET (OSS v2)
-      or AIRBYTE_API_TOKEN (Cloud)
+    - AIRBYTE_API_TOKEN environment variable
     - AIRBYTE_WORKSPACE_ID environment variable
 
 Exit codes:
@@ -55,39 +54,8 @@ async def validate_airbyte_setup() -> bool:
     print_header("Airbyte Deployment Validation")
 
     # Check required environment variables
-    # Detect auth mode
-    has_client_creds = bool(os.getenv("AIRBYTE_CLIENT_ID") and os.getenv("AIRBYTE_CLIENT_SECRET"))
-    has_api_token = bool(os.getenv("AIRBYTE_API_TOKEN"))
-    has_basic_auth = bool(os.getenv("AIRBYTE_USERNAME") and os.getenv("AIRBYTE_PASSWORD"))
-
-    if has_client_creds:
-        auth_mode = "OSS v2 (client credentials)"
-        auth_vars = [
-            ("AIRBYTE_CLIENT_ID", "OSS v2 client ID"),
-            ("AIRBYTE_CLIENT_SECRET", "OSS v2 client secret"),
-        ]
-    elif has_basic_auth:
-        auth_mode = "OSS Basic auth"
-        auth_vars = [
-            ("AIRBYTE_USERNAME", "Basic auth username"),
-            ("AIRBYTE_PASSWORD", "Basic auth password"),
-        ]
-    elif has_api_token:
-        auth_mode = "Cloud / static Bearer token"
-        auth_vars = [
-            ("AIRBYTE_API_TOKEN", "API token for authentication"),
-        ]
-    else:
-        print_status(False, "No Airbyte auth configured")
-        print("\nSet one of:")
-        print("  AIRBYTE_CLIENT_ID + AIRBYTE_CLIENT_SECRET (OSS v2)")
-        print("  AIRBYTE_USERNAME + AIRBYTE_PASSWORD (OSS Basic)")
-        print("  AIRBYTE_API_TOKEN (Cloud)")
-        return False
-
-    print(f"Detected auth mode: {auth_mode}\n")
-
-    required_vars = auth_vars + [
+    required_vars = [
+        ("AIRBYTE_API_TOKEN", "API token for authentication"),
         ("AIRBYTE_WORKSPACE_ID", "Workspace ID"),
     ]
 
@@ -102,7 +70,7 @@ async def validate_airbyte_setup() -> bool:
         value = os.getenv(var_name)
         if value:
             # Redact sensitive values
-            if "TOKEN" in var_name or "SECRET" in var_name or "KEY" in var_name or "PASSWORD" in var_name:
+            if "TOKEN" in var_name or "SECRET" in var_name or "KEY" in var_name:
                 display_value = f"{value[:8]}...{value[-4:]}" if len(value) > 12 else "***"
             else:
                 display_value = value
@@ -120,6 +88,9 @@ async def validate_airbyte_setup() -> bool:
 
     if not all_vars_present:
         print("\n\u274c Required environment variables missing. Aborting validation.")
+        print("\nTo set environment variables, create a .env file with:")
+        print("  AIRBYTE_API_TOKEN=<your-api-token>")
+        print("  AIRBYTE_WORKSPACE_ID=<your-workspace-id>")
         return False
 
     # Import here after we know environment is set up

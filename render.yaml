@@ -191,13 +191,9 @@ services:
       # as a legacy fallback for tools that still reference a single workspace.
       - key: AIRBYTE_WORKSPACE_ID
         sync: false
-      # Airbyte OSS v2 — Client credentials auth (recommended for OSS)
-      - key: AIRBYTE_CLIENT_ID
-        sync: false
-      - key: AIRBYTE_CLIENT_SECRET
-        sync: false
-      # Legacy auth — Basic auth (AIRBYTE_USERNAME + AIRBYTE_PASSWORD) or
-      # static Bearer token (AIRBYTE_API_TOKEN) for Airbyte Cloud
+      # Airbyte OSS (self-hosted) — Basic auth credentials
+      # Set AIRBYTE_USERNAME + AIRBYTE_PASSWORD for OSS deployments.
+      # Set AIRBYTE_API_TOKEN for Airbyte Cloud / OSS Bearer token auth.
       - key: AIRBYTE_USERNAME
         sync: false
       - key: AIRBYTE_PASSWORD
