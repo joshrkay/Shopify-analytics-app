@@ -11,6 +11,20 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- =============================================================================
+-- Clean up stale tables from previous failed deploy attempts.
+-- This migration has never completed successfully, so no production data exists.
+-- Drop in reverse-dependency order to handle FK constraints.
+-- =============================================================================
+DROP TABLE IF EXISTS billing_audit_log CASCADE;
+DROP TABLE IF EXISTS usage_aggregates CASCADE;
+DROP TABLE IF EXISTS usage_records CASCADE;
+DROP TABLE IF EXISTS webhook_events CASCADE;
+DROP TABLE IF EXISTS billing_events CASCADE;
+DROP TABLE IF EXISTS tenant_subscriptions CASCADE;
+DROP TABLE IF EXISTS plan_features CASCADE;
+DROP TABLE IF EXISTS plans CASCADE;
+
+-- =============================================================================
 -- Plans Table
 -- Global plan definitions (not tenant-scoped)
 -- =============================================================================
@@ -253,7 +267,7 @@ VALUES
     ('plan_growth', 'growth', 'Growth', 'For growing businesses with advanced analytics', 2900, 29000, TRUE),
     ('plan_pro', 'pro', 'Pro', 'Professional tier with all features', 7900, 79000, TRUE),
     ('plan_enterprise', 'enterprise', 'Enterprise', 'Custom solutions with dedicated support', NULL, NULL, TRUE)
-ON CONFLICT (name) DO UPDATE SET
+ON CONFLICT (id) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     description = EXCLUDED.description,
     price_monthly_cents = EXCLUDED.price_monthly_cents,
