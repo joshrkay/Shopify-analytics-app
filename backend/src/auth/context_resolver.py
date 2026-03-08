@@ -7,7 +7,7 @@ This module provides:
 - Lazy sync for users who haven't been synced via webhook
 
 Data flow:
-1. JWT verified by clerk_verifier → claims extracted
+1. JWT verified by TenantContextMiddleware → claims extracted
 2. context_resolver maps clerk_user_id → internal User
 3. AuthContext built with user's roles and tenant access
 4. AuthContext attached to request for use by route handlers

@@ -44,7 +44,7 @@ models:
 
       1. **Zero-dollar orders**: Excluded from gross revenue
       2. **Same-day refunds**: Creates 2 events (gross on created_at, refund on cancelled_at)
-      3. **Partial refunds**: Currently estimated at 50% (TODO: parse refunds array for exact amount)
+      3. **Partial refunds**: Exact amounts parsed from Shopify refunds JSON (falls back to 50% estimate if JSON unavailable)
       4. **Month-boundary events**: Order in Jan, refund in Feb (each appears in correct month)
       5. **Negative amounts**: Invalid negative orders excluded
       6. **Multi-currency**: Preserved as-is (no currency conversion)
@@ -56,8 +56,8 @@ models:
       ### Known Limitations
 
       - **Shipping amount**: Extracted from Shopify `total_shipping_price_set` field
-      - **Partial refund accuracy**: Uses 50% estimate (needs `refunds` array parsing)
-      - **Multiple refunds**: Currently creates single refund event (needs enhancement)
+      - **Partial refund accuracy**: Parsed from Shopify `refunds` JSON array (50% fallback if JSON missing)
+      - **Multiple refunds**: All refund transactions summed from Shopify JSON
 
       ### Usage Examples
 

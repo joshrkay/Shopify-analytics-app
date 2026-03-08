@@ -2,8 +2,8 @@
 Authentication module for Clerk-based authentication.
 
 This module provides:
-- JWT verification using Clerk's JWKS
-- Authentication middleware for FastAPI
+- JWT verification exceptions
+- Authentication dependencies for FastAPI
 - User context resolution and mapping
 - Session/token management
 
@@ -14,15 +14,14 @@ SECURITY NOTES:
 - clerk_user_id maps to internal User records for authorization
 """
 
-from src.auth.clerk_verifier import ClerkJWTVerifier, ClerkVerificationError
+from src.auth.exceptions import ClerkVerificationError
 from src.auth.jwt import ClerkJWTClaims, extract_claims
 from src.auth.context_resolver import AuthContext, resolve_auth_context
 from src.auth.token_service import TokenService, SessionInfo
-from src.auth.middleware import ClerkAuthMiddleware, require_auth, get_current_user
+from src.auth.middleware import require_auth, get_current_user
 
 __all__ = [
-    # Verifier
-    "ClerkJWTVerifier",
+    # Exceptions
     "ClerkVerificationError",
     # JWT Claims
     "ClerkJWTClaims",
@@ -33,8 +32,7 @@ __all__ = [
     # Token Service
     "TokenService",
     "SessionInfo",
-    # Middleware
-    "ClerkAuthMiddleware",
+    # Middleware Dependencies
     "require_auth",
     "get_current_user",
 ]

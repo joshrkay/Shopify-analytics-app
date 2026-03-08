@@ -309,3 +309,23 @@ sources:
               - not_null
           - name: configuration
             description: JSONB configuration containing source-specific metadata (e.g., shop_domain for Shopify)
+
+      - name: shopify_stores
+        description: Shopify store metadata linked to tenants (includes timezone, currency, country)
+        columns:
+          - name: id
+            description: Primary key (UUID)
+            tests:
+              - not_null
+          - name: tenant_id
+            description: Tenant identifier
+            tests:
+              - not_null
+          - name: shop_domain
+            description: Shopify store domain (mystore.myshopify.com)
+            tests:
+              - not_null
+          - name: timezone
+            description: Store IANA timezone (e.g., America/New_York)
+          - name: status
+            description: Installation status (active, inactive, suspended, uninstalled)
