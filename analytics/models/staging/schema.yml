@@ -6,8 +6,8 @@ models:
       Tenant dimension with timezone support for date normalization (User Story 7.7.1).
 
       Provides tenant-level attributes including timezone for normalizing
-      timestamps to tenant local dates. Currently defaults to UTC; will be
-      updated when tenant timezone data source is available.
+      timestamps to tenant local dates. Timezone is sourced from the Shopify
+      store's IANA timezone setting, with a fallback to UTC when unavailable.
     columns:
       - name: tenant_id
         description: Tenant identifier

@@ -61,7 +61,8 @@ orders_extracted as (
         raw.order_data->>'tags' as tags_raw,
         raw.order_data->>'note' as note,
         raw.order_data->>'order_number' as order_number_raw,
-        raw.order_data->'refunds' as refunds_json
+        raw.order_data->'refunds' as refunds_json,
+        raw.order_data->'total_shipping_price_set'->'shop_money'->>'amount' as total_shipping_price_raw
     from raw_orders raw
 ),
 
@@ -145,6 +146,13 @@ orders_normalized as (
                 then least(greatest(trim(total_tax_raw)::numeric, -999999999.99), 999999999.99)
             else 0.0
         end as total_tax,
+
+        case
+            when total_shipping_price_raw is null or trim(total_shipping_price_raw) = '' then 0.0
+            when trim(total_shipping_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
+                then least(greatest(trim(total_shipping_price_raw)::numeric, -999999999.99), 999999999.99)
+            else 0.0
+        end as total_shipping_price,
 
         -- Currency: standardize to uppercase, validate format
         case
@@ -233,6 +241,7 @@ select
     total_price,
     subtotal_price,
     total_tax,
+    total_shipping_price,
     currency,
 
     -- Status fields

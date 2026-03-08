@@ -47,9 +47,11 @@ with orders_base as (
         revenue_gross as total_price,
         revenue_net as subtotal_price,
         total_tax,
+        total_shipping_price,
         currency,
         financial_status,
         fulfillment_status,
+        refunds_json,
         tags,
         note,
         ingested_at
@@ -63,47 +65,65 @@ with orders_base as (
     {% endif %}
 ),
 
--- Extract refund information from Shopify data
--- NOTE: Shopify stores refunds in a separate 'refunds' array within order data
--- For now, we'll identify refunds by financial_status and cancelled_at
--- NOTE: Parsing refunds array for granular refund amounts and dates is deferred
--- until we have proper Shopify webhook data structure (see: fact_orders model)
+-- Parse actual refund amounts from Shopify refunds JSON array
+-- Structure: [{transactions: [{amount, kind, status}], refund_line_items: [{subtotal, total_tax}]}]
+-- Sum all successful refund transaction amounts across all refunds for the order
+parsed_refund_amounts as (
+    select
+        id,
+        coalesce(
+            (
+                select sum((t.value->>'amount')::numeric)
+                from jsonb_array_elements(refunds_json) as r(value),
+                     jsonb_array_elements(r.value->'transactions') as t(value)
+                where t.value->>'kind' = 'refund'
+                    and t.value->>'status' = 'success'
+            ),
+            0.0
+        ) as parsed_refund_total
+    from orders_base
+    where refunds_json is not null
+        and refunds_json::text != 'null'
+        and refunds_json::text != '[]'
+),
+
 orders_with_refund_detection as (
     select
-        *,
+        ob.*,
         -- Detect if this is a refund/cancellation scenario
         case
-            when order_cancelled_at is not null and financial_status in ('refunded', 'partially_refunded', 'voided')
+            when ob.order_cancelled_at is not null and ob.financial_status in ('refunded', 'partially_refunded', 'voided')
                 then true
             else false
         end as is_refunded_or_cancelled,
 
-        -- Determine refund amount
-        -- Edge case: partial refunds vs full refunds
+        -- Determine refund amount using parsed JSON data
+        -- Falls back to total_price for full refunds/voids when JSON is unavailable
         case
-            when financial_status = 'refunded' and order_cancelled_at is not null
-                then total_price  -- Full refund
-            when financial_status = 'partially_refunded' and order_cancelled_at is not null
-                then total_price * 0.5  -- PLACEHOLDER: Need actual refund amount from refunds array
-            when financial_status = 'voided' and order_cancelled_at is not null
-                then total_price  -- Voided = full cancellation
+            when ob.financial_status = 'refunded' and ob.order_cancelled_at is not null
+                then coalesce(pra.parsed_refund_total, ob.total_price)
+            when ob.financial_status = 'partially_refunded' and ob.order_cancelled_at is not null
+                then coalesce(nullif(pra.parsed_refund_total, 0), ob.total_price * 0.5)
+            when ob.financial_status = 'voided' and ob.order_cancelled_at is not null
+                then ob.total_price  -- Voided = full cancellation
             else 0.0
         end as refund_amount,
 
         -- Categorize the revenue type
         case
-            when financial_status in ('paid', 'authorized', 'partially_paid') and order_cancelled_at is null
+            when ob.financial_status in ('paid', 'authorized', 'partially_paid') and ob.order_cancelled_at is null
                 then 'gross_revenue'
-            when financial_status = 'pending' and order_cancelled_at is null
+            when ob.financial_status = 'pending' and ob.order_cancelled_at is null
                 then 'gross_revenue'  -- Include pending per requirements
-            when financial_status in ('refunded', 'partially_refunded') and order_cancelled_at is not null
+            when ob.financial_status in ('refunded', 'partially_refunded') and ob.order_cancelled_at is not null
                 then 'refund'
-            when financial_status in ('voided', 'cancelled') and order_cancelled_at is not null
+            when ob.financial_status in ('voided', 'cancelled') and ob.order_cancelled_at is not null
                 then 'cancellation'
             else 'other'  -- Edge case: capture unknown statuses
         end as revenue_type
 
-    from orders_base
+    from orders_base ob
+    left join parsed_refund_amounts pra on ob.id = pra.id
 ),
 
 -- Create separate records for gross revenue and refund/cancellation events
@@ -129,8 +149,7 @@ revenue_events as (
         total_price as gross_revenue,
         subtotal_price,
         total_tax,
-        0.0 as shipping_amount,  -- NOTE: Shipping amount extraction from shipping_lines array
-        -- deferred until fact_orders model includes shipping_lines data
+        coalesce(total_shipping_price, 0.0) as shipping_amount,
         0.0 as refund_amount,
         0.0 as cancellation_amount,
 
@@ -258,11 +277,11 @@ where revenue_date is not null  -- Edge case: exclude events with null dates
 -- Edge cases handled:
 -- 1. Orders with $0 total (excluded from gross revenue)
 -- 2. Orders with null cancelled_at (only gross revenue recorded)
--- 3. Partial refunds (placeholder logic - needs refunds array parsing)
+-- 3. Partial refunds (exact amounts parsed from Shopify refunds JSON, fallback to 50% estimate)
 -- 4. Same-day order and refund (creates 2 separate events)
--- 5. Multiple refunds on same order (currently limited to 1, needs enhancement)
+-- 5. Multiple refunds on same order (all refund transactions summed from JSON)
 -- 6. Orders in unknown financial_status (treated as "other", included in gross)
--- 7. Missing shipping amount (defaulted to 0, needs shipping_lines parsing)
+-- 7. Shipping amount extracted from Shopify total_shipping_price_set field
 -- 8. Cross-timezone date handling (all timestamps in UTC)
 -- 9. Multi-currency handling (currency preserved, no conversion)
 -- 10. Tenant isolation (all queries scoped by tenant_id)

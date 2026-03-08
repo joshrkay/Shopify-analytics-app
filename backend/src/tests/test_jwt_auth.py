@@ -13,14 +13,12 @@ import pytest
 import time
 import jwt
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 
-from fastapi import FastAPI, Depends
-
-from src.auth.clerk_verifier import (
+from src.auth.exceptions import (
     ClerkVerificationError,
 )
 from src.auth.jwt import (
@@ -287,32 +285,33 @@ class TestSessionRevocation:
 # =============================================================================
 
 class TestMiddlewareIntegration:
-    """Tests for authentication middleware integration."""
+    """Tests for auth dependency integration with FastAPI."""
 
-    def test_test_app_with_auth(self, mock_verifier, create_token):
-        """Test FastAPI app with auth middleware."""
-        app = FastAPI()
+    def test_get_auth_context_returns_anonymous_by_default(self):
+        """Test that get_auth_context returns anonymous when no auth is set."""
+        mock_request = MagicMock()
+        # Simulate no auth_context set on request.state
+        mock_request.state = MagicMock(spec=[])
 
-        # Mock the verifier
-        with patch("src.auth.middleware.get_verifier", return_value=mock_verifier):
-            with patch("src.auth.middleware.get_db_session_sync") as mock_db:
-                # Setup mock session
-                mock_session = MagicMock()
-                mock_db.return_value = mock_session
+        context = get_auth_context(mock_request)
+        assert context.is_authenticated is False
 
-                # Setup mock user lookup
-                with patch("src.auth.context_resolver.ClerkSyncService") as mock_sync:
-                    mock_user = MagicMock()
-                    mock_user.id = "internal_user_123"
-                    mock_sync.return_value.get_or_create_user.return_value = mock_user
-                    mock_sync.return_value.get_user_by_clerk_id.return_value = None
+    def test_get_auth_context_returns_set_context(self):
+        """Test that get_auth_context returns the context set by middleware."""
+        mock_user = MagicMock()
+        mock_user.id = "internal_user_123"
+        auth_context = AuthContext(
+            user=mock_user,
+            clerk_user_id="clerk_123",
+            session_id="sess_123",
+        )
 
-                    @app.get("/test")
-                    async def test_route(auth: AuthContext = Depends(get_auth_context)):
-                        return {"authenticated": auth.is_authenticated}
+        mock_request = MagicMock()
+        mock_request.state.auth_context = auth_context
 
-                    # Note: Full integration test would require more setup
-                    # This validates the middleware components work together
+        result = get_auth_context(mock_request)
+        assert result.is_authenticated is True
+        assert result.user.id == "internal_user_123"
 
 
 class TestAuthDependencies:
