@@ -55,7 +55,7 @@ models:
 
       ### Known Limitations
 
-      - **Shipping amount**: Currently defaults to 0 (needs `shipping_lines` array parsing)
+      - **Shipping amount**: Extracted from Shopify `total_shipping_price_set` field
       - **Partial refund accuracy**: Uses 50% estimate (needs `refunds` array parsing)
       - **Multiple refunds**: Currently creates single refund event (needs enhancement)
 
@@ -190,7 +190,7 @@ models:
         description: Total tax amount
 
       - name: shipping_amount
-        description: "Shipping charges (TODO: currently defaults to 0)"
+        description: "Shipping charges extracted from Shopify total_shipping_price_set (defaults to 0 if unavailable)"
 
       - name: refund_amount
         description: |

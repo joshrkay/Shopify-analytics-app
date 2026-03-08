@@ -47,6 +47,7 @@ with orders_base as (
         revenue_gross as total_price,
         revenue_net as subtotal_price,
         total_tax,
+        total_shipping_price,
         currency,
         financial_status,
         fulfillment_status,
@@ -129,8 +130,7 @@ revenue_events as (
         total_price as gross_revenue,
         subtotal_price,
         total_tax,
-        0.0 as shipping_amount,  -- NOTE: Shipping amount extraction from shipping_lines array
-        -- deferred until fact_orders model includes shipping_lines data
+        coalesce(total_shipping_price, 0.0) as shipping_amount,
         0.0 as refund_amount,
         0.0 as cancellation_amount,
 
@@ -262,7 +262,7 @@ where revenue_date is not null  -- Edge case: exclude events with null dates
 -- 4. Same-day order and refund (creates 2 separate events)
 -- 5. Multiple refunds on same order (currently limited to 1, needs enhancement)
 -- 6. Orders in unknown financial_status (treated as "other", included in gross)
--- 7. Missing shipping amount (defaulted to 0, needs shipping_lines parsing)
+-- 7. Shipping amount extracted from Shopify total_shipping_price_set field
 -- 8. Cross-timezone date handling (all timestamps in UTC)
 -- 9. Multi-currency handling (currency preserved, no conversion)
 -- 10. Tenant isolation (all queries scoped by tenant_id)

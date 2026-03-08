@@ -35,6 +35,7 @@ staging_orders as (
         o.total_price,
         o.subtotal_price,
         o.total_tax,
+        o.total_shipping_price,
         o.currency,
         o.financial_status,
         o.fulfillment_status,
@@ -106,6 +107,7 @@ select
     total_price as revenue_gross,
     subtotal_price as revenue_net,
     total_tax,
+    total_shipping_price,
     currency,
     
     -- Status fields
