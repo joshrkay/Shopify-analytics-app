@@ -367,6 +367,24 @@ jobs:
             configuration jsonb default '{}'::jsonb
           );
 
+          create table if not exists platform.shopify_stores (
+            id text not null,
+            tenant_id text not null,
+            shop_domain text not null,
+            shop_id text,
+            shop_name text,
+            shop_email text,
+            shop_owner text,
+            currency text default 'USD',
+            timezone text,
+            country_code text,
+            status text not null default 'active',
+            installed_at timestamptz,
+            uninstalled_at timestamptz,
+            created_at timestamptz default now(),
+            updated_at timestamptz default now()
+          );
+
           create table if not exists airbyte_raw._airbyte_raw_shopify_orders (
             _airbyte_ab_id text,
             _airbyte_emitted_at timestamptz,
@@ -390,6 +408,12 @@ jobs:
             _airbyte_emitted_at timestamptz,
             _airbyte_data jsonb
           );
+
+          -- Insert test shopify store with timezone
+          insert into platform.shopify_stores
+            (id, tenant_id, shop_domain, shop_name, timezone, status)
+          values
+            ('store-1', 'tenant-test-123', 'test-store.myshopify.com', 'Test Store', 'America/New_York', 'active');
 
           -- Insert test tenant connection with shop_domain configuration
           insert into platform.tenant_airbyte_connections
