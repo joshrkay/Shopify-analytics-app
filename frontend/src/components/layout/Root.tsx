@@ -164,7 +164,7 @@ export function Root() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 overflow-y-auto">
+        <nav className="flex-1 min-h-0 p-3 overflow-y-auto">
           {/* Core */}
           <NavLink to="/" icon={Home} label="Overview" />
           <NavLink to="/attribution" icon={TrendingUp} label="Attribution" />
