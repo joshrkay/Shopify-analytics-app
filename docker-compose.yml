@@ -7,8 +7,6 @@
 # - Backend API (FastAPI)
 # - Frontend (React/Vite) - optional, can run separately with npm run dev
 
-version: '3.8'
-
 services:
   # =============================================================================
   # PostgreSQL Database
