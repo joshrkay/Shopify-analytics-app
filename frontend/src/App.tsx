@@ -17,7 +17,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
-import { AppProvider, SkeletonPage, SkeletonBodyText, Page, Banner } from '@shopify/polaris';
+import { AppProvider } from '@shopify/polaris';
 import enTranslations from '@shopify/polaris/locales/en.json';
 import '@shopify/polaris/build/esm/styles.css';
 
@@ -66,9 +66,9 @@ const AIConsultant = lazy(() => import('./pages/AIConsultant').then(m => ({ defa
 const SyncStatus = lazy(() => import('./pages/SyncStatus').then(m => ({ default: m.SyncStatus })));
 
 const PageLoader = () => (
-  <SkeletonPage primaryAction={false}>
-    <SkeletonBodyText lines={6} />
-  </SkeletonPage>
+  <div className="flex items-center justify-center h-64">
+    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+  </div>
 );
 
 // =============================================================================
@@ -94,21 +94,33 @@ function FeatureGateRoute({
 }: FeatureGateRouteProps) {
   const location = useLocation();
 
-  // Still loading entitlements
-  if (entitlementsLoading && entitlements === null) return <SkeletonPage />;
+  // Still loading entitlements — show spinner
+  if (entitlementsLoading && entitlements === null) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
-  // Failed to load entitlements — show error with retry
+  // Failed to load entitlements — fail open so the page is still accessible.
+  // A banner is shown at the top but the user can still use the feature.
   if (entitlementsError && entitlements === null) {
     return (
-      <Page title="Unable to load">
-        <Banner
-          tone="critical"
-          title="Failed to check feature access"
-          action={{ content: 'Retry', onAction: onRetry }}
-        >
-          {entitlementsError}
-        </Banner>
-      </Page>
+      <>
+        <div className="mx-8 mt-6 flex items-start gap-3 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-800">
+          <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+          </svg>
+          <span>
+            Could not verify feature access — the server may be unavailable.{' '}
+            <button onClick={onRetry} className="underline font-medium hover:text-yellow-900">
+              Retry
+            </button>
+          </span>
+        </div>
+        {children}
+      </>
     );
   }
 
@@ -135,7 +147,11 @@ function AuthenticatedApp() {
   const { isLoading: isOrgLoading, hasOrg } = useAutoOrganization();
 
   if (isOrgLoading) {
-    return <SkeletonPage />;
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   if (!hasOrg) {
@@ -161,7 +177,11 @@ function AppWithOrg() {
   const { entitlements, loading: entitlementsLoading, error: entitlementsError, refetch: refetchEntitlements } = useEntitlements(isTokenReady);
 
   if (!isTokenReady) {
-    return <SkeletonPage />;
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
