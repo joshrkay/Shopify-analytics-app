@@ -26,6 +26,7 @@ MIGRATIONS = [
     "0060_audit_logs.sql",
     "add_insight_dollar_impact.sql",
     "add_tenant_airbyte_workspace.sql",
+    "create_tenant_airbyte_connections.sql",
     "add_configuration_column.sql",
     "create_shopify_stores.sql",
     "billing_schema.sql",
