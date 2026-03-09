@@ -8,13 +8,14 @@
  * - Recommendations overview
  * - Data health status
  * - Empty state for new users
+ * - Error state when APIs fail (distinct from empty state)
  *
  * Wires to existing APIs: insightsApi, recommendationsApi, syncHealthApi.
  *
  * Phase 1 — Dashboard Home
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Page,
   Card,
@@ -55,25 +56,29 @@ export function DashboardHome() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [apiFailures, setApiFailures] = useState(0);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     let cancelled = false;
 
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-        const [
-          unreadCount,
-          activeRecCount,
-          health,
-          insightsResponse,
-          recsResponse,
-        ] = await Promise.all([
-          getUnreadInsightsCount().catch(() => 0),
-          getActiveRecommendationsCount().catch(() => 0),
-          getCompactHealth().catch((): CompactHealth => ({
+      let failedCalls = 0;
+
+      const [
+        unreadCount,
+        activeRecCount,
+        health,
+        insightsResponse,
+        recsResponse,
+      ] = await Promise.all([
+        getUnreadInsightsCount().catch(() => { failedCalls++; return 0; }),
+        getActiveRecommendationsCount().catch(() => { failedCalls++; return 0; }),
+        getCompactHealth().catch((): CompactHealth => {
+          failedCalls++;
+          return {
             overall_status: 'healthy',
             health_score: 100,
             stale_count: 0,
@@ -81,46 +86,47 @@ export function DashboardHome() {
             has_blocking_issues: false,
             oldest_sync_minutes: null,
             last_checked_at: new Date().toISOString(),
-          })),
-          listInsights({ limit: 5, include_dismissed: false }).catch(() => ({
-            insights: [],
-            total: 0,
-            has_more: false,
-          })),
-          listRecommendations({ limit: 5, include_dismissed: false }).catch(() => ({
-            recommendations: [],
-            total: 0,
-            has_more: false,
-          })),
-        ]);
+          };
+        }),
+        listInsights({ limit: 5, include_dismissed: false }).catch(() => {
+          failedCalls++;
+          return { insights: [], total: 0, has_more: false };
+        }),
+        listRecommendations({ limit: 5, include_dismissed: false }).catch(() => {
+          failedCalls++;
+          return { recommendations: [], total: 0, has_more: false };
+        }),
+      ]);
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        setMetrics({
-          unreadInsights: unreadCount,
-          activeRecommendations: activeRecCount,
-          healthScore: health.health_score,
-          healthStatus: health.overall_status,
-        });
-        setInsights(insightsResponse.insights);
-        setRecommendations(recsResponse.recommendations);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+      setApiFailures(failedCalls);
+      setMetrics({
+        unreadInsights: unreadCount,
+        activeRecommendations: activeRecCount,
+        healthScore: health.health_score,
+        healthStatus: health.overall_status,
+      });
+      setInsights(insightsResponse.insights);
+      setRecommendations(recsResponse.recommendations);
+    } catch (err) {
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+      }
+    } finally {
+      if (!cancelled) {
+        setLoading(false);
       }
     }
-
-    loadData();
 
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   if (loading) {
     return (
@@ -144,6 +150,41 @@ export function DashboardHome() {
 
   const hasData = metrics && (metrics.unreadInsights > 0 || metrics.activeRecommendations > 0 || insights.length > 0);
 
+  // API failures masquerading as empty — show error state with retry + fallback CTA
+  if (!hasData && !loading && apiFailures > 0) {
+    return (
+      <Page title="Home">
+        <BlockStack gap="400">
+          <Banner
+            tone="critical"
+            title="Unable to load dashboard data"
+            action={{ content: 'Retry', onAction: () => loadData() }}
+          >
+            <p>
+              We couldn't reach the server to load your dashboard. Please check
+              your connection and try again.
+            </p>
+          </Banner>
+          <Card>
+            <EmptyState
+              heading="Or connect your data sources"
+              image=""
+            >
+              <p>
+                If you haven't connected data sources yet, start here to begin
+                seeing insights and recommendations.
+              </p>
+              <Button variant="primary" onClick={() => navigate('/data-sources')}>
+                Connect data sources
+              </Button>
+            </EmptyState>
+          </Card>
+        </BlockStack>
+      </Page>
+    );
+  }
+
+  // Genuine empty state — no API failures, just no data yet
   if (!hasData && !loading) {
     return (
       <Page title="Home">
@@ -196,6 +237,17 @@ export function DashboardHome() {
   return (
     <Page title="Home">
       <BlockStack gap="600">
+        {/* Warning banner when some calls failed but we have partial data */}
+        {apiFailures > 0 && (
+          <Banner
+            tone="warning"
+            title="Some data couldn't be loaded"
+            action={{ content: 'Retry', onAction: () => loadData() }}
+          >
+            <p>Some dashboard metrics may be incomplete or showing default values.</p>
+          </Banner>
+        )}
+
         {/* Timeframe selector */}
         <InlineStack align="end">
           <TimeframeSelector value={timeframe} onChange={setTimeframe} />

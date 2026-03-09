@@ -6,6 +6,10 @@
  *   - GET /api/datasets/kpi-summary?timeframe=30days   → aggregate KPIs
  *   - GET /api/datasets/channel-breakdown?metric=revenue&timeframe=30days → per-channel bar chart
  *   - GET /api/channels/{platform}/metrics?timeframe=30days → channel table rows
+ *
+ * Loading strategy: 3 independent data groups (KPI, breakdown, channel metrics)
+ * each with their own loading/error/retry state. One section failing does not
+ * crash the others.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -16,6 +20,8 @@ import {
   MousePointerClick,
   Calendar,
   X,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   BarChart,
@@ -76,72 +82,203 @@ function DrillDownModal({ isOpen, title, onClose, children }: DrillDownModalProp
   );
 }
 
+// ---------------------------------------------------------------------------
+// Skeleton components
+// ---------------------------------------------------------------------------
+
+function ChartSkeleton() {
+  return (
+    <div className="h-[350px] bg-gray-100 rounded-lg animate-pulse flex items-end justify-around p-6 gap-4">
+      {[65, 45, 80, 35, 55, 70, 50].map((h, i) => (
+        <div key={i} className="bg-gray-200 rounded-t w-full" style={{ height: `${h}%` }} />
+      ))}
+    </div>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-gray-50 px-4 py-3">
+        <div className="h-4 w-48 bg-gray-200 rounded animate-pulse" />
+      </div>
+      {Array.from({ length: 7 }).map((_, i) => (
+        <div key={i} className="px-4 py-3 border-t border-gray-100 flex gap-6">
+          <div className="h-4 w-28 bg-gray-200 rounded animate-pulse" />
+          <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+          <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+          <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
+          <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+          <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline error banner for a section
+// ---------------------------------------------------------------------------
+
+function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+        <p className="text-amber-800 text-sm">{message}</p>
+      </div>
+      <button
+        onClick={onRetry}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-lg transition-colors"
+      >
+        <RefreshCw className="w-3.5 h-3.5" />
+        Retry
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export function Dashboard() {
+  // Group 1: KPI Summary
   const [kpi, setKpi] = useState<KpiSummaryResponse | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(true);
+  const [kpiError, setKpiError] = useState<string | null>(null);
+
+  // Group 2: Channel Breakdown (bar chart)
   const [channelBreakdown, setChannelBreakdown] = useState<ChannelBreakdownSummary | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(true);
+  const [breakdownError, setBreakdownError] = useState<string | null>(null);
+
+  // Group 3: Channel Metrics (table + secondary KPIs)
   const [channelMetrics, setChannelMetrics] = useState<ChannelMetricsResponse[]>([]);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+
+  // Daily trend (derived from channel metrics)
   const [dailyTrend, setDailyTrend] = useState<DailyDataPoint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  // Drill-down modal
   const [drillDown, setDrillDown] = useState<{ open: boolean; metric: DrillDownMetric; title: string }>({
     open: false,
     metric: 'revenue',
     title: '',
   });
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // ---- Data fetching functions (independent per group) ----
+
+  const loadKpi = useCallback(async (cancelled = { current: false }) => {
+    setKpiLoading(true);
+    setKpiError(null);
     try {
-      const [kpiData, breakdownData, ...channelData] = await Promise.all([
-        getKpiSummary('30days'),
-        getChannelBreakdown('revenue', '30days'),
-        ...CHANNEL_PLATFORMS.map((ch) => getChannelMetrics(ch.platform, '30days')),
-      ]);
+      const data = await getKpiSummary('30days');
+      if (!cancelled.current) {
+        setKpi(data);
+      }
+    } catch (err) {
+      if (!cancelled.current) {
+        setKpiError(err instanceof Error ? err.message : 'Failed to load KPI data');
+      }
+    } finally {
+      if (!cancelled.current) {
+        setKpiLoading(false);
+      }
+    }
+  }, []);
 
-      setKpi(kpiData);
-      setChannelBreakdown(breakdownData);
-      setChannelMetrics(channelData);
+  const loadBreakdown = useCallback(async (cancelled = { current: false }) => {
+    setBreakdownLoading(true);
+    setBreakdownError(null);
+    try {
+      const data = await getChannelBreakdown('revenue', '30days');
+      if (!cancelled.current) {
+        setChannelBreakdown(data);
+      }
+    } catch (err) {
+      if (!cancelled.current) {
+        setBreakdownError(err instanceof Error ? err.message : 'Failed to load channel comparison');
+      }
+    } finally {
+      if (!cancelled.current) {
+        setBreakdownLoading(false);
+      }
+    }
+  }, []);
 
-      // Build daily trend by merging all channels' daily_trend arrays
+  const loadMetrics = useCallback(async (cancelled = { current: false }) => {
+    setMetricsLoading(true);
+    setMetricsError(null);
+    try {
+      const results = await Promise.all(
+        CHANNEL_PLATFORMS.map((ch) =>
+          getChannelMetrics(ch.platform, '30days').catch(() => null),
+        ),
+      );
+      if (cancelled.current) return;
+
+      const valid = results.filter((r): r is ChannelMetricsResponse => r !== null);
+      setChannelMetrics(valid);
+
+      if (valid.length === 0) {
+        setMetricsError('Failed to load channel metrics');
+      } else {
+        setMetricsError(null);
+      }
+
+      // Build daily trend from successful channel data
       const dateMap: Record<string, { date: string; revenue: number; spend: number }> = {};
-      channelData.forEach((ch) => {
+      valid.forEach((ch) => {
         ch.daily_trend?.forEach((point) => {
           if (!dateMap[point.date]) {
             dateMap[point.date] = { date: point.date, revenue: 0, spend: 0 };
           }
           dateMap[point.date].revenue += point.revenue;
-          // spend is not in daily_trend — we'll only show revenue trend
         });
       });
-      const sorted = Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date));
-      setDailyTrend(sorted);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load analytics data';
-      setError(message);
+      setDailyTrend(Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date)));
+    } catch (err) {
+      if (!cancelled.current) {
+        setMetricsError(err instanceof Error ? err.message : 'Failed to load channel metrics');
+      }
     } finally {
-      setLoading(false);
+      if (!cancelled.current) {
+        setMetricsLoading(false);
+      }
     }
   }, []);
 
+  // Initial data load — all 3 groups fire in parallel
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const cancelled = { current: false };
+    loadKpi(cancelled);
+    loadBreakdown(cancelled);
+    loadMetrics(cancelled);
+    return () => { cancelled.current = true; };
+  }, [loadKpi, loadBreakdown, loadMetrics]);
 
-  // Build channel table rows from API data
-  const channelTableRows: ChannelRow[] = channelMetrics.map((ch, i) => ({
-    channel: CHANNEL_PLATFORMS[i]?.displayName ?? ch.display_name,
-    spend: ch.spend,
-    revenue: ch.revenue,
-    roas: ch.roas,
-    conversions: ch.orders,
-    ctr: ch.ctr,
-    cpc: ch.clicks > 0 ? ch.spend / ch.clicks : 0,
-    conversionRate: ch.conversion_rate,
-  }));
-  const channelKeys = CHANNEL_PLATFORMS.map((ch) => ch.key);
+  // ---- Derived data ----
 
-  // Build bar chart data from channel breakdown
+  const channelTableRows: ChannelRow[] = channelMetrics.map((ch) => {
+    const platform = CHANNEL_PLATFORMS.find((p) => p.platform === ch.platform);
+    return {
+      channel: platform?.displayName ?? ch.display_name,
+      spend: ch.spend,
+      revenue: ch.revenue,
+      roas: ch.roas,
+      conversions: ch.orders,
+      ctr: ch.ctr,
+      cpc: ch.clicks > 0 ? ch.spend / ch.clicks : 0,
+      conversionRate: ch.conversion_rate,
+    };
+  });
+  const channelKeys = channelMetrics.map((ch) => {
+    const platform = CHANNEL_PLATFORMS.find((p) => p.platform === ch.platform);
+    return platform?.key ?? ch.platform;
+  });
+
   const barChartData = (channelBreakdown?.bar_chart ?? []).map((item) => ({
     name: item.channel,
     Revenue: item.revenue,
@@ -152,25 +289,24 @@ export function Dashboard() {
     setDrillDown({ open: true, metric, title });
   };
 
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center min-h-96">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-500">Loading analytics...</p>
-        </div>
-      </div>
-    );
-  }
+  // ---- Check if everything failed ----
+  const allFailed = !kpiLoading && !breakdownLoading && !metricsLoading
+    && kpiError && breakdownError && metricsError
+    && !kpi && channelMetrics.length === 0;
 
-  if (error) {
+  if (allFailed) {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
           <p className="text-red-700 font-medium mb-2">Failed to load analytics</p>
-          <p className="text-red-600 text-sm mb-4">{error}</p>
+          <p className="text-red-600 text-sm mb-4">{kpiError}</p>
           <button
-            onClick={loadData}
+            onClick={() => {
+              const c = { current: false };
+              loadKpi(c);
+              loadBreakdown(c);
+              loadMetrics(c);
+            }}
             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
           >
             Retry
@@ -198,7 +334,14 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Primary KPI Cards */}
+      {/* ================================================================= */}
+      {/* Section 1: Primary KPI Cards                                       */}
+      {/* ================================================================= */}
+      {kpiError && !kpiLoading && (
+        <div className="mb-4">
+          <SectionError message={kpiError} onRetry={() => loadKpi()} />
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
         <MetricCard
           title="Total Revenue"
@@ -207,7 +350,8 @@ export function Dashboard() {
           icon={DollarSign}
           iconColor="green"
           formatValue
-          onClick={() => openDrillDown('revenue', 'Total Revenue Breakdown')}
+          isLoading={kpiLoading}
+          onClick={kpi ? () => openDrillDown('revenue', 'Total Revenue Breakdown') : undefined}
         />
         <MetricCard
           title="Total Ad Spend"
@@ -216,7 +360,8 @@ export function Dashboard() {
           icon={TrendingUp}
           iconColor="red"
           formatValue
-          onClick={() => openDrillDown('spend', 'Total Ad Spend Breakdown')}
+          isLoading={kpiLoading}
+          onClick={kpi ? () => openDrillDown('spend', 'Total Ad Spend Breakdown') : undefined}
         />
         <MetricCard
           title="Average ROAS"
@@ -224,7 +369,8 @@ export function Dashboard() {
           change={kpi?.average_roas.change_pct ?? undefined}
           icon={TrendingUp}
           iconColor="purple"
-          onClick={() => openDrillDown('roas', 'ROAS by Channel')}
+          isLoading={kpiLoading}
+          onClick={kpi ? () => openDrillDown('roas', 'ROAS by Channel') : undefined}
         />
         <MetricCard
           title="Total Conversions"
@@ -232,14 +378,21 @@ export function Dashboard() {
           change={kpi?.total_conversions.change_pct ?? undefined}
           icon={ShoppingCart}
           iconColor="blue"
-          onClick={() => openDrillDown('conversions', 'Total Conversions Breakdown')}
+          isLoading={kpiLoading}
+          onClick={kpi ? () => openDrillDown('conversions', 'Total Conversions Breakdown') : undefined}
         />
       </div>
 
-      {/* Revenue & Spend Trends */}
+      {/* ================================================================= */}
+      {/* Section 1b: Revenue & Spend Trends (from channel metrics data)     */}
+      {/* ================================================================= */}
       <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm border border-gray-200 mb-6 md:mb-8">
         <h2 className="text-base md:text-lg font-semibold text-gray-900 mb-4">Revenue & Spend Trends</h2>
-        {dailyTrend.length > 0 ? (
+        {metricsLoading ? (
+          <div className="h-64 flex items-center justify-center">
+            <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : dailyTrend.length > 0 ? (
           <PerformanceChart data={dailyTrend} type="area" dataKeys={['revenue']} colors={['#3b82f6']} />
         ) : (
           <div className="h-64 flex items-center justify-center text-gray-400">
@@ -248,10 +401,19 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Channel Comparison */}
+      {/* ================================================================= */}
+      {/* Section 2: Channel Comparison Bar Chart                            */}
+      {/* ================================================================= */}
+      {breakdownError && !breakdownLoading && (
+        <div className="mb-4">
+          <SectionError message={breakdownError} onRetry={() => loadBreakdown()} />
+        </div>
+      )}
       <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm border border-gray-200 mb-6 md:mb-8">
         <h2 className="text-base md:text-lg font-semibold text-gray-900 mb-4">Channel Comparison</h2>
-        {barChartData.length > 0 ? (
+        {breakdownLoading ? (
+          <ChartSkeleton />
+        ) : barChartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={350}>
             <BarChart data={barChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -285,14 +447,22 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Secondary KPI Cards */}
+      {/* ================================================================= */}
+      {/* Section 3: Secondary KPI Cards (from channel metrics)              */}
+      {/* ================================================================= */}
+      {metricsError && !metricsLoading && (
+        <div className="mb-4">
+          <SectionError message={metricsError} onRetry={() => loadMetrics()} />
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
         <MetricCard
           title="Total Clicks"
           value={channelMetrics.reduce((s, c) => s + c.clicks, 0).toLocaleString()}
           icon={MousePointerClick}
           iconColor="blue"
-          onClick={() => openDrillDown('clicks', 'Total Clicks Breakdown')}
+          isLoading={metricsLoading}
+          onClick={channelMetrics.length > 0 ? () => openDrillDown('clicks', 'Total Clicks Breakdown') : undefined}
         />
         <MetricCard
           title="Avg CTR"
@@ -303,7 +473,8 @@ export function Dashboard() {
           }
           icon={TrendingUp}
           iconColor="orange"
-          onClick={() => openDrillDown('ctr', 'CTR by Channel')}
+          isLoading={metricsLoading}
+          onClick={channelMetrics.length > 0 ? () => openDrillDown('ctr', 'CTR by Channel') : undefined}
         />
         <MetricCard
           title="Avg Conv. Rate"
@@ -314,16 +485,21 @@ export function Dashboard() {
           }
           icon={ShoppingCart}
           iconColor="green"
-          onClick={() => openDrillDown('conversionRate', 'Conversion Rate by Channel')}
+          isLoading={metricsLoading}
+          onClick={channelMetrics.length > 0 ? () => openDrillDown('conversionRate', 'Conversion Rate by Channel') : undefined}
         />
       </div>
 
-      {/* Channel Performance Table */}
+      {/* ================================================================= */}
+      {/* Section 3b: Channel Performance Table                              */}
+      {/* ================================================================= */}
       <div className="mb-6 md:mb-8">
         <h2 className="text-base md:text-lg font-semibold text-gray-900 mb-4">Channel Performance</h2>
         <div className="overflow-x-auto -mx-4 md:mx-0">
           <div className="inline-block min-w-full align-middle px-4 md:px-0">
-            {channelTableRows.length > 0 ? (
+            {metricsLoading ? (
+              <TableSkeleton />
+            ) : channelTableRows.length > 0 ? (
               <ChannelTable channels={channelTableRows} channelKeys={channelKeys} />
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-400">
@@ -341,8 +517,9 @@ export function Dashboard() {
         onClose={() => setDrillDown((d) => ({ ...d, open: false }))}
       >
         <div className="space-y-3">
-          {channelMetrics.map((ch, i) => {
-            const key = CHANNEL_PLATFORMS[i]?.displayName ?? ch.display_name;
+          {channelMetrics.map((ch) => {
+            const platform = CHANNEL_PLATFORMS.find((p) => p.platform === ch.platform);
+            const key = platform?.displayName ?? ch.display_name;
             let metricValue: string;
             switch (drillDown.metric) {
               case 'revenue':
@@ -376,6 +553,9 @@ export function Dashboard() {
               </div>
             );
           })}
+          {channelMetrics.length === 0 && (
+            <div className="text-center text-gray-400 py-4">No channel data available</div>
+          )}
         </div>
       </DrillDownModal>
     </div>

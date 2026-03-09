@@ -122,6 +122,22 @@ function FeatureGateRoute({
 }
 
 // =============================================================================
+// OnboardingGate — redirects new users to /onboarding on first visit
+// =============================================================================
+
+function OnboardingGate({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const onboardingComplete = localStorage.getItem('onboardingComplete') === 'true';
+
+  // Only redirect from root path — don't interrupt deep links
+  if (!onboardingComplete && location.pathname === '/') {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// =============================================================================
 // Authenticated app content
 // =============================================================================
 
@@ -174,7 +190,7 @@ function AppWithOrg() {
           <Route path="/onboarding" element={<Onboarding />} />
 
           {/* New Tailwind-based layout with sidebar + header */}
-          <Route element={<Root />}>
+          <Route element={<OnboardingGate><Root /></OnboardingGate>}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/builder" element={
               <FeatureGateRoute feature="custom_reports" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
