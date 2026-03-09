@@ -34,6 +34,12 @@ services:
         fromDatabase:
           name: markinsight-db
           property: connectionString
+      # Redis connection (used by OAuth state store, sync settings cache)
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: markinsight-redis
+          property: connectionString
 
       # ── Clerk Authentication ──────────────────────────────────────
       # CLERK_FRONTEND_API — REQUIRED. The backend uses this to build

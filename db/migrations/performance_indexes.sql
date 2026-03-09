@@ -21,40 +21,68 @@
 BEGIN;
 
 -- ---------------------------------------------------------------------------
--- 1. Composite Indexes on analytics.orders (canonical table for sem_orders_v1)
+-- 0. Create schemas if they don't exist yet (dbt creates them later with data,
+--    but we need them now for role grants and conditional index creation)
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX IF NOT EXISTS ix_orders_tenant_date
-    ON analytics.orders (tenant_id, date DESC);
+CREATE SCHEMA IF NOT EXISTS analytics;
+CREATE SCHEMA IF NOT EXISTS semantic;
 
-CREATE INDEX IF NOT EXISTS ix_orders_tenant_date_source_platform
-    ON analytics.orders (tenant_id, date DESC, source_platform);
+-- ---------------------------------------------------------------------------
+-- 1. Composite Indexes on analytics.orders (canonical table for sem_orders_v1)
+--    Conditional: only created when the tables exist (dbt builds them later)
+-- ---------------------------------------------------------------------------
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'orders') THEN
+        CREATE INDEX IF NOT EXISTS ix_orders_tenant_date
+            ON analytics.orders (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_orders_tenant_date_source_platform
+            ON analytics.orders (tenant_id, date DESC, source_platform);
+    ELSE
+        RAISE NOTICE 'analytics.orders does not exist yet — skipping indexes (dbt will create the table)';
+    END IF;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 2. Composite Indexes on analytics.marketing_spend (canonical for sem_marketing_spend_v1)
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date
-    ON analytics.marketing_spend (tenant_id, date DESC);
-
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_channel
-    ON analytics.marketing_spend (tenant_id, channel);
-
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date_channel
-    ON analytics.marketing_spend (tenant_id, date DESC, channel);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'marketing_spend') THEN
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date
+            ON analytics.marketing_spend (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_channel
+            ON analytics.marketing_spend (tenant_id, channel);
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date_channel
+            ON analytics.marketing_spend (tenant_id, date DESC, channel);
+    ELSE
+        RAISE NOTICE 'analytics.marketing_spend does not exist yet — skipping indexes';
+    END IF;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 3. Composite Indexes on analytics.campaign_performance (canonical for sem_campaign_performance_v1)
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date
-    ON analytics.campaign_performance (tenant_id, date DESC);
-
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_channel
-    ON analytics.campaign_performance (tenant_id, channel);
-
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date_channel
-    ON analytics.campaign_performance (tenant_id, date DESC, channel);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'campaign_performance') THEN
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date
+            ON analytics.campaign_performance (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_channel
+            ON analytics.campaign_performance (tenant_id, channel);
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date_channel
+            ON analytics.campaign_performance (tenant_id, date DESC, channel);
+    ELSE
+        RAISE NOTICE 'analytics.campaign_performance does not exist yet — skipping indexes';
+    END IF;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 4. Analytics Reader Role and Schema Access

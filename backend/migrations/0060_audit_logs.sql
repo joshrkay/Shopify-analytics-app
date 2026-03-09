@@ -74,9 +74,10 @@ CREATE INDEX IF NOT EXISTS ix_ga_audit_tenant_user
     WHERE user_id IS NOT NULL;
 
 -- Retention job: efficient deletion of old records per tenant
+-- Note: cannot use NOW() in index predicate (not IMMUTABLE).
+-- Plain index on created_at is sufficient; the retention job filters at query time.
 CREATE INDEX IF NOT EXISTS ix_ga_audit_retention
-    ON ga_audit_logs (created_at)
-    WHERE created_at < NOW() - INTERVAL '90 days';
+    ON ga_audit_logs (created_at);
 
 -- ==========================================================================
 -- Immutability trigger (defense in depth)

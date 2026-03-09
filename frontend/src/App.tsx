@@ -15,7 +15,7 @@
  */
 
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
 import { AppProvider, SkeletonPage, SkeletonBodyText, Page, Banner } from '@shopify/polaris';
 import enTranslations from '@shopify/polaris/locales/en.json';
@@ -62,6 +62,8 @@ const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.N
 const CohortAnalysis = lazy(() => import('./pages/CohortAnalysis').then(m => ({ default: m.CohortAnalysis })));
 const BudgetPacing = lazy(() => import('./pages/BudgetPacing').then(m => ({ default: m.BudgetPacing })));
 const Alerts = lazy(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })));
+const AIConsultant = lazy(() => import('./pages/AIConsultant').then(m => ({ default: m.AIConsultant })));
+const SyncStatus = lazy(() => import('./pages/SyncStatus').then(m => ({ default: m.SyncStatus })));
 
 const PageLoader = () => (
   <SkeletonPage primaryAction={false}>
@@ -194,6 +196,22 @@ function AppWithOrg() {
             <Route path="/attribution" element={<Attribution />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/channels/:platform" element={<ChannelAnalytics />} />
+            {/* Figma-matched routes */}
+            <Route path="/channel/:channelKey" element={<ChannelByKey />} />
+            <Route path="/ai-consultant" element={<AIConsultant />} />
+            <Route path="/sync" element={<SyncStatus />} />
+            <Route path="/cohorts" element={
+              <FeatureGateRoute feature="cohort_analysis" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
+                <CohortAnalysis />
+              </FeatureGateRoute>
+            } />
+            <Route path="/reports" element={
+              <FeatureGateRoute feature="custom_reports" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
+                <DashboardBuilderProvider>
+                  <WizardFlow />
+                </DashboardBuilderProvider>
+              </FeatureGateRoute>
+            } />
             <Route path="/cohort-analysis" element={
               <FeatureGateRoute feature="cohort_analysis" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
                 <CohortAnalysis />
@@ -251,6 +269,25 @@ function AppWithOrg() {
       </DataHealthProvider>
     </AgencyProvider>
   );
+}
+
+// Maps Figma channel keys (e.g. "google") to platform API names (e.g. "google_ads")
+const CHANNEL_KEY_TO_PLATFORM: Record<string, string> = {
+  google: 'google_ads',
+  facebook: 'facebook_ads',
+  instagram: 'instagram_ads',
+  tiktok: 'tiktok_ads',
+  pinterest: 'pinterest_ads',
+  twitter: 'twitter_ads',
+  organic: 'organic',
+};
+
+// Resolves /channel/:channelKey → redirects to /channels/:platform
+function ChannelByKey() {
+  const { channelKey } = useParams<{ channelKey: string }>();
+  const platform = channelKey ? CHANNEL_KEY_TO_PLATFORM[channelKey] : undefined;
+  if (!platform) return <Navigate to="/" replace />;
+  return <Navigate to={`/channels/${platform}`} replace />;
 }
 
 function App() {
