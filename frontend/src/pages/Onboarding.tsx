@@ -5,22 +5,28 @@
  *
  * Steps:
  *   1. Welcome        — value prop, "Get Started" CTA
- *   2. Connect Shopify — initiate Shopify OAuth / confirm store connected
- *   3. Connect Ads    — select ad platforms to connect
- *   4. Done           — summary + navigate to dashboard
+ *   2. Connect Shopify — initiate real Shopify OAuth via ConnectSourceWizard
+ *   3. Connect Ads    — connect ad platforms via ConnectSourceWizard
+ *   4. Done           — summary + navigate to dashboard home
  *
  * State:
  *   - step index stored in local useState
  *   - completion written to localStorage: onboardingComplete=true,
- *     hasConnectedSources=true (step 3 skipped / completed)
+ *     hasConnectedSources=true (if any sources connected)
  *
  * The wizard can be skipped entirely at steps 2 and 3 — the user lands
- * on the dashboard with empty-state prompts to connect later.
+ * on /home with empty-state prompts to connect later.
+ *
+ * Uses ConnectSourceWizard for real OAuth connections (same component
+ * used by the Data Sources page).
  */
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Database, Zap, BarChart2, Check, ArrowRight, X } from "lucide-react";
+import { ChevronRight, Database, Zap, BarChart2, Check, ArrowRight, X, Loader2 } from "lucide-react";
+import { ConnectSourceWizard } from '../components/sources/ConnectSourceWizard';
+import { useDataSourceCatalog } from '../hooks/useDataSources';
+import type { DataSourceDefinition } from '../types/sourceConnection';
 
 // ---------------------------------------------------------------------------
 // Step definitions
@@ -50,19 +56,42 @@ export function Onboarding() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [shopifyConnected, setShopifyConnected] = useState(false);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set());
+  const [connectedPlatforms, setConnectedPlatforms] = useState<Set<string>>(new Set());
+
+  // Real OAuth wizard state
+  const { catalog } = useDataSourceCatalog();
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardPlatform, setWizardPlatform] = useState<DataSourceDefinition | null>(null);
+
+  const openWizard = (platformId: string) => {
+    const def = catalog.find(p => p.platform === platformId) ?? null;
+    if (def) {
+      setWizardPlatform(def);
+      setWizardOpen(true);
+    }
+  };
+
+  const handleWizardSuccess = () => {
+    if (wizardPlatform) {
+      setConnectedPlatforms(prev => new Set([...prev, wizardPlatform.platform]));
+      if (wizardPlatform.platform === 'shopify') {
+        setShopifyConnected(true);
+      }
+    }
+    setWizardOpen(false);
+  };
 
   const finish = () => {
     localStorage.setItem("onboardingComplete", "true");
-    if (shopifyConnected || selectedPlatforms.size > 0) {
+    if (shopifyConnected || connectedPlatforms.size > 0) {
       localStorage.setItem("hasConnectedSources", "true");
     }
-    navigate("/");
+    navigate("/home");
   };
 
   const skip = () => {
     localStorage.setItem("onboardingComplete", "true");
-    navigate("/");
+    navigate("/home");
   };
 
   return (
@@ -121,21 +150,17 @@ export function Onboarding() {
           {step === 2 && (
             <ShopifyStep
               connected={shopifyConnected}
-              onConnected={() => setShopifyConnected(true)}
+              catalogLoaded={catalog.length > 0}
+              onConnect={() => openWizard('shopify')}
               onNext={() => setStep(3)}
               onSkip={() => setStep(3)}
             />
           )}
           {step === 3 && (
             <AdPlatformsStep
-              selected={selectedPlatforms}
-              onToggle={id => {
-                setSelectedPlatforms(prev => {
-                  const next = new Set(prev);
-                  next.has(id) ? next.delete(id) : next.add(id);
-                  return next;
-                });
-              }}
+              connectedPlatforms={connectedPlatforms}
+              catalogLoaded={catalog.length > 0}
+              onConnect={(id) => openWizard(id)}
               onNext={() => setStep(4)}
               onSkip={() => setStep(4)}
             />
@@ -143,12 +168,21 @@ export function Onboarding() {
           {step === 4 && (
             <DoneStep
               shopifyConnected={shopifyConnected}
-              platformCount={selectedPlatforms.size}
+              platformCount={connectedPlatforms.size}
               onFinish={finish}
             />
           )}
         </div>
       </div>
+
+      {/* Real OAuth wizard modal */}
+      <ConnectSourceWizard
+        open={wizardOpen}
+        platform={wizardPlatform}
+        catalog={catalog}
+        onClose={() => setWizardOpen(false)}
+        onSuccess={handleWizardSuccess}
+      />
     </div>
   );
 }
@@ -203,21 +237,17 @@ function FeaturePill({ icon, label }: { icon: string; label: string }) {
 
 function ShopifyStep({
   connected,
-  onConnected,
+  catalogLoaded,
+  onConnect,
   onNext,
   onSkip,
 }: {
   connected: boolean;
-  onConnected: () => void;
+  catalogLoaded: boolean;
+  onConnect: () => void;
   onNext: () => void;
   onSkip: () => void;
 }) {
-  const handleConnect = () => {
-    // In production this would initiate Shopify OAuth.
-    // For now, mark as connected immediately to unblock the wizard.
-    onConnected();
-  };
-
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
@@ -258,11 +288,21 @@ function ShopifyStep({
       <div className="space-y-3">
         {!connected ? (
           <button
-            onClick={handleConnect}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 font-semibold transition-colors"
+            onClick={onConnect}
+            disabled={!catalogLoaded}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Connect Shopify Store
-            <ArrowRight className="w-5 h-5" />
+            {!catalogLoaded ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              <>
+                Connect Shopify Store
+                <ArrowRight className="w-5 h-5" />
+              </>
+            )}
           </button>
         ) : null}
         <button
@@ -290,13 +330,15 @@ function ShopifyStep({
 // ---------------------------------------------------------------------------
 
 function AdPlatformsStep({
-  selected,
-  onToggle,
+  connectedPlatforms,
+  catalogLoaded,
+  onConnect,
   onNext,
   onSkip,
 }: {
-  selected: Set<string>;
-  onToggle: (id: string) => void;
+  connectedPlatforms: Set<string>;
+  catalogLoaded: boolean;
+  onConnect: (id: string) => void;
   onNext: () => void;
   onSkip: () => void;
 }) {
@@ -308,46 +350,54 @@ function AdPlatformsStep({
         </div>
         <div>
           <h2 className="text-xl font-bold text-gray-900">Connect Ad Platforms</h2>
-          <p className="text-sm text-gray-500">Select the platforms you advertise on</p>
+          <p className="text-sm text-gray-500">Connect the platforms you advertise on</p>
         </div>
       </div>
 
       <div className="space-y-2 mb-6">
-        {AD_PLATFORMS.map(platform => (
-          <label
-            key={platform.id}
-            className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-              platform.comingSoon
-                ? "opacity-50 cursor-not-allowed border-gray-100 bg-gray-50"
-                : selected.has(platform.id)
-                ? "border-blue-300 bg-blue-50"
-                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(platform.id)}
-              onChange={() => !platform.comingSoon && onToggle(platform.id)}
-              disabled={platform.comingSoon}
-              className="sr-only"
-            />
-            <span className="text-xl flex-shrink-0">{platform.icon}</span>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-gray-900">{platform.name}</p>
-                {platform.comingSoon && (
-                  <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-500 rounded-full">Soon</span>
-                )}
+        {AD_PLATFORMS.map(platform => {
+          const isConnected = connectedPlatforms.has(platform.id);
+          return (
+            <div
+              key={platform.id}
+              className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                platform.comingSoon
+                  ? "opacity-50 border-gray-100 bg-gray-50"
+                  : isConnected
+                  ? "border-green-300 bg-green-50"
+                  : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              <span className="text-xl flex-shrink-0">{platform.icon}</span>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-gray-900">{platform.name}</p>
+                  {platform.comingSoon && (
+                    <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-500 rounded-full">Soon</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">{platform.description}</p>
               </div>
-              <p className="text-xs text-gray-500">{platform.description}</p>
+              {isConnected ? (
+                <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Check className="w-4 h-4 text-white" />
+                </div>
+              ) : !platform.comingSoon ? (
+                <button
+                  onClick={() => onConnect(platform.id)}
+                  disabled={!catalogLoaded}
+                  className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  {!catalogLoaded ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Connect"
+                  )}
+                </button>
+              ) : null}
             </div>
-            {selected.has(platform.id) && (
-              <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                <Check className="w-3 h-3 text-white" />
-              </div>
-            )}
-          </label>
-        ))}
+          );
+        })}
       </div>
 
       <div className="space-y-3">
@@ -355,7 +405,7 @@ function AdPlatformsStep({
           onClick={onNext}
           className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold transition-colors"
         >
-          {selected.size > 0 ? `Connect ${selected.size} platform${selected.size > 1 ? "s" : ""}` : "Continue"}
+          {connectedPlatforms.size > 0 ? "Continue" : "Continue"}
           <ChevronRight className="w-5 h-5" />
         </button>
         <button

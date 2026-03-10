@@ -175,9 +175,9 @@ describe('DashboardHome', () => {
     expect(document.querySelector('.Polaris-Spinner') || screen.getByRole('status')).toBeInTheDocument();
   });
 
-  it('shows empty state when all APIs return no data (graceful degradation)', async () => {
-    // Individual API calls have .catch() fallbacks so they degrade gracefully
-    // to zero/empty values rather than showing an error banner
+  it('shows error state when all APIs fail (distinguishes from empty state)', async () => {
+    // When all API calls fail, DashboardHome now shows an error banner with retry
+    // instead of silently falling through to the "Connect data sources" empty state
     vi.mocked(getUnreadInsightsCount).mockRejectedValue(new Error('Network error'));
     vi.mocked(getActiveRecommendationsCount).mockRejectedValue(new Error('Network error'));
     vi.mocked(getCompactHealth).mockRejectedValue(new Error('Network error'));
@@ -186,10 +186,13 @@ describe('DashboardHome', () => {
 
     renderWithProviders(<DashboardHome />);
 
-    // Falls through to empty state since all fallback values are zero/empty
+    // Should show error state with retry, NOT the "Welcome" empty state
     await waitFor(() => {
-      expect(screen.getByText('Welcome to your analytics dashboard')).toBeInTheDocument();
+      expect(screen.getByText('Unable to load dashboard data')).toBeInTheDocument();
     });
+
+    // Should also offer a fallback CTA to connect data sources
+    expect(screen.getByText('Or connect your data sources')).toBeInTheDocument();
   });
 
   it('shows empty state when no data exists', async () => {
