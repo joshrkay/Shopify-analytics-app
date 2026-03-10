@@ -24,7 +24,7 @@ from sqlalchemy import text
 from src.platform.tenant_context import get_tenant_context
 from src.api.dependencies.entitlements import check_custom_reports_entitlement
 from src.services.dataset_discovery_service import (
-    DatasetDiscoveryService
+    DatasetDiscoveryService,
     ColumnMetadata,
     DatasetInfo,
 )
