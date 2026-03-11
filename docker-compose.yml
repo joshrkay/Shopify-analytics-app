@@ -108,6 +108,7 @@ services:
       # For local dev, use test/mock values
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-test-clerk-secret-key}
       - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY:-test-clerk-publishable-key}
+      - CLERK_FRONTEND_API=${CLERK_FRONTEND_API:-https://relaxed-rattler-49.clerk.accounts.dev}
       - SHOPIFY_API_KEY=${SHOPIFY_API_KEY:-test-shopify-key}
       - SHOPIFY_API_SECRET=${SHOPIFY_API_SECRET:-test-webhook-secret-for-hmac}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-test-openrouter-key}

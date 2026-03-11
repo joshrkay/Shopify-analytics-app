@@ -142,7 +142,18 @@ export function Orders() {
       {/* Table Card */}
       <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', padding: '20px' }}>
         {error ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: '#dc2626' }}>{error}</div>
+          <div style={{ padding: '24px', textAlign: 'center' }}>
+            <p style={{ color: '#dc2626', marginBottom: '12px' }}>{error}</p>
+            <button
+              onClick={fetchOrders}
+              style={{
+                padding: '6px 16px', borderRadius: '6px', border: 'none',
+                background: '#dc2626', color: '#fff', cursor: 'pointer', fontSize: '14px',
+              }}
+            >
+              Retry
+            </button>
+          </div>
         ) : loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {Array.from({ length: 8 }).map((_, i) => (

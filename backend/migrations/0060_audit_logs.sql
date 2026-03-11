@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS ga_audit_logs (
     success         BOOLEAN         NOT NULL DEFAULT TRUE,
 
     -- Flexible payload (PII-sanitized before storage)
-    metadata        JSONB           NOT NULL DEFAULT '{}',
+    event_metadata  JSONB           NOT NULL DEFAULT '{}',
 
     -- Request tracing
     correlation_id  VARCHAR(36)     NOT NULL,
@@ -146,7 +146,7 @@ COMMENT ON COLUMN ga_audit_logs.access_surface IS
     'Where the access occurred: shopify_embed or external_app.';
 COMMENT ON COLUMN ga_audit_logs.success IS
     'Whether the action succeeded (true) or failed/was denied (false).';
-COMMENT ON COLUMN ga_audit_logs.metadata IS
+COMMENT ON COLUMN ga_audit_logs.event_metadata IS
     'Event-specific JSON payload. PII is automatically sanitized before storage.';
 COMMENT ON COLUMN ga_audit_logs.correlation_id IS
     'UUID for correlating related events across a single request.';

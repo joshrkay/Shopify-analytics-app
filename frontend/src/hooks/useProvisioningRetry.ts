@@ -45,7 +45,13 @@ export function useProvisioningRetry() {
       try {
         const result = await fn();
         // Success — clear provisioning state.
-        if (isProvisioning) setIsProvisioning(false);
+        // Unconditional setIsProvisioning(false) is safe: React bails on
+        // re-renders when state value hasn't actually changed, so we don't
+        // need the `if (isProvisioning)` guard here.  The guard would also
+        // add `isProvisioning` to the useCallback dependency array, causing
+        // a new `execute` reference on every flip which triggers an infinite
+        // re-fetch loop in DataHealthContext.
+        setIsProvisioning(false);
         provisionAttemptsRef.current = 0;
         return result;
       } catch (err) {
@@ -81,7 +87,7 @@ export function useProvisioningRetry() {
 
     // Unreachable — the loop always throws or returns above.
     throw new Error('useProvisioningRetry: max retries exceeded');
-  }, [isProvisioning]);
+  }, []); // intentionally empty — see comment above re: isProvisioning
 
   return { execute, isProvisioning };
 }
