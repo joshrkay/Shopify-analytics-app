@@ -62,9 +62,12 @@ meta_ads_extracted as (
 meta_ads_normalized as (
     select
         -- Primary identifiers: normalize IDs
+        -- Meta Ads API returns account_id with an 'act_' prefix (e.g. 'act_422959152328586').
+        -- tenant_airbyte_connections stores the bare numeric ID ('422959152328586').
+        -- Strip the prefix here so the tenant-mapping join succeeds.
         case
             when account_id_raw is null or trim(account_id_raw) = '' then null
-            else trim(account_id_raw)
+            else regexp_replace(trim(account_id_raw), '^act_', '')
         end as ad_account_id,
 
         case

@@ -140,3 +140,14 @@ def get_db_session_sync() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+def SessionLocal() -> Session:
+    """
+    Backwards-compatible session factory shim.
+
+    Some route modules import and call `SessionLocal()` directly (old pattern).
+    This shim delegates to `get_session_factory()` so those routes work without
+    modification.  New code should use `Depends(get_db_session)` instead.
+    """
+    return get_session_factory()()

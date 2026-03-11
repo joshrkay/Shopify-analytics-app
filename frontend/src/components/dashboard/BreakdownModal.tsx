@@ -119,7 +119,7 @@ export function BreakdownModal({ open, onClose, metric, timeframe, title }: Prop
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Dark overlay */}
-      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Modal panel */}
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">

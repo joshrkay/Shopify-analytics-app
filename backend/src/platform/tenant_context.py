@@ -731,6 +731,29 @@ class TenantContextMiddleware:
             db.close()
 
     async def __call__(self, request: Request, call_next):
+        """Wrapper that ensures CORS headers are present on ALL responses.
+
+        CORSMiddleware is registered before this middleware, making it the
+        innermost layer.  When we short-circuit (e.g. 403/503), we bypass
+        CORSMiddleware entirely and the browser sees a CORS error instead of
+        the real HTTP error.  This wrapper copies the CORS headers onto every
+        response so the browser can always read the error body.
+        """
+        response = await self._handle_request(request, call_next)
+        origin = request.headers.get("origin", "")
+        if origin:
+            import os as _os
+            cors_origins_str = _os.getenv("CORS_ORIGINS", "http://localhost:3000")
+            allowed_origins = [o.strip() for o in cors_origins_str.split(",")] + [
+                "https://admin.shopify.com"
+            ]
+            if origin in allowed_origins:
+                response.headers.setdefault("Access-Control-Allow-Origin", origin)
+                response.headers.setdefault("Access-Control-Allow-Credentials", "true")
+                response.headers.setdefault("Vary", "Origin")
+        return response
+
+    async def _handle_request(self, request: Request, call_next):
         """
         Process request and extract tenant context from JWT.
 
@@ -747,7 +770,8 @@ class TenantContextMiddleware:
         # Static file extensions served by the SPA catch-all route
         STATIC_EXTENSIONS = (".svg", ".ico", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf", ".map")
         if (
-            request.url.path in PUBLIC_PATHS
+            request.method == "OPTIONS"  # Always pass CORS preflight through to CORSMiddleware
+            or request.url.path in PUBLIC_PATHS
             or request.url.path.startswith("/api/webhooks/")
             or request.url.path.startswith("/assets/")
             or request.url.path.endswith(STATIC_EXTENSIONS)

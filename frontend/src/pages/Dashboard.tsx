@@ -68,7 +68,7 @@ interface DrillDownModalProps {
 function DrillDownModal({ isOpen, title, onClose, children }: DrillDownModalProps) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
@@ -289,33 +289,6 @@ export function Dashboard() {
     setDrillDown({ open: true, metric, title });
   };
 
-  // ---- Check if everything failed ----
-  const allFailed = !kpiLoading && !breakdownLoading && !metricsLoading
-    && kpiError && breakdownError && metricsError
-    && !kpi && channelMetrics.length === 0;
-
-  if (allFailed) {
-    return (
-      <div className="p-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 font-medium mb-2">Failed to load analytics</p>
-          <p className="text-red-600 text-sm mb-4">{kpiError}</p>
-          <button
-            onClick={() => {
-              const c = { current: false };
-              loadKpi(c);
-              loadBreakdown(c);
-              loadMetrics(c);
-            }}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="p-4 md:p-8">
       {/* Header */}
@@ -334,14 +307,29 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* ================================================================= */}
-      {/* Section 1: Primary KPI Cards                                       */}
-      {/* ================================================================= */}
-      {kpiError && !kpiLoading && (
-        <div className="mb-4">
-          <SectionError message={kpiError} onRetry={() => loadKpi()} />
+      {/* Inline error / loading state — page shell always renders */}
+      {loading && (
+        <div className="flex items-center gap-3 mb-6 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="text-sm text-blue-700">Loading analytics…</span>
         </div>
       )}
+      {error && !loading && (
+        <div className="flex items-center justify-between mb-6 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-red-700">Failed to load analytics</p>
+            <p className="text-xs text-red-600 mt-0.5">{error}</p>
+          </div>
+          <button
+            onClick={loadData}
+            className="ml-4 shrink-0 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs font-medium"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Primary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-6 md:mb-8">
         <MetricCard
           title="Total Revenue"

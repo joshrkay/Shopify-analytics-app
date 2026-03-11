@@ -7,8 +7,8 @@
  * Data: GET /api/cohort-analysis → getCohortRetention()
  */
 
-import { useState, useEffect } from 'react';
-import { Users } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Users, RefreshCw } from 'lucide-react';
 import { RetentionHeatmap } from '../components/charts/RetentionHeatmap';
 import { getCohortRetention } from '../services/cohortAnalysisApi';
 import type { CohortAnalysisResponse } from '../services/cohortAnalysisApi';
@@ -24,28 +24,37 @@ export function CohortAnalysis() {
   const [data, setData] = useState<CohortAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const cancelRef = useRef<boolean>(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchData = useCallback((tf: string) => {
+    cancelRef.current = true; // cancel any in-flight request
+    const cancelled = { value: false };
+    cancelRef.current = false;
+
     setLoading(true);
     setError(null);
 
-    getCohortRetention(timeframe)
+    getCohortRetention(tf)
       .then((result) => {
-        if (!cancelled) {
+        if (!cancelled.value) {
           setData(result);
           setLoading(false);
         }
       })
       .catch((err) => {
-        if (!cancelled) {
+        if (!cancelled.value) {
           setError(err.message || 'Failed to load cohort data');
           setLoading(false);
         }
       });
 
-    return () => { cancelled = true; };
-  }, [timeframe]);
+    return () => { cancelled.value = true; };
+  }, []);
+
+  useEffect(() => {
+    const cancel = fetchData(timeframe);
+    return cancel;
+  }, [timeframe, fetchData]);
 
   return (
     <div className="p-8">
@@ -79,10 +88,17 @@ export function CohortAnalysis() {
         </div>
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-          {error}
+      {/* Error banner (shown alongside existing data so user knows a refresh failed) */}
+      {error && data && (
+        <div className="mb-6 flex items-center justify-between bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <p className="text-sm text-red-700">{error}</p>
+          <button
+            onClick={() => fetchData(timeframe)}
+            className="ml-4 shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs font-medium"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Retry
+          </button>
         </div>
       )}
 
@@ -93,6 +109,22 @@ export function CohortAnalysis() {
             <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
             <p className="text-gray-500">Loading cohort data...</p>
           </div>
+        </div>
+      )}
+
+      {/* Error with no data — show a full empty-state card so the page isn't blank */}
+      {error && !data && !loading && (
+        <div className="bg-white rounded-lg border border-red-200 p-12 text-center">
+          <Users className="w-12 h-12 text-red-300 mx-auto mb-4" />
+          <p className="text-gray-700 font-medium mb-1">Could not load cohort data</p>
+          <p className="text-gray-400 text-sm mb-6">{error}</p>
+          <button
+            onClick={() => fetchData(timeframe)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Try again
+          </button>
         </div>
       )}
 
