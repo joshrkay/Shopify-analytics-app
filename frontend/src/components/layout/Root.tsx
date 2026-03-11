@@ -98,7 +98,7 @@ export function Root() {
       localStorage.getItem('onboardingComplete') === 'true';
     const hasSeenWelcome = sessionStorage.getItem('hasSeenWelcome') === 'true';
 
-    if (justCompletedOnboarding && !hasSeenWelcome && location.pathname === '/') {
+    if (justCompletedOnboarding && !hasSeenWelcome && (location.pathname === '/' || location.pathname === '/home')) {
       setShowWelcomeBanner(true);
       sessionStorage.setItem('hasSeenWelcome', 'true');
       setTimeout(() => setShowWelcomeBanner(false), 5000);

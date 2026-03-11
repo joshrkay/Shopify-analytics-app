@@ -10,6 +10,7 @@ interface MetricCardProps {
   iconColor?: IconColor;
   formatValue?: boolean;
   onClick?: () => void;
+  isLoading?: boolean;
 }
 
 const iconColorMap: Record<IconColor, { bg: string; text: string }> = {
@@ -29,7 +30,23 @@ export function MetricCard({
   iconColor = 'blue',
   formatValue = false,
   onClick,
+  isLoading = false,
 }: MetricCardProps) {
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
+        <div className="flex items-start justify-between">
+          <div className="flex-1 space-y-3">
+            <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
+            <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
+            <div className="h-3 w-28 bg-gray-200 rounded animate-pulse" />
+          </div>
+          <div className="w-12 h-12 bg-gray-100 rounded-lg animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
   const displayValue =
     formatValue && typeof value === 'number'
       ? new Intl.NumberFormat('en-US', {

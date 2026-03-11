@@ -434,9 +434,9 @@ class KpiSummaryResponse(BaseModel):
 def _get_db_for_kpi(request: Request):
     """DB dependency without entitlement check — KPI endpoints are available on all plans."""
     from src.platform.tenant_context import get_tenant_context as _ctx
-    from src.database.session import SessionLocal
+    from src.database.session import get_session_factory
     _ctx(request)  # validates JWT + tenant
-    db = SessionLocal()
+    db = get_session_factory()()
     try:
         yield db
     finally:
