@@ -335,66 +335,294 @@ async def exchange_code_for_tokens(
 # source can be created.  After exchanging the OAuth code we call discover_accounts()
 # to list available accounts, then the user picks one, and finalize_oauth() creates
 # the Airbyte source with the chosen account_id.
-PLATFORMS_NEEDING_ACCOUNT_SELECTION: set = {"meta_ads"}
+#
+# All OAuth ad platforms except Shopify/Shopify Email need account selection because
+# their Airbyte sources require a platform-specific account identifier in the config.
+PLATFORMS_NEEDING_ACCOUNT_SELECTION: set = {
+    "meta_ads",
+    "google_ads",
+    "tiktok_ads",
+    "snapchat_ads",
+    "pinterest_ads",
+    "twitter_ads",
+}
+
+# Maps platform key → the Airbyte source config field that receives the selected
+# account identifier.  Used by finalize_oauth() to inject the right field name.
+#
+# Snapchat is special: it has a two-level hierarchy (org → ad account).  The
+# discover_accounts() function encodes both as "{org_id}:{account_id}" in the
+# returned id field so finalize_oauth() can split them.
+ACCOUNT_ID_CONFIG_FIELD: Dict[str, str] = {
+    "meta_ads": "account_id",       # source-facebook-marketing: account_id
+    "google_ads": "customer_id",    # source-google-ads: customer_id
+    "tiktok_ads": "advertiser_id",  # source-tiktok-marketing: advertiser_id
+    "snapchat_ads": "account_id",   # source-snapchat-marketing: account_id + organization_id
+    "pinterest_ads": "ad_account_id",  # source-pinterest-ads: ad_account_id
+    "twitter_ads": "account_id",    # source-twitter-ads: account_id
+}
 
 
 async def discover_accounts(platform: str, tokens: Dict[str, Any]) -> list:
     """
     Discover ad accounts available to the authenticated user after OAuth.
 
-    Returns a list of dicts with 'id' and 'name' keys.
+    Returns a list of dicts with 'id' and 'name' keys for all platforms.
 
-    Currently only implemented for meta_ads (Facebook Marketing API).
-    Other platforms return an empty list.
+    Snapchat is the exception — its 'id' value is a compound string
+    "{org_id}:{account_id}" because the Airbyte source requires both
+    organization_id and account_id.  finalize_oauth() splits on ':'.
 
     Raises:
-        HTTPException 502: If the Graph API call fails.
+        HTTPException 502: If any platform API call fails.
     """
-    if platform != "meta_ads":
-        return []
+    try:
+        if platform == "meta_ads":
+            return await _discover_meta_accounts(tokens)
+        elif platform == "google_ads":
+            return await _discover_google_accounts(tokens)
+        elif platform == "tiktok_ads":
+            return await _discover_tiktok_accounts(tokens)
+        elif platform == "snapchat_ads":
+            return await _discover_snapchat_accounts(tokens)
+        elif platform == "pinterest_ads":
+            return await _discover_pinterest_accounts(tokens)
+        elif platform == "twitter_ads":
+            return await _discover_twitter_accounts(tokens)
+        else:
+            return []
+    except HTTPException:
+        raise
+    except httpx.RequestError as exc:
+        logger.error(
+            "Network error discovering ad accounts",
+            extra={"platform": platform, "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Network error while retrieving {platform} ad accounts. Please try again.",
+        )
 
+
+async def _discover_meta_accounts(tokens: Dict[str, Any]) -> list:
+    """Discover Meta (Facebook) ad accounts via Graph API."""
     access_token = tokens.get("access_token", "")
     if not access_token:
         return []
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as http:
-            response = await http.get(
-                "https://graph.facebook.com/v19.0/me/adaccounts",
-                params={
-                    "fields": "id,name,account_status",
-                    "access_token": access_token,
-                },
-            )
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.get(
+            "https://graph.facebook.com/v19.0/me/adaccounts",
+            params={"fields": "id,name,account_status", "access_token": access_token},
+        )
 
-        if response.status_code != 200:
-            logger.error(
-                "Failed to discover Meta ad accounts",
-                extra={
-                    "status_code": response.status_code,
-                    "response": response.text[:200],
-                },
-            )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Failed to retrieve your Meta ad accounts. Please try again.",
-            )
-
-        data = response.json()
-        accounts = []
-        for acct in data.get("data", []):
-            accounts.append({"id": acct.get("id", ""), "name": acct.get("name", "")})
-        return accounts
-
-    except httpx.RequestError as exc:
+    if response.status_code != 200:
         logger.error(
-            "Network error discovering Meta ad accounts",
-            extra={"error": str(exc)},
+            "Failed to discover Meta ad accounts",
+            extra={"status_code": response.status_code, "response": response.text[:200]},
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Network error while retrieving ad accounts. Please try again.",
+            detail="Failed to retrieve your Meta ad accounts. Please try again.",
         )
+
+    data = response.json()
+    return [{"id": a.get("id", ""), "name": a.get("name", "")} for a in data.get("data", [])]
+
+
+async def _discover_google_accounts(tokens: Dict[str, Any]) -> list:
+    """
+    Discover accessible Google Ads customer accounts.
+
+    Calls the Google Ads REST API listAccessibleCustomers endpoint, which
+    returns resource names in "customers/{customer_id}" format.  The numeric
+    customer_id is extracted and returned.  Account names require a separate
+    per-customer API call (expensive), so we omit them here — merchants know
+    their customer IDs from the Google Ads UI.
+    """
+    access_token = tokens.get("access_token", "")
+    dev_token = os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "")
+    if not access_token:
+        return []
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.get(
+            "https://googleads.googleapis.com/v15/customers:listAccessibleCustomers",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "developer-token": dev_token,
+            },
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "Failed to discover Google Ads customers",
+            extra={"status_code": response.status_code, "response": response.text[:200]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to retrieve your Google Ads accounts. Please try again.",
+        )
+
+    data = response.json()
+    accounts = []
+    for resource_name in data.get("resourceNames", []):
+        # "customers/1234567890" -> "1234567890"
+        customer_id = resource_name.split("/")[-1]
+        accounts.append({"id": customer_id, "name": f"Customer {customer_id}"})
+    return accounts
+
+
+async def _discover_tiktok_accounts(tokens: Dict[str, Any]) -> list:
+    """Discover TikTok advertiser accounts via Business API."""
+    # TikTok nests access_token under data.access_token in the token response.
+    access_token = tokens.get("access_token") or (tokens.get("data") or {}).get("access_token", "")
+    app_id = os.getenv("TIKTOK_APP_ID", "")
+    app_secret = os.getenv("TIKTOK_APP_SECRET", "")
+    if not access_token:
+        return []
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.get(
+            "https://business-api.tiktok.com/open_api/v1.3/oauth2/advertiser/get/",
+            params={"app_id": app_id, "secret": app_secret, "access_token": access_token},
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "Failed to discover TikTok advertisers",
+            extra={"status_code": response.status_code, "response": response.text[:200]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to retrieve your TikTok advertiser accounts. Please try again.",
+        )
+
+    data = response.json()
+    accounts = []
+    for advertiser in (data.get("data") or {}).get("list", []):
+        accounts.append({
+            "id": str(advertiser.get("advertiser_id", "")),
+            "name": advertiser.get("advertiser_name", ""),
+        })
+    return accounts
+
+
+async def _discover_snapchat_accounts(tokens: Dict[str, Any]) -> list:
+    """
+    Discover Snapchat ad accounts via the Snapchat Marketing API.
+
+    Snapchat has a two-level hierarchy: Organization → Ad Account.
+    The returned 'id' is a compound "{org_id}:{account_id}" string so
+    that finalize_oauth() can inject both organization_id and account_id
+    into the Airbyte source config.
+    """
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        return []
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        orgs_resp = await http.get(
+            "https://adsapi.snapchat.com/v1/me/organizations",
+            headers=headers,
+        )
+
+    if orgs_resp.status_code != 200:
+        logger.error(
+            "Failed to discover Snapchat organizations",
+            extra={"status_code": orgs_resp.status_code, "response": orgs_resp.text[:200]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to retrieve your Snapchat organizations. Please try again.",
+        )
+
+    orgs_data = orgs_resp.json()
+    accounts = []
+
+    for org_item in orgs_data.get("organizations", []):
+        org = org_item.get("organization", {})
+        org_id = org.get("id", "")
+        org_name = org.get("name", "")
+
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            accts_resp = await http.get(
+                f"https://adsapi.snapchat.com/v1/organizations/{org_id}/adaccounts",
+                headers=headers,
+            )
+
+        if accts_resp.status_code != 200:
+            logger.warning(
+                "Failed to list Snapchat ad accounts for org",
+                extra={"org_id": org_id, "status_code": accts_resp.status_code},
+            )
+            continue
+
+        for acct_item in accts_resp.json().get("adaccounts", []):
+            acct = acct_item.get("adaccount", {})
+            acct_id = acct.get("id", "")
+            acct_name = acct.get("name", "")
+            # Encode compound id so finalize_oauth can extract both parts.
+            accounts.append({
+                "id": f"{org_id}:{acct_id}",
+                "name": f"{acct_name} ({org_name})",
+            })
+
+    return accounts
+
+
+async def _discover_pinterest_accounts(tokens: Dict[str, Any]) -> list:
+    """Discover Pinterest ad accounts via Pinterest API v5."""
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        return []
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.get(
+            "https://api.pinterest.com/v5/ad_accounts",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "Failed to discover Pinterest ad accounts",
+            extra={"status_code": response.status_code, "response": response.text[:200]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to retrieve your Pinterest ad accounts. Please try again.",
+        )
+
+    data = response.json()
+    return [{"id": item.get("id", ""), "name": item.get("name", "")} for item in data.get("items", [])]
+
+
+async def _discover_twitter_accounts(tokens: Dict[str, Any]) -> list:
+    """Discover Twitter/X Ads accounts via Twitter Ads API."""
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        return []
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.get(
+            "https://ads-api.twitter.com/12/accounts",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "Failed to discover Twitter Ads accounts",
+            extra={"status_code": response.status_code, "response": response.text[:200]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to retrieve your Twitter Ads accounts. Please try again.",
+        )
+
+    data = response.json()
+    return [{"id": acct.get("id", ""), "name": acct.get("name", "")} for acct in data.get("data", [])]
 
 
 async def refresh_access_token(

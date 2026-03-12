@@ -41,6 +41,7 @@ from src.integrations.airbyte.models import (
     DestinationCreationRequest,
 )
 from src.integrations.airbyte.oauth_registry import (
+    ACCOUNT_ID_CONFIG_FIELD,
     PLATFORMS_NEEDING_ACCOUNT_SELECTION,
     build_auth_url,
     build_source_config,
@@ -795,7 +796,13 @@ async def finalize_oauth(
     by the OAuth callback.  Retrieves the stored access token, builds the
     Airbyte source config with the chosen account_id, and creates the source.
 
-    Currently used for: meta_ads
+    Used for: meta_ads, google_ads, tiktok_ads, snapchat_ads, pinterest_ads,
+    twitter_ads — all platforms in PLATFORMS_NEEDING_ACCOUNT_SELECTION.
+
+    Each platform uses a different Airbyte source config field for the account
+    identifier (ACCOUNT_ID_CONFIG_FIELD).  Snapchat is special: body.account_id
+    carries a compound "{org_id}:{account_id}" string encoded by discover_accounts()
+    so that both organization_id and account_id can be injected into the source config.
 
     SECURITY: Validates pending_token belongs to the current tenant.
     """
@@ -833,11 +840,27 @@ async def finalize_oauth(
             detail=f"No Airbyte source type for platform: {platform}",
         )
 
-    # Build source config from stored tokens + the selected account_id.
-    # For Meta, account_id may be in 'act_123456789' format — Airbyte's
-    # source-facebook-marketing accepts both with and without the 'act_' prefix.
+    # Build source config from stored tokens then inject the selected account
+    # identifier into the platform-specific config field.
+    #
+    # Each platform uses a different field name in its Airbyte source config:
+    #   meta_ads       → account_id      (may have 'act_' prefix — Airbyte accepts both)
+    #   google_ads     → customer_id     (numeric string, e.g. "1234567890")
+    #   tiktok_ads     → advertiser_id
+    #   snapchat_ads   → account_id + organization_id (compound id from discover_accounts)
+    #   pinterest_ads  → ad_account_id
+    #   twitter_ads    → account_id
     source_config: dict = build_source_config(platform, tokens)
-    source_config["account_id"] = body.account_id
+    account_field = ACCOUNT_ID_CONFIG_FIELD.get(platform, "account_id")
+
+    if platform == "snapchat_ads" and ":" in body.account_id:
+        # discover_accounts() encoded "{org_id}:{account_id}" — split here.
+        org_id, acct_id = body.account_id.split(":", 1)
+        source_config["organization_id"] = org_id
+        source_config[account_field] = acct_id
+    else:
+        source_config[account_field] = body.account_id
+
     if shop_domain:
         source_config["shop"] = shop_domain
 
