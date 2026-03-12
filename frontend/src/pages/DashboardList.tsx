@@ -401,15 +401,11 @@ export function DashboardList() {
                   }
                 : undefined
             }
-            secondaryAction={{
-              content: 'Browse templates',
-              onAction: () => navigate('/dashboards/templates'),
-            }}
             image=""
           >
             <Text as="p" variant="bodyMd" tone="subdued">
               {selectedTab === 'all'
-                ? 'Dashboards let you organize and visualize your data with custom reports and charts. Get started by creating a blank dashboard or browsing templates.'
+                ? 'Dashboards let you organize and visualize your data with custom reports and charts. Get started by creating a blank dashboard.'
                 : `No ${selectedTab} dashboards found. Try changing the filter or create a new dashboard.`}
             </Text>
           </EmptyState>
