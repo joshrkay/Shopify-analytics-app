@@ -17,6 +17,7 @@ import { SettingsTabButton } from '../components/settings/SettingsTabButton';
 import { DataSourcesSettingsTab } from '../components/settings/DataSourcesSettingsTab';
 import { SyncSettingsTab } from '../components/settings/SyncSettingsTab';
 import { TeamSettings } from '../components/settings/TeamSettings';
+import { NotificationsSettingsTab } from '../components/settings/NotificationsSettingsTab';
 
 const ROLE_RANK = {
   viewer: 0,
@@ -81,6 +82,14 @@ function renderTabContent(tab: SettingsTab) {
     return (
       <section data-testid="settings-panel-team">
         <TeamSettings />
+      </section>
+    );
+  }
+
+  if (tab === 'notifications') {
+    return (
+      <section data-testid="settings-panel-notifications">
+        <NotificationsSettingsTab />
       </section>
     );
   }
