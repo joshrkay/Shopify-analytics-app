@@ -297,15 +297,28 @@ class TestProvisionMiddlewareBypass:
         TenantContextMiddleware does not intercept it and return 403 before
         the handler runs.
         """
-        # We test the middleware constant directly rather than spinning up the
+        # We test the middleware source directly rather than spinning up the
         # full middleware stack, to keep this test fast and free of DB deps.
+        #
+        # NOTE: __call__ is a thin CORS-header wrapper that delegates all
+        # request-handling logic to _handle_request.  PUBLIC_PATHS lives in
+        # _handle_request, so that is the method we must inspect here.
         import inspect
         import src.platform.tenant_context as tc_module
 
-        # Read the source of __call__ and confirm the path is present
-        source = inspect.getsource(tc_module.TenantContextMiddleware.__call__)
+        # Read the source of _handle_request and confirm the path is present
+        source = inspect.getsource(tc_module.TenantContextMiddleware._handle_request)
         assert "/api/auth/provision" in source, (
             "/api/auth/provision is NOT in PUBLIC_PATHS inside "
-            "TenantContextMiddleware.__call__ — unprovisioned users will "
+            "TenantContextMiddleware._handle_request — unprovisioned users will "
             "never be able to reach the provision endpoint."
+        )
+
+        # Also assert __call__ delegates to _handle_request (structural guard:
+        # if someone accidentally inlines the logic back into __call__ without
+        # keeping PUBLIC_PATHS there, the first assertion above will catch it).
+        call_source = inspect.getsource(tc_module.TenantContextMiddleware.__call__)
+        assert "_handle_request" in call_source, (
+            "TenantContextMiddleware.__call__ no longer delegates to _handle_request. "
+            "Ensure PUBLIC_PATHS bypass is still reached on every request."
         )
