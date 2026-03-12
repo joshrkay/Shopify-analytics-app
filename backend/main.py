@@ -68,6 +68,7 @@ from src.api.routes import cohort_analysis
 from src.api.routes import budget_pacing
 from src.api.routes import alerts
 from src.api.routes import search
+from src.api.routes import notifications
 from src.platform.db_readiness import REQUIRED_IDENTITY_TABLES, check_required_tables
 from src.database.session import get_db_session_sync
 
@@ -379,6 +380,10 @@ app.include_router(alerts.router)
 
 # Include global search routes (requires authentication)
 app.include_router(search.router)
+
+# Include notifications routes (requires authentication)
+# Story 9.1 - Notification Framework
+app.include_router(notifications.router)
 
 
 # ---------------------------------------------------------------------------

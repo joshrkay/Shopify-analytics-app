@@ -3,18 +3,19 @@
  *
  * Matches the Figma "Analytics Overview" design.
  * Data sourced from:
- *   - GET /api/datasets/kpi-summary?timeframe=30days   → aggregate KPIs
- *   - GET /api/datasets/channel-breakdown?metric=revenue&timeframe=30days → per-channel bar chart
- *   - GET /api/channels/{platform}/metrics?timeframe=30days → channel table rows
+ *   - GET /api/datasets/kpi-summary?timeframe=<tf>   → aggregate KPIs
+ *   - GET /api/datasets/channel-breakdown?metric=revenue&timeframe=<tf> → per-channel bar chart
+ *   - GET /api/channels/{platform}/metrics?timeframe=<tf> → channel table rows
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DollarSign,
   TrendingUp,
   ShoppingCart,
   MousePointerClick,
   Calendar,
+  ChevronDown,
   X,
 } from 'lucide-react';
 import {
@@ -50,6 +51,93 @@ const CHANNEL_PLATFORMS: { key: string; displayName: string; platform: string }[
   { key: 'organic', displayName: 'Organic', platform: 'organic' },
 ];
 
+// Maps raw DB platform values to display names.
+// Covers legacy 'meta_ads' and canonical 'facebook_ads' so the drill-down
+// labels match the data however it was stored.
+const PLATFORM_DISPLAY: Record<string, string> = {
+  google_ads:    'Google Ads',
+  facebook_ads:  'Facebook Ads',
+  meta_ads:      'Meta Ads',
+  instagram_ads: 'Instagram Ads',
+  tiktok_ads:    'TikTok Ads',
+  snapchat_ads:  'Snapchat Ads',
+  pinterest_ads: 'Pinterest Ads',
+  twitter_ads:   'Twitter / X Ads',
+  organic:       'Organic',
+};
+
+function platformLabel(raw: string): string {
+  return PLATFORM_DISPLAY[raw] ?? raw.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// ---------------------------------------------------------------------------
+// Timeframe selector
+// ---------------------------------------------------------------------------
+
+const TIMEFRAME_OPTIONS: { value: string; label: string }[] = [
+  { value: '7days',       label: 'Last 7 days' },
+  { value: 'thisWeek',    label: 'This week' },
+  { value: '30days',      label: 'Last 30 days' },
+  { value: 'thisMonth',   label: 'This month' },
+  { value: '90days',      label: 'Last 90 days' },
+  { value: 'thisQuarter', label: 'This quarter' },
+];
+
+interface TimeframeSelectorProps {
+  value: string;
+  onChange: (v: string) => void;
+}
+
+function TimeframeSelector({ value, onChange }: TimeframeSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const selected = TIMEFRAME_OPTIONS.find((o) => o.value === value) ?? TIMEFRAME_OPTIONS[2];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors w-fit text-sm text-gray-700"
+      >
+        <Calendar className="w-4 h-4 text-gray-500" />
+        <span>{selected.label}</span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
+          {TIMEFRAME_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-4 py-2 text-sm transition-colors hover:bg-gray-50
+                ${opt.value === value ? 'text-blue-600 font-medium bg-blue-50' : 'text-gray-700'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 type DrillDownMetric = 'revenue' | 'spend' | 'roas' | 'conversions' | 'clicks' | 'ctr' | 'conversionRate';
 
 interface DrillDownModalProps {
@@ -77,6 +165,7 @@ function DrillDownModal({ isOpen, title, onClose, children }: DrillDownModalProp
 }
 
 export function Dashboard() {
+  const [timeframe, setTimeframe] = useState('30days');
   const [kpi, setKpi] = useState<KpiSummaryResponse | null>(null);
   const [channelBreakdown, setChannelBreakdown] = useState<ChannelBreakdownSummary | null>(null);
   const [channelMetrics, setChannelMetrics] = useState<ChannelMetricsResponse[]>([]);
@@ -94,9 +183,9 @@ export function Dashboard() {
     setError(null);
     try {
       const [kpiData, breakdownData, ...channelData] = await Promise.all([
-        getKpiSummary('30days'),
-        getChannelBreakdown('revenue', '30days'),
-        ...CHANNEL_PLATFORMS.map((ch) => getChannelMetrics(ch.platform, '30days')),
+        getKpiSummary(timeframe),
+        getChannelBreakdown('revenue', timeframe),
+        ...CHANNEL_PLATFORMS.map((ch) => getChannelMetrics(ch.platform, timeframe)),
       ]);
 
       setKpi(kpiData);
@@ -122,7 +211,7 @@ export function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [timeframe]);
 
   useEffect(() => {
     loadData();
@@ -163,10 +252,7 @@ export function Dashboard() {
               Track performance across all advertising channels
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-gray-200 w-fit">
-            <Calendar className="w-4 h-4 text-gray-500" />
-            <span className="text-sm text-gray-700">Last 30 days</span>
-          </div>
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
         </div>
       </div>
 
@@ -335,41 +421,57 @@ export function Dashboard() {
         onClose={() => setDrillDown((d) => ({ ...d, open: false }))}
       >
         <div className="space-y-3">
-          {channelMetrics.map((ch, i) => {
-            const key = CHANNEL_PLATFORMS[i]?.displayName ?? ch.display_name;
-            let metricValue: string;
-            switch (drillDown.metric) {
-              case 'revenue':
-                metricValue = `$${ch.revenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                break;
-              case 'spend':
-                metricValue = `$${ch.spend.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                break;
-              case 'roas':
-                metricValue = `${ch.roas.toFixed(2)}x`;
-                break;
-              case 'conversions':
-                metricValue = ch.orders.toLocaleString();
-                break;
-              case 'clicks':
-                metricValue = ch.clicks.toLocaleString();
-                break;
-              case 'ctr':
-                metricValue = `${ch.ctr.toFixed(2)}%`;
-                break;
-              case 'conversionRate':
-                metricValue = `${ch.conversion_rate.toFixed(2)}%`;
-                break;
-              default:
-                metricValue = '—';
-            }
-            return (
-              <div key={ch.platform} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-900">{key}</span>
-                <span className="text-gray-700">{metricValue}</span>
-              </div>
-            );
-          })}
+          {/* spend / revenue / roas: source is kpi.revenue_by_channel — same table
+              and query as the KPI cards, so the numbers always reconcile.
+              clicks / ctr / conversions / conversionRate: source is channelMetrics
+              (separate analytics.marketing_spend table). */}
+          {(['spend', 'revenue', 'roas'] as DrillDownMetric[]).includes(drillDown.metric)
+            ? (kpi?.revenue_by_channel ?? [])
+                .filter((ch) => ch.revenue > 0 || ch.spend > 0)
+                .map((ch) => {
+                  let metricValue: string;
+                  if (drillDown.metric === 'revenue') {
+                    metricValue = `$${ch.revenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                  } else if (drillDown.metric === 'spend') {
+                    metricValue = `$${ch.spend.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                  } else {
+                    const roas = ch.spend > 0 ? ch.revenue / ch.spend : 0;
+                    metricValue = `${roas.toFixed(2)}x`;
+                  }
+                  return (
+                    <div key={ch.channel} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <span className="font-medium text-gray-900">{platformLabel(ch.channel)}</span>
+                      <span className="text-gray-700">{metricValue}</span>
+                    </div>
+                  );
+                })
+            : channelMetrics.map((ch, i) => {
+                const key = CHANNEL_PLATFORMS[i]?.displayName ?? ch.display_name;
+                let metricValue: string;
+                switch (drillDown.metric) {
+                  case 'conversions':
+                    metricValue = ch.orders.toLocaleString();
+                    break;
+                  case 'clicks':
+                    metricValue = ch.clicks.toLocaleString();
+                    break;
+                  case 'ctr':
+                    metricValue = `${(ch.ctr * 100).toFixed(2)}%`;
+                    break;
+                  case 'conversionRate':
+                    metricValue = `${(ch.conversion_rate * 100).toFixed(2)}%`;
+                    break;
+                  default:
+                    metricValue = '—';
+                }
+                return (
+                  <div key={ch.platform} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span className="font-medium text-gray-900">{key}</span>
+                    <span className="text-gray-700">{metricValue}</span>
+                  </div>
+                );
+              })
+          }
         </div>
       </DrillDownModal>
     </div>
