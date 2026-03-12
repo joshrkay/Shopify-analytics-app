@@ -10,7 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAgency } from '../contexts/AgencyContext';
 import type { SettingsTab } from '../types/settingsTypes';
 import { SettingsTabButton } from '../components/settings/SettingsTabButton';
@@ -61,6 +61,125 @@ function canAccessTab(userRole: RequiredRole, requiredRole: RequiredRole): boole
   return ROLE_RANK[userRole] >= ROLE_RANK[requiredRole];
 }
 
+// ---------------------------------------------------------------------------
+// Stub tab components — Account, Billing, API Keys, AI Insights
+// ---------------------------------------------------------------------------
+
+function AccountSettingsTab() {
+  return (
+    <section data-testid="settings-panel-account">
+      <h2 className="text-xl font-semibold mb-1">Account</h2>
+      <p className="text-gray-500 text-sm mb-6">Manage your personal account and preferences.</p>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center">
+            <User className="w-7 h-7 text-blue-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">Your Account</p>
+            <p className="text-sm text-gray-500">
+              Account details are managed via your Shopify identity provider.
+            </p>
+          </div>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+          To update your name, email, or password, visit your Shopify account settings or contact
+          your workspace owner.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BillingSettingsTab() {
+  const navigate = useNavigate();
+  return (
+    <section data-testid="settings-panel-billing">
+      <h2 className="text-xl font-semibold mb-1">Billing</h2>
+      <p className="text-gray-500 text-sm mb-6">Manage your subscription and billing details.</p>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <p className="font-semibold text-gray-900">Subscription</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              View your current plan and upgrade options.
+            </p>
+          </div>
+          <CreditCard className="w-8 h-8 text-gray-400" />
+        </div>
+        <button
+          onClick={() => navigate('/billing/checkout')}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+        >
+          Manage Billing
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ApiKeysSettingsTab() {
+  return (
+    <section data-testid="settings-panel-api">
+      <h2 className="text-xl font-semibold mb-1">API Keys</h2>
+      <p className="text-gray-500 text-sm mb-6">Programmatic access to your analytics data.</p>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="bg-gray-100 p-2 rounded-lg">
+            <Key className="w-5 h-5 text-gray-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">API Access</p>
+            <p className="text-sm text-gray-500">
+              Coming soon — API key management is under development.
+            </p>
+          </div>
+        </div>
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-700">
+          API access will let you pull your analytics data into external tools and workflows.
+          This feature is on the roadmap for the next release.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AiInsightsSettingsTab() {
+  return (
+    <section data-testid="settings-panel-ai">
+      <h2 className="text-xl font-semibold mb-1">AI Insights</h2>
+      <p className="text-gray-500 text-sm mb-6">
+        Configure AI-powered analysis and recommendations.
+      </p>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="bg-purple-100 p-2 rounded-lg">
+            <Sparkles className="w-5 h-5 text-purple-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">AI Configuration</p>
+            <p className="text-sm text-gray-500">
+              Advanced AI settings are coming soon.
+            </p>
+          </div>
+        </div>
+        <div className="bg-purple-50 border border-purple-100 rounded-lg p-4 text-sm text-purple-700">
+          Upcoming settings will include AI model selection, insight frequency, and custom analysis
+          prompts. AI insights are currently enabled and running with default settings.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab content router
+// ---------------------------------------------------------------------------
+
 function renderTabContent(tab: SettingsTab) {
   if (tab === 'sources') {
     return (
@@ -94,12 +213,12 @@ function renderTabContent(tab: SettingsTab) {
     );
   }
 
-  return (
-    <section data-testid={`settings-panel-${tab}`}>
-      <h2 className="text-xl font-semibold mb-2">{SETTINGS_TABS.find((t) => t.id === tab)?.label}</h2>
-      <p className="text-gray-600">Configure your {tab} settings.</p>
-    </section>
-  );
+  if (tab === 'account') return <AccountSettingsTab />;
+  if (tab === 'billing') return <BillingSettingsTab />;
+  if (tab === 'api') return <ApiKeysSettingsTab />;
+  if (tab === 'ai') return <AiInsightsSettingsTab />;
+
+  return null;
 }
 
 export default function Settings() {
