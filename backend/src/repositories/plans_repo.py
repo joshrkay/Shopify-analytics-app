@@ -179,7 +179,7 @@ class PlansRepository:
 
             logger.info("Plan created", extra={
                 "plan_id": plan_id,
-                "name": name,
+                "plan_name": name,  # 'name' is reserved in LogRecord
                 "price_monthly_cents": price_monthly_cents
             })
 
@@ -188,7 +188,7 @@ class PlansRepository:
             self.db.rollback()
             logger.error("Failed to create plan - integrity error", extra={
                 "plan_id": plan_id,
-                "name": name,
+                "plan_name": name,  # 'name' is reserved in LogRecord
                 "error": str(e)
             })
             raise PlanAlreadyExistsError(f"Plan creation failed: {e}")

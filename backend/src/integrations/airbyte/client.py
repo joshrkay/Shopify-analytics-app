@@ -566,7 +566,7 @@ class AirbyteClient:
             extra={
                 "source_id": source.source_id,
                 "source_type": source.source_type,
-                "name": source.name,
+                "source_name": source.name,  # 'name' is reserved in LogRecord
             },
         )
 
@@ -745,7 +745,7 @@ class AirbyteClient:
                 "connection_id": connection.connection_id,
                 "source_id": connection.source_id,
                 "destination_id": connection.destination_id,
-                "name": connection.name,
+                "connection_name": connection.name,  # 'name' is reserved in LogRecord
             },
         )
 
@@ -803,7 +803,7 @@ class AirbyteClient:
 
         logger.info(
             "Airbyte workspace created",
-            extra={"workspace_id": workspace.workspace_id, "name": name},
+            extra={"workspace_id": workspace.workspace_id, "workspace_name": name},  # 'name' is reserved in LogRecord
         )
 
         return workspace

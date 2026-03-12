@@ -260,7 +260,7 @@ class PlanService:
 
             logger.info("Plan created via service", extra={
                 "plan_id": plan.id,
-                "name": name,
+                "plan_name": name,  # 'name' is reserved in LogRecord
                 "feature_count": len(created_features)
             })
 

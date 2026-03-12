@@ -110,12 +110,10 @@ class TestEncryptDecryptCredentials:
         mock_aio_run.return_value = "ENCRYPTED_BLOB"
         service = _service()
 
-        # _encrypt_credentials is async but uses asyncio.run internally;
-        # with get_running_loop raising RuntimeError (no loop), asyncio.run is called.
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            service._encrypt_credentials({"access_token": "tok", "ad_account_id": "act_123"})
-        )
+        # _encrypt_credentials is a SYNC function that calls asyncio.run() internally.
+        # Call it directly — wrapping with run_until_complete would fail because
+        # the function returns a plain str, not a coroutine.
+        result = service._encrypt_credentials({"access_token": "tok", "ad_account_id": "act_123"})
 
         assert result == "ENCRYPTED_BLOB"
         # asyncio.run was called with the encrypt_secret coroutine
