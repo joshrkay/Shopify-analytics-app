@@ -487,21 +487,28 @@ async def get_kpi_summary(
         """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchone()
 
         # Revenue metrics — gross_revenue and prior_gross_revenue from mart_revenue_metrics.
-        rev_row = db_session.execute(text("""
-            SELECT
-                COALESCE(SUM(gross_revenue), 0)       AS total_revenue,
-                COALESCE(SUM(prior_gross_revenue), 0) AS prior_revenue
-            FROM marts.mart_revenue_metrics
-            WHERE tenant_id = :tenant_id
-              AND period_type = :period_type
-              AND period_end = (
-                  SELECT MAX(period_end)
-                  FROM marts.mart_revenue_metrics
-                  WHERE tenant_id = :tenant_id
-                    AND period_type = :period_type
-                    AND period_end <= current_date::date
-              )
-        """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchone()
+        # Wrapped in its own try/except: if the table hasn't been materialized in this
+        # environment yet, degrade gracefully to 0 rather than 503-ing the whole endpoint.
+        try:
+            rev_row = db_session.execute(text("""
+                SELECT
+                    COALESCE(SUM(gross_revenue), 0)       AS total_revenue,
+                    COALESCE(SUM(prior_gross_revenue), 0) AS prior_revenue
+                FROM marts.mart_revenue_metrics
+                WHERE tenant_id = :tenant_id
+                  AND period_type = :period_type
+                  AND period_end = (
+                      SELECT MAX(period_end)
+                      FROM marts.mart_revenue_metrics
+                      WHERE tenant_id = :tenant_id
+                        AND period_type = :period_type
+                        AND period_end <= current_date::date
+                  )
+            """), {"tenant_id": tenant_ctx.tenant_id, "period_type": period_type}).fetchone()
+        except Exception as rev_exc:
+            logger.warning("mart_revenue_metrics query failed (table may not be materialized): %s", rev_exc)
+            db_session.rollback()
+            rev_row = None
 
         # Per-channel revenue + spend for grouped bar chart.
         channel_rows = db_session.execute(text("""
