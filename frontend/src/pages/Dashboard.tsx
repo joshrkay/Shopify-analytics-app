@@ -376,22 +376,24 @@ export function Dashboard() {
         />
         <MetricCard
           title="Avg CTR"
-          value={
-            channelMetrics.length > 0
-              ? `${(channelMetrics.reduce((s, c) => s + c.ctr, 0) / channelMetrics.length).toFixed(2)}%`
-              : '—'
-          }
+          value={(() => {
+            const active = channelMetrics.filter((c) => c.ctr > 0);
+            return active.length > 0
+              ? `${((active.reduce((s, c) => s + c.ctr, 0) / active.length) * 100).toFixed(2)}%`
+              : '—';
+          })()}
           icon={TrendingUp}
           iconColor="orange"
           onClick={() => openDrillDown('ctr', 'CTR by Channel')}
         />
         <MetricCard
           title="Avg Conv. Rate"
-          value={
-            channelMetrics.length > 0
-              ? `${(channelMetrics.reduce((s, c) => s + c.conversion_rate, 0) / channelMetrics.length).toFixed(2)}%`
-              : '—'
-          }
+          value={(() => {
+            const active = channelMetrics.filter((c) => c.conversion_rate > 0);
+            return active.length > 0
+              ? `${((active.reduce((s, c) => s + c.conversion_rate, 0) / active.length) * 100).toFixed(2)}%`
+              : '—';
+          })()}
           icon={ShoppingCart}
           iconColor="green"
           onClick={() => openDrillDown('conversionRate', 'Conversion Rate by Channel')}
@@ -426,51 +428,94 @@ export function Dashboard() {
               clicks / ctr / conversions / conversionRate: source is channelMetrics
               (separate analytics.marketing_spend table). */}
           {(['spend', 'revenue', 'roas'] as DrillDownMetric[]).includes(drillDown.metric)
-            ? (kpi?.revenue_by_channel ?? [])
-                .filter((ch) => ch.revenue > 0 || ch.spend > 0)
-                .map((ch) => {
-                  let metricValue: string;
-                  if (drillDown.metric === 'revenue') {
-                    metricValue = `$${ch.revenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                  } else if (drillDown.metric === 'spend') {
-                    metricValue = `$${ch.spend.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                  } else {
-                    const roas = ch.spend > 0 ? ch.revenue / ch.spend : 0;
-                    metricValue = `${roas.toFixed(2)}x`;
-                  }
-                  return (
-                    <div key={ch.channel} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <span className="font-medium text-gray-900">{platformLabel(ch.channel)}</span>
-                      <span className="text-gray-700">{metricValue}</span>
-                    </div>
-                  );
-                })
-            : channelMetrics.map((ch, i) => {
-                const key = CHANNEL_PLATFORMS[i]?.displayName ?? ch.display_name;
-                let metricValue: string;
-                switch (drillDown.metric) {
-                  case 'conversions':
-                    metricValue = ch.orders.toLocaleString();
-                    break;
-                  case 'clicks':
-                    metricValue = ch.clicks.toLocaleString();
-                    break;
-                  case 'ctr':
-                    metricValue = `${(ch.ctr * 100).toFixed(2)}%`;
-                    break;
-                  case 'conversionRate':
-                    metricValue = `${(ch.conversion_rate * 100).toFixed(2)}%`;
-                    break;
-                  default:
-                    metricValue = '—';
-                }
-                return (
-                  <div key={ch.platform} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="font-medium text-gray-900">{key}</span>
-                    <span className="text-gray-700">{metricValue}</span>
-                  </div>
+            ? (() => {
+                const rows = (kpi?.revenue_by_channel ?? []).filter(
+                  (ch) => ch.revenue > 0 || ch.spend > 0,
                 );
-              })
+                return (
+                  <>
+                    {rows.map((ch) => {
+                      let metricValue: string;
+                      if (drillDown.metric === 'revenue') {
+                        metricValue = `$${ch.revenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                      } else if (drillDown.metric === 'spend') {
+                        metricValue = `$${ch.spend.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                      } else {
+                        const roas = ch.spend > 0 ? ch.revenue / ch.spend : 0;
+                        metricValue = `${roas.toFixed(2)}x`;
+                      }
+                      return (
+                        <div key={ch.channel} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span className="font-medium text-gray-900">{platformLabel(ch.channel)}</span>
+                          <span className="text-gray-700">{metricValue}</span>
+                        </div>
+                      );
+                    })}
+                    {/* Total row — matches the KPI card value exactly */}
+                    {drillDown.metric !== 'roas' && rows.length > 1 && (
+                      <div className="flex items-center justify-between p-3 bg-gray-100 rounded-lg border-t border-gray-200 mt-1">
+                        <span className="font-semibold text-gray-900">Total</span>
+                        <span className="font-semibold text-gray-900">
+                          {drillDown.metric === 'revenue'
+                            ? `$${(kpi?.total_revenue.value ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                            : `$${(kpi?.total_ad_spend.value ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                );
+              })()
+            : (() => {
+                const rows = channelMetrics.filter((ch) => {
+                  if (drillDown.metric === 'conversions') return ch.orders > 0;
+                  if (drillDown.metric === 'clicks') return ch.clicks > 0;
+                  if (drillDown.metric === 'ctr') return ch.ctr > 0;
+                  if (drillDown.metric === 'conversionRate') return ch.conversion_rate > 0;
+                  return true;
+                });
+                return (
+                  <>
+                    {rows.map((ch, i) => {
+                      const origIdx = channelMetrics.indexOf(ch);
+                      const key = CHANNEL_PLATFORMS[origIdx]?.displayName ?? ch.display_name;
+                      let metricValue: string;
+                      switch (drillDown.metric) {
+                        case 'conversions':
+                          metricValue = ch.orders.toLocaleString();
+                          break;
+                        case 'clicks':
+                          metricValue = ch.clicks.toLocaleString();
+                          break;
+                        case 'ctr':
+                          metricValue = `${(ch.ctr * 100).toFixed(2)}%`;
+                          break;
+                        case 'conversionRate':
+                          metricValue = `${(ch.conversion_rate * 100).toFixed(2)}%`;
+                          break;
+                        default:
+                          metricValue = '—';
+                      }
+                      return (
+                        <div key={`${ch.platform}-${i}`} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span className="font-medium text-gray-900">{key}</span>
+                          <span className="text-gray-700">{metricValue}</span>
+                        </div>
+                      );
+                    })}
+                    {/* Total row for conversions and clicks */}
+                    {(drillDown.metric === 'conversions' || drillDown.metric === 'clicks') && rows.length > 1 && (
+                      <div className="flex items-center justify-between p-3 bg-gray-100 rounded-lg border-t border-gray-200 mt-1">
+                        <span className="font-semibold text-gray-900">Total</span>
+                        <span className="font-semibold text-gray-900">
+                          {drillDown.metric === 'conversions'
+                            ? (kpi?.total_conversions.value ?? 0).toLocaleString()
+                            : channelMetrics.reduce((s, c) => s + c.clicks, 0).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                );
+              })()
           }
         </div>
       </DrillDownModal>
