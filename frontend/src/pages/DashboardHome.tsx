@@ -31,7 +31,6 @@ import {
   Button,
 } from '@shopify/polaris';
 import { useNavigate } from 'react-router-dom';
-import { TimeframeSelector, type TimeframeOption } from '../components/common/TimeframeSelector';
 import { listInsights, getUnreadInsightsCount } from '../services/insightsApi';
 import { listRecommendations, getActiveRecommendationsCount } from '../services/recommendationsApi';
 import { getCompactHealth } from '../services/syncHealthApi';
@@ -50,7 +49,6 @@ interface DashboardMetrics {
 
 export function DashboardHome() {
   const navigate = useNavigate();
-  const [timeframe, setTimeframe] = useState<TimeframeOption>('30d');
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -247,11 +245,6 @@ export function DashboardHome() {
             <p>Some dashboard metrics may be incomplete or showing default values.</p>
           </Banner>
         )}
-
-        {/* Timeframe selector */}
-        <InlineStack align="end">
-          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-        </InlineStack>
 
         {/* Metric summary cards */}
         <InlineGrid columns={{ xs: 1, sm: 2, md: 3 }} gap="400">

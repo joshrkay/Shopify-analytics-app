@@ -30,7 +30,6 @@ import { IncidentBanner } from '../components/health/IncidentBanner';
 import { DataFreshnessBadge } from '../components/health/DataFreshnessBadge';
 import { DashboardFreshnessIndicator } from '../components/health/DashboardFreshnessIndicator';
 import { FeatureUpdateBanner } from '../components/changelog/FeatureUpdateBanner';
-import { TimeframeSelector, type TimeframeOption } from '../components/common/TimeframeSelector';
 import { useNavigate } from 'react-router-dom';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import {
@@ -50,7 +49,6 @@ const Analytics: React.FC = () => {
   const [config, setConfig] = useState<EmbedConfig | null>(null);
   const [readiness, setReadiness] = useState<EmbedReadinessResponse | null>(null);
   const [selectedDashboard, setSelectedDashboard] = useState<string>('');
-  const [timeframe, setTimeframe] = useState<TimeframeOption>('30d');
   const [loading, setLoading] = useState(true);
   const [isRetrying, setIsRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -295,12 +293,9 @@ const Analytics: React.FC = () => {
           titleMetadata={<DataFreshnessBadge />}
         >
           <Layout>
-            {/* Timeframe selector + data freshness */}
+            {/* Data freshness indicator */}
             <Layout.Section>
-              <InlineStack align="space-between" blockAlign="center">
-                <DashboardFreshnessIndicator variant="compact" />
-                <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-              </InlineStack>
+              <DashboardFreshnessIndicator variant="compact" />
             </Layout.Section>
 
             {!hasSystemDashboards && (
