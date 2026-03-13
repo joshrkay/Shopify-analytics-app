@@ -334,3 +334,460 @@ class TestValidateShopDomain:
                 shop_domain="attacker.com",
             )
         assert exc_info.value.status_code == 400
+
+
+# =============================================================================
+# discover_accounts — per-platform account discovery
+# =============================================================================
+
+class TestDiscoverAccounts:
+    """
+    Tests for discover_accounts() and its per-platform helpers.
+    Each test mocks the httpx.AsyncClient to avoid real network calls.
+    """
+
+    # -------------------------------------------------------------------------
+    # Meta Ads
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_meta_returns_accounts(self, monkeypatch):
+        """discover_accounts for meta_ads returns id+name list from Graph API."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "act_111", "name": "Acme Ads", "account_status": 1},
+                {"id": "act_222", "name": "Acme Retargeting", "account_status": 1},
+            ]
+        }
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            accounts = await discover_accounts("meta_ads", {"access_token": "tok-abc"})
+
+        assert len(accounts) == 2
+        assert accounts[0] == {"id": "act_111", "name": "Acme Ads"}
+        assert accounts[1] == {"id": "act_222", "name": "Acme Retargeting"}
+
+    @pytest.mark.asyncio
+    async def test_meta_empty_token_returns_empty(self):
+        """discover_accounts for meta_ads returns [] when access_token is missing."""
+        from src.integrations.airbyte.oauth_registry import discover_accounts
+        accounts = await discover_accounts("meta_ads", {})
+        assert accounts == []
+
+    @pytest.mark.asyncio
+    async def test_meta_api_error_raises_502(self):
+        """discover_accounts for meta_ads raises 502 on non-200 Graph API response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.text = "bad request"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            with pytest.raises(Exception) as exc_info:
+                await discover_accounts("meta_ads", {"access_token": "tok-abc"})
+        assert exc_info.value.status_code == 502
+
+    # -------------------------------------------------------------------------
+    # Google Ads
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_google_returns_customer_ids(self, monkeypatch):
+        """discover_accounts for google_ads parses resourceNames into customer IDs."""
+        monkeypatch.setenv("GOOGLE_ADS_DEVELOPER_TOKEN", "dev-tok-123")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "resourceNames": ["customers/1234567890", "customers/9876543210"]
+        }
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            accounts = await discover_accounts("google_ads", {"access_token": "goog-tok"})
+
+        assert len(accounts) == 2
+        assert accounts[0]["id"] == "1234567890"
+        assert accounts[1]["id"] == "9876543210"
+        # Names contain the customer_id (best effort without extra API call)
+        assert "1234567890" in accounts[0]["name"]
+
+    @pytest.mark.asyncio
+    async def test_google_sends_developer_token_header(self, monkeypatch):
+        """discover_accounts for google_ads includes developer-token in request headers."""
+        monkeypatch.setenv("GOOGLE_ADS_DEVELOPER_TOKEN", "my-dev-token")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"resourceNames": []}
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            await discover_accounts("google_ads", {"access_token": "goog-tok"})
+
+        call_kwargs = mock_client.get.call_args[1]
+        assert call_kwargs["headers"]["developer-token"] == "my-dev-token"
+        assert "Bearer goog-tok" in call_kwargs["headers"]["Authorization"]
+
+    @pytest.mark.asyncio
+    async def test_google_empty_token_returns_empty(self):
+        """discover_accounts for google_ads returns [] when access_token is missing."""
+        from src.integrations.airbyte.oauth_registry import discover_accounts
+        accounts = await discover_accounts("google_ads", {})
+        assert accounts == []
+
+    @pytest.mark.asyncio
+    async def test_google_api_error_raises_502(self):
+        """discover_accounts for google_ads raises 502 on API error."""
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.text = "unauthorized"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            with pytest.raises(Exception) as exc_info:
+                await discover_accounts("google_ads", {"access_token": "goog-tok"})
+        assert exc_info.value.status_code == 502
+
+    # -------------------------------------------------------------------------
+    # TikTok Ads
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_tiktok_returns_advertisers(self, monkeypatch):
+        """discover_accounts for tiktok_ads parses advertiser list from Business API."""
+        monkeypatch.setenv("TIKTOK_APP_ID", "tik-app-id")
+        monkeypatch.setenv("TIKTOK_APP_SECRET", "tik-secret")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "list": [
+                    {"advertiser_id": 111222, "advertiser_name": "Brand A"},
+                    {"advertiser_id": 333444, "advertiser_name": "Brand B"},
+                ]
+            }
+        }
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            accounts = await discover_accounts("tiktok_ads", {"data": {"access_token": "tik-tok"}})
+
+        assert len(accounts) == 2
+        assert accounts[0] == {"id": "111222", "name": "Brand A"}
+        assert accounts[1] == {"id": "333444", "name": "Brand B"}
+
+    @pytest.mark.asyncio
+    async def test_tiktok_reads_nested_access_token(self, monkeypatch):
+        """discover_accounts for tiktok_ads extracts access_token from data.access_token."""
+        monkeypatch.setenv("TIKTOK_APP_ID", "app-id")
+        monkeypatch.setenv("TIKTOK_APP_SECRET", "secret")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": {"list": []}}
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            # access_token nested under "data" (TikTok token response format)
+            accounts = await discover_accounts("tiktok_ads", {"data": {"access_token": "nested-tok"}})
+
+        call_kwargs = mock_client.get.call_args[1]
+        assert call_kwargs["params"]["access_token"] == "nested-tok"
+
+    @pytest.mark.asyncio
+    async def test_tiktok_api_error_raises_502(self):
+        """discover_accounts for tiktok_ads raises 502 on non-200 response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "server error"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            with pytest.raises(Exception) as exc_info:
+                await discover_accounts("tiktok_ads", {"access_token": "tok"})
+        assert exc_info.value.status_code == 502
+
+    # -------------------------------------------------------------------------
+    # Snapchat Ads
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_snapchat_returns_compound_ids(self):
+        """discover_accounts for snapchat_ads encodes '{org_id}:{account_id}' in id."""
+        orgs_response = MagicMock()
+        orgs_response.status_code = 200
+        orgs_response.json.return_value = {
+            "organizations": [{"organization": {"id": "org-aaa", "name": "Acme Corp"}}]
+        }
+        accounts_response = MagicMock()
+        accounts_response.status_code = 200
+        accounts_response.json.return_value = {
+            "adaccounts": [{"adaccount": {"id": "acc-bbb", "name": "Acme Snap Ads"}}]
+        }
+
+        call_count = 0
+
+        async def mock_get(url, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if "organizations" in url and "adaccounts" not in url:
+                return orgs_response
+            return accounts_response
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = mock_get
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            accounts = await discover_accounts("snapchat_ads", {"access_token": "snap-tok"})
+
+        assert len(accounts) == 1
+        assert accounts[0]["id"] == "org-aaa:acc-bbb"
+        assert "Acme Snap Ads" in accounts[0]["name"]
+        assert "Acme Corp" in accounts[0]["name"]
+
+    @pytest.mark.asyncio
+    async def test_snapchat_skips_org_on_adaccount_error(self):
+        """discover_accounts for snapchat_ads skips an org if adaccount fetch fails."""
+        orgs_response = MagicMock()
+        orgs_response.status_code = 200
+        orgs_response.json.return_value = {
+            "organizations": [{"organization": {"id": "org-fail", "name": "BadOrg"}}]
+        }
+        accounts_response = MagicMock()
+        accounts_response.status_code = 403
+        accounts_response.json.return_value = {}
+
+        async def mock_get(url, **kwargs):
+            if "adaccounts" in url:
+                return accounts_response
+            return orgs_response
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = mock_get
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            accounts = await discover_accounts("snapchat_ads", {"access_token": "snap-tok"})
+
+        assert accounts == []
+
+    @pytest.mark.asyncio
+    async def test_snapchat_org_fetch_error_raises_502(self):
+        """discover_accounts for snapchat_ads raises 502 if organizations fetch fails."""
+        orgs_response = MagicMock()
+        orgs_response.status_code = 401
+        orgs_response.text = "unauthorized"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=orgs_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            with pytest.raises(Exception) as exc_info:
+                await discover_accounts("snapchat_ads", {"access_token": "snap-tok"})
+        assert exc_info.value.status_code == 502
+
+    # -------------------------------------------------------------------------
+    # Pinterest Ads
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_pinterest_returns_ad_accounts(self):
+        """discover_accounts for pinterest_ads returns id+name from Pinterest API."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "items": [
+                {"id": "pin-acct-001", "name": "Acme Pinterest"},
+                {"id": "pin-acct-002", "name": "Acme Retargeting"},
+            ]
+        }
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            accounts = await discover_accounts("pinterest_ads", {"access_token": "pin-tok"})
+
+        assert len(accounts) == 2
+        assert accounts[0] == {"id": "pin-acct-001", "name": "Acme Pinterest"}
+
+    @pytest.mark.asyncio
+    async def test_pinterest_api_error_raises_502(self):
+        """discover_accounts for pinterest_ads raises 502 on non-200 response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.text = "forbidden"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            with pytest.raises(Exception) as exc_info:
+                await discover_accounts("pinterest_ads", {"access_token": "pin-tok"})
+        assert exc_info.value.status_code == 502
+
+    # -------------------------------------------------------------------------
+    # Twitter Ads
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_twitter_returns_accounts(self):
+        """discover_accounts for twitter_ads returns id+name from Twitter Ads API."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "twt-001", "name": "Acme Twitter"},
+            ]
+        }
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            accounts = await discover_accounts("twitter_ads", {"access_token": "twt-tok"})
+
+        assert len(accounts) == 1
+        assert accounts[0] == {"id": "twt-001", "name": "Acme Twitter"}
+
+    @pytest.mark.asyncio
+    async def test_twitter_api_error_raises_502(self):
+        """discover_accounts for twitter_ads raises 502 on non-200 response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.text = "unauthorized"
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            with pytest.raises(Exception) as exc_info:
+                await discover_accounts("twitter_ads", {"access_token": "twt-tok"})
+        assert exc_info.value.status_code == 502
+
+    # -------------------------------------------------------------------------
+    # Unknown platform
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_unknown_platform_returns_empty(self):
+        """discover_accounts returns [] for any platform not in the registry."""
+        from src.integrations.airbyte.oauth_registry import discover_accounts
+        accounts = await discover_accounts("unknown_platform", {"access_token": "tok"})
+        assert accounts == []
+
+    # -------------------------------------------------------------------------
+    # Network errors
+    # -------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_network_error_raises_502(self):
+        """discover_accounts wraps httpx.RequestError as 502."""
+        import httpx
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(side_effect=httpx.RequestError("timeout"))
+
+        with patch("src.integrations.airbyte.oauth_registry.httpx.AsyncClient", return_value=mock_client):
+            from src.integrations.airbyte.oauth_registry import discover_accounts
+            with pytest.raises(Exception) as exc_info:
+                await discover_accounts("pinterest_ads", {"access_token": "tok"})
+        assert exc_info.value.status_code == 502
+
+
+# =============================================================================
+# ACCOUNT_ID_CONFIG_FIELD — per-platform field name mapping
+# =============================================================================
+
+class TestAccountIdConfigField:
+    """Verifies the ACCOUNT_ID_CONFIG_FIELD mapping is correct for all platforms."""
+
+    def test_meta_uses_account_id(self):
+        from src.integrations.airbyte.oauth_registry import ACCOUNT_ID_CONFIG_FIELD
+        assert ACCOUNT_ID_CONFIG_FIELD["meta_ads"] == "account_id"
+
+    def test_google_uses_customer_id(self):
+        from src.integrations.airbyte.oauth_registry import ACCOUNT_ID_CONFIG_FIELD
+        assert ACCOUNT_ID_CONFIG_FIELD["google_ads"] == "customer_id"
+
+    def test_tiktok_uses_advertiser_id(self):
+        from src.integrations.airbyte.oauth_registry import ACCOUNT_ID_CONFIG_FIELD
+        assert ACCOUNT_ID_CONFIG_FIELD["tiktok_ads"] == "advertiser_id"
+
+    def test_snapchat_uses_account_id(self):
+        from src.integrations.airbyte.oauth_registry import ACCOUNT_ID_CONFIG_FIELD
+        assert ACCOUNT_ID_CONFIG_FIELD["snapchat_ads"] == "account_id"
+
+    def test_pinterest_uses_ad_account_id(self):
+        from src.integrations.airbyte.oauth_registry import ACCOUNT_ID_CONFIG_FIELD
+        assert ACCOUNT_ID_CONFIG_FIELD["pinterest_ads"] == "ad_account_id"
+
+    def test_twitter_uses_account_id(self):
+        from src.integrations.airbyte.oauth_registry import ACCOUNT_ID_CONFIG_FIELD
+        assert ACCOUNT_ID_CONFIG_FIELD["twitter_ads"] == "account_id"
+
+    def test_all_oauth_platforms_in_selection_set_have_field_mapping(self):
+        """Every platform in PLATFORMS_NEEDING_ACCOUNT_SELECTION has a config field entry."""
+        from src.integrations.airbyte.oauth_registry import (
+            ACCOUNT_ID_CONFIG_FIELD,
+            PLATFORMS_NEEDING_ACCOUNT_SELECTION,
+        )
+        for platform in PLATFORMS_NEEDING_ACCOUNT_SELECTION:
+            assert platform in ACCOUNT_ID_CONFIG_FIELD, (
+                f"{platform} is in PLATFORMS_NEEDING_ACCOUNT_SELECTION "
+                f"but missing from ACCOUNT_ID_CONFIG_FIELD"
+            )

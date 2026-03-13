@@ -240,15 +240,16 @@ class TestOAuthCallback:
         self, MockAirbyteService, mock_get_client, client
     ):
         """Successful OAuth callback creates Airbyte source and connection."""
-        # Set up state in fallback store
-        # Use google_ads (not meta_ads) because meta_ads triggers account
-        # selection flow which returns needs_account_selection instead of
-        # creating the connection directly.
+        # Set up state in fallback store.
+        # Use shopify — it is the only OAuth platform that does NOT need account
+        # selection (meta_ads, google_ads, tiktok_ads, snapchat_ads, pinterest_ads,
+        # twitter_ads all require an account-selection step before source creation).
         state = "test-csrf-state-123"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
-            "platform": "google_ads",
+            "platform": "shopify",
+            "shop_domain": "mystore.myshopify.com",
             "workspace_id": "ws-test-123",
         }
 
@@ -281,7 +282,7 @@ class TestOAuthCallback:
         data = response.json()
         assert data["success"] is True
         assert data["connection_id"] == "conn-001"
-        assert "Google Ads" in data["message"]
+        assert "Shopify" in data["message"]
 
         # Verify register_connection used the real connection ID, not source ID
         reg_call = mock_service.register_connection.call_args
@@ -297,12 +298,15 @@ class TestOAuthCallback:
         self, MockAirbyteService, mock_get_client, client
     ):
         """OAuth callback auto-provisions a destination when workspace has none."""
-        # Use google_ads to avoid meta_ads account-selection flow
+        # Use shopify — it is the only OAuth platform that does NOT need account
+        # selection (meta_ads, google_ads, tiktok_ads, snapchat_ads, pinterest_ads,
+        # twitter_ads all require an account-selection step before source creation).
         state = "test-state-no-dest"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
-            "platform": "google_ads",
+            "platform": "shopify",
+            "shop_domain": "mystore.myshopify.com",
             "workspace_id": "ws-test-123",
         }
 
@@ -354,12 +358,15 @@ class TestOAuthCallback:
         self, MockAirbyteService, mock_get_client, client
     ):
         """OAuth callback uses SourceCreationRequest, not keyword args."""
-        # Use google_ads to avoid meta_ads account-selection flow
+        # Use shopify — it is the only OAuth platform that does NOT need account
+        # selection (meta_ads, google_ads, tiktok_ads, snapchat_ads, pinterest_ads,
+        # twitter_ads all require an account-selection step before source creation).
         state = "test-state-request-pattern"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
-            "platform": "google_ads",
+            "platform": "shopify",
+            "shop_domain": "mystore.myshopify.com",
             "workspace_id": "ws-test-123",
         }
 
@@ -442,12 +449,15 @@ class TestOAuthCallback:
         self, MockAirbyteService, mock_get_client, client
     ):
         """OAuth callback does not leak internal error details to the client."""
-        # Use google_ads to avoid meta_ads account-selection flow
+        # Use shopify — it is the only OAuth platform that does NOT need account
+        # selection (meta_ads, google_ads, tiktok_ads, snapchat_ads, pinterest_ads,
+        # twitter_ads all require an account-selection step before source creation).
         state = "test-state-error-sanitize"
         _oauth_state_store_fallback[state] = {
             "tenant_id": TENANT_ID,
             "user_id": "user-001",
-            "platform": "google_ads",
+            "platform": "shopify",
+            "shop_domain": "mystore.myshopify.com",
             "workspace_id": "ws-test-123",
         }
 
@@ -926,3 +936,160 @@ class TestOAuthStateStore:
             result = _pop_oauth_state("state-2")
             assert result == stored_data
             mock_redis.delete.assert_called_once_with("oauth_state:state-2")
+
+
+# =============================================================================
+# POST /{platform}/oauth/finalize — per-platform account ID field injection
+# =============================================================================
+
+class TestFinalizeOAuth:
+    """
+    Tests for finalize_oauth() — the endpoint that creates the Airbyte source
+    after the merchant selects an ad account from the list returned by
+    oauth_callback.
+
+    Verifies that the correct platform-specific config field (customer_id,
+    advertiser_id, ad_account_id, etc.) is injected into the Airbyte source
+    configuration, and that Snapchat's compound "{org_id}:{account_id}" encoding
+    is split correctly.
+    """
+
+    def _make_pending_token(self, platform: str, tokens: dict, workspace_id: str = "ws-test") -> str:
+        """Helper: store a pending OAuth state and return the token key."""
+        token = f"pending-test-token-{platform}"
+        _store_oauth_state(token, {
+            "tenant_id": TENANT_ID,
+            "platform": platform,
+            "tokens": tokens,
+            "workspace_id": workspace_id,
+        })
+        return token
+
+    def _finalize(self, client, platform: str, account_id: str, pending_token: str):
+        return client.post(
+            f"/api/sources/{platform}/oauth/finalize",
+            json={"account_id": account_id, "pending_token": pending_token},
+        )
+
+    @patch("src.api.routes.sources._create_airbyte_connection")
+    def test_meta_injects_account_id(self, mock_create, client):
+        """finalize_oauth for meta_ads sets source_config['account_id']."""
+        mock_create.return_value = MagicMock(id="conn-meta-1")
+        token = self._make_pending_token("meta_ads", {"access_token": "meta-tok"})
+
+        resp = self._finalize(client, "meta_ads", "act_111222", token)
+
+        assert resp.status_code == 200
+        _, kwargs = mock_create.call_args
+        assert kwargs["source_config"]["account_id"] == "act_111222"
+        assert "customer_id" not in kwargs["source_config"]
+
+    @patch("src.api.routes.sources._create_airbyte_connection")
+    def test_google_injects_customer_id(self, mock_create, client):
+        """finalize_oauth for google_ads sets source_config['customer_id']."""
+        mock_create.return_value = MagicMock(id="conn-google-1")
+        tokens = {
+            "access_token": "goog-tok",
+            "refresh_token": "goog-refresh",
+        }
+        token = self._make_pending_token("google_ads", tokens)
+
+        resp = self._finalize(client, "google_ads", "1234567890", token)
+
+        assert resp.status_code == 200
+        _, kwargs = mock_create.call_args
+        assert kwargs["source_config"]["customer_id"] == "1234567890"
+        assert "account_id" not in kwargs["source_config"]
+        assert "advertiser_id" not in kwargs["source_config"]
+
+    @patch("src.api.routes.sources._create_airbyte_connection")
+    def test_tiktok_injects_advertiser_id(self, mock_create, client):
+        """finalize_oauth for tiktok_ads sets source_config['advertiser_id']."""
+        mock_create.return_value = MagicMock(id="conn-tiktok-1")
+        token = self._make_pending_token("tiktok_ads", {"data": {"access_token": "tik-tok"}})
+
+        resp = self._finalize(client, "tiktok_ads", "333444555", token)
+
+        assert resp.status_code == 200
+        _, kwargs = mock_create.call_args
+        assert kwargs["source_config"]["advertiser_id"] == "333444555"
+        assert "account_id" not in kwargs["source_config"]
+
+    @patch("src.api.routes.sources._create_airbyte_connection")
+    def test_snapchat_splits_compound_id_into_org_and_account(self, mock_create, client):
+        """finalize_oauth for snapchat_ads splits '{org_id}:{account_id}' compound id."""
+        mock_create.return_value = MagicMock(id="conn-snap-1")
+        tokens = {"access_token": "snap-tok", "refresh_token": "snap-refresh"}
+        token = self._make_pending_token("snapchat_ads", tokens)
+
+        resp = self._finalize(client, "snapchat_ads", "org-aaa:acc-bbb", token)
+
+        assert resp.status_code == 200
+        _, kwargs = mock_create.call_args
+        assert kwargs["source_config"]["organization_id"] == "org-aaa"
+        assert kwargs["source_config"]["account_id"] == "acc-bbb"
+
+    @patch("src.api.routes.sources._create_airbyte_connection")
+    def test_snapchat_no_colon_treated_as_plain_account_id(self, mock_create, client):
+        """finalize_oauth for snapchat_ads without ':' uses account_id as-is."""
+        mock_create.return_value = MagicMock(id="conn-snap-2")
+        tokens = {"access_token": "snap-tok", "refresh_token": "snap-refresh"}
+        token = self._make_pending_token("snapchat_ads", tokens)
+
+        resp = self._finalize(client, "snapchat_ads", "plain-acct-id", token)
+
+        assert resp.status_code == 200
+        _, kwargs = mock_create.call_args
+        assert kwargs["source_config"]["account_id"] == "plain-acct-id"
+        assert "organization_id" not in kwargs["source_config"]
+
+    @patch("src.api.routes.sources._create_airbyte_connection")
+    def test_pinterest_injects_ad_account_id(self, mock_create, client):
+        """finalize_oauth for pinterest_ads sets source_config['ad_account_id']."""
+        mock_create.return_value = MagicMock(id="conn-pin-1")
+        tokens = {"access_token": "pin-tok", "refresh_token": "pin-refresh"}
+        token = self._make_pending_token("pinterest_ads", tokens)
+
+        resp = self._finalize(client, "pinterest_ads", "pin-acct-001", token)
+
+        assert resp.status_code == 200
+        _, kwargs = mock_create.call_args
+        assert kwargs["source_config"]["ad_account_id"] == "pin-acct-001"
+        assert "account_id" not in kwargs["source_config"]
+
+    @patch("src.api.routes.sources._create_airbyte_connection")
+    def test_twitter_injects_account_id(self, mock_create, client):
+        """finalize_oauth for twitter_ads sets source_config['account_id']."""
+        mock_create.return_value = MagicMock(id="conn-twt-1")
+        tokens = {"access_token": "twt-tok", "refresh_token": "twt-refresh"}
+        token = self._make_pending_token("twitter_ads", tokens)
+
+        resp = self._finalize(client, "twitter_ads", "twt-acct-001", token)
+
+        assert resp.status_code == 200
+        _, kwargs = mock_create.call_args
+        assert kwargs["source_config"]["account_id"] == "twt-acct-001"
+
+    def test_invalid_pending_token_returns_400(self, client):
+        """finalize_oauth returns 400 for an expired or invalid pending token."""
+        resp = self._finalize(client, "meta_ads", "act_111", "nonexistent-token")
+        assert resp.status_code == 400
+
+    def test_platform_mismatch_returns_400(self, client):
+        """finalize_oauth returns 400 if URL platform doesn't match stored platform."""
+        token = self._make_pending_token("meta_ads", {"access_token": "tok"})
+        # Claim to be google_ads but state says meta_ads
+        resp = self._finalize(client, "google_ads", "123", token)
+        assert resp.status_code == 400
+
+    def test_wrong_tenant_returns_403(self, client):
+        """finalize_oauth returns 403 if pending token belongs to a different tenant."""
+        token = "wrong-tenant-tok"
+        _store_oauth_state(token, {
+            "tenant_id": "different-tenant",
+            "platform": "meta_ads",
+            "tokens": {"access_token": "tok"},
+            "workspace_id": "ws-1",
+        })
+        resp = self._finalize(client, "meta_ads", "act_111", token)
+        assert resp.status_code == 403

@@ -38,6 +38,33 @@ class BaseRepository(Generic[T], ABC):
         """Return the name of the tenant_id column in the model."""
         pass
 
+    def _validate_tenant_id(self, tenant_id: Optional[str], operation: str) -> None:
+        """Validate that an optional caller-supplied tenant_id matches the bound tenant.
+
+        Call at the start of any public method that accepts an optional tenant_id
+        argument for cross-validation. No-ops when tenant_id is None (common case).
+
+        Args:
+            tenant_id: Optional tenant ID to validate against self.tenant_id
+            operation: Operation name used in the error message for context
+
+        Raises:
+            TenantIsolationError: If tenant_id is provided and doesn't match self.tenant_id
+        """
+        if tenant_id is not None and tenant_id != self.tenant_id:
+            logger.error(
+                "Tenant isolation violation detected",
+                extra={
+                    "repository_tenant_id": self.tenant_id,
+                    "requested_tenant_id": tenant_id,
+                    "operation": operation,
+                },
+            )
+            raise TenantIsolationError(
+                f"tenant_id mismatch in {operation}: "
+                f"repository bound to '{self.tenant_id}', got '{tenant_id}'"
+            )
+
     def _enforce_tenant_scope(self, query):
         """Scope a query to the repository's tenant."""
         tenant_column = getattr(self._model_class, self._get_tenant_column_name())

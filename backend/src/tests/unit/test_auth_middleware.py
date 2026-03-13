@@ -3,25 +3,24 @@ Unit tests for the auth middleware module.
 
 Tests cover:
 - is_exempt_path() function
-- ClerkAuthMiddleware._extract_token
-- ClerkAuthMiddleware.dispatch (via TestClient)
 - FastAPI dependencies: get_auth_context, require_auth, require_tenant,
   get_current_user, get_current_tenant_id
 - Permission dependencies: require_permission, require_any_permission, require_role
+
+NOTE: ClerkAuthMiddleware no longer exists. Auth middleware was refactored so that
+TenantContextMiddleware.__call__ is a CORS-header wrapper that delegates all
+request-handling logic (including PUBLIC_PATHS bypass and JWT verification) to
+_handle_request. Token extraction and dispatch behavior is now tested in
+test_tenant_context.py.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
-from datetime import datetime, timezone
+from unittest.mock import MagicMock
 
-from fastapi import FastAPI, Depends
-from fastapi.testclient import TestClient
 from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 from src.auth.middleware import (
     is_exempt_path,
-    ClerkAuthMiddleware,
     get_auth_context,
     require_auth,
     require_tenant,
@@ -34,7 +33,6 @@ from src.auth.middleware import (
     EXEMPT_PREFIXES,
 )
 from src.auth.context_resolver import AuthContext, TenantAccess, ANONYMOUS_CONTEXT
-from src.auth.clerk_verifier import ClerkVerificationError
 from src.constants.permissions import Permission
 
 
@@ -82,36 +80,6 @@ def _make_anonymous_context():
     return ANONYMOUS_CONTEXT
 
 
-def _build_app_with_middleware(verifier=None):
-    """Build a minimal FastAPI app with ClerkAuthMiddleware for testing dispatch."""
-    app = FastAPI()
-
-    with patch("src.auth.middleware.get_token_service") as mock_ts:
-        mock_token_service = MagicMock()
-        mock_token_service.is_revoked.return_value = False
-        mock_token_service.record_activity.return_value = None
-        mock_ts.return_value = mock_token_service
-
-        app.add_middleware(
-            ClerkAuthMiddleware,
-            verifier=verifier or MagicMock(),
-        )
-
-    @app.get("/health")
-    async def health():
-        return {"status": "ok"}
-
-    @app.get("/api/data")
-    async def data(request: Request):
-        ctx = getattr(request.state, "auth_context", None)
-        return {
-            "authenticated": ctx.is_authenticated if ctx else False,
-            "clerk_user_id": ctx.clerk_user_id if ctx else None,
-        }
-
-    return app
-
-
 # =============================================================================
 # 1. is_exempt_path tests
 # =============================================================================
@@ -157,264 +125,7 @@ class TestIsExemptPath:
 
 
 # =============================================================================
-# 2. ClerkAuthMiddleware._extract_token tests
-# =============================================================================
-
-
-class TestExtractToken:
-    """Tests for ClerkAuthMiddleware._extract_token."""
-
-    def _make_middleware(self):
-        """Create middleware instance for _extract_token testing."""
-        with patch("src.auth.middleware.get_token_service") as mock_ts:
-            mock_ts.return_value = MagicMock()
-            app = MagicMock()
-            # BaseHTTPMiddleware.__init__ sets self.app
-            with patch.object(ClerkAuthMiddleware, "__init__", lambda self, *a, **kw: None):
-                mw = ClerkAuthMiddleware.__new__(ClerkAuthMiddleware)
-                mw._verifier = MagicMock()
-                mw._exempt_paths = EXEMPT_PATHS
-                mw._exempt_prefixes = EXEMPT_PREFIXES
-                mw._cookie_name = "__session"
-                mw._token_service = MagicMock()
-                return mw
-
-    def _make_request(self, headers=None, cookies=None):
-        """Create a mock Request with specified headers and cookies."""
-        request = MagicMock(spec=Request)
-        request.headers = headers or {}
-        request.cookies = cookies or {}
-        return request
-
-    def test_bearer_token_from_header(self):
-        mw = self._make_middleware()
-        request = self._make_request(headers={"Authorization": "Bearer my-jwt-token"})
-        assert mw._extract_token(request) == "my-jwt-token"
-
-    def test_raw_token_from_header_no_bearer_prefix(self):
-        mw = self._make_middleware()
-        request = self._make_request(headers={"Authorization": "raw-token-no-prefix"})
-        assert mw._extract_token(request) == "raw-token-no-prefix"
-
-    def test_token_from_session_cookie(self):
-        mw = self._make_middleware()
-        request = self._make_request(cookies={"__session": "cookie-token"})
-        assert mw._extract_token(request) == "cookie-token"
-
-    def test_no_token_returns_none(self):
-        mw = self._make_middleware()
-        request = self._make_request()
-        assert mw._extract_token(request) is None
-
-    def test_header_takes_precedence_over_cookie(self):
-        mw = self._make_middleware()
-        request = self._make_request(
-            headers={"Authorization": "Bearer header-token"},
-            cookies={"__session": "cookie-token"},
-        )
-        assert mw._extract_token(request) == "header-token"
-
-    def test_raw_header_takes_precedence_over_cookie(self):
-        mw = self._make_middleware()
-        request = self._make_request(
-            headers={"Authorization": "raw-header-token"},
-            cookies={"__session": "cookie-token"},
-        )
-        assert mw._extract_token(request) == "raw-header-token"
-
-
-# =============================================================================
-# 3. ClerkAuthMiddleware.dispatch tests (via TestClient)
-# =============================================================================
-
-
-class TestMiddlewareDispatch:
-    """Tests for ClerkAuthMiddleware.dispatch behavior."""
-
-    def test_exempt_path_passes_through_without_auth(self):
-        """Exempt paths should pass through without authentication."""
-        mock_verifier = MagicMock()
-        app = _build_app_with_middleware(verifier=mock_verifier)
-        client = TestClient(app)
-
-        response = client.get("/health")
-        assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
-        # Verifier should not have been called
-        mock_verifier.verify_token.assert_not_called()
-
-    def test_options_request_passes_through(self):
-        """OPTIONS requests should pass through without token requirement."""
-        mock_verifier = MagicMock()
-        app = _build_app_with_middleware(verifier=mock_verifier)
-        client = TestClient(app)
-
-        response = client.options("/api/data")
-        # OPTIONS might get 405 from FastAPI if not explicitly handled,
-        # but the middleware should not block it. The key is no 401.
-        assert response.status_code != 401
-        mock_verifier.verify_token.assert_not_called()
-
-    def test_no_token_sets_anonymous_context(self):
-        """Requests without tokens should set anonymous context and continue."""
-        mock_verifier = MagicMock()
-        app = _build_app_with_middleware(verifier=mock_verifier)
-        client = TestClient(app)
-
-        response = client.get("/api/data")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["authenticated"] is False
-        mock_verifier.verify_token.assert_not_called()
-
-    @patch("src.auth.middleware.get_db_session_sync")
-    @patch("src.auth.middleware.AuthContextResolver")
-    @patch("src.auth.middleware.extract_claims")
-    def test_valid_token_attaches_auth_context(
-        self, mock_extract_claims, mock_resolver_cls, mock_get_db
-    ):
-        """Valid tokens should result in auth context attached to request."""
-        # Setup
-        mock_verifier = MagicMock()
-        mock_verifier.verify_token.return_value = {
-            "sub": "user_test",
-            "sid": "sess_test",
-            "exp": 9999999999,
-            "iat": 1000000000,
-        }
-
-        mock_extracted = MagicMock()
-        mock_extracted.session_id = "sess_test"
-        mock_extracted.clerk_user_id = "user_test"
-        mock_extracted.issued_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        mock_extracted.expires_at = datetime(2099, 1, 1, tzinfo=timezone.utc)
-        mock_extract_claims.return_value = mock_extracted
-
-        mock_user = MagicMock()
-        mock_user.id = "internal_id"
-
-        auth_ctx = _make_auth_context(
-            clerk_user_id="user_test",
-            user=mock_user,
-            tenant_id="tenant_1",
-        )
-
-        mock_resolver = MagicMock()
-        mock_resolver.resolve.return_value = auth_ctx
-        mock_resolver_cls.return_value = mock_resolver
-
-        mock_session = MagicMock()
-        mock_get_db.return_value = iter([mock_session])
-
-        app = FastAPI()
-        with patch("src.auth.middleware.get_token_service") as mock_ts:
-            mock_token_service = MagicMock()
-            mock_token_service.is_revoked.return_value = False
-            mock_token_service.record_activity.return_value = None
-            mock_ts.return_value = mock_token_service
-            app.add_middleware(ClerkAuthMiddleware, verifier=mock_verifier)
-
-        @app.get("/api/data")
-        async def data(request: Request):
-            ctx = getattr(request.state, "auth_context", None)
-            return {
-                "authenticated": ctx.is_authenticated if ctx else False,
-                "clerk_user_id": ctx.clerk_user_id if ctx else None,
-            }
-
-        client = TestClient(app)
-        response = client.get("/api/data", headers={"Authorization": "Bearer valid-token"})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["authenticated"] is True
-        assert data["clerk_user_id"] == "user_test"
-
-    @patch("src.auth.middleware.extract_claims")
-    @patch("src.auth.middleware.get_token_service")
-    def test_revoked_token_returns_401_session_revoked(
-        self, mock_get_ts, mock_extract_claims
-    ):
-        """Revoked tokens should return 401 with session_revoked error code."""
-        mock_verifier = MagicMock()
-        mock_verifier.verify_token.return_value = {
-            "sub": "user_test",
-            "sid": "sess_test",
-            "exp": 9999999999,
-            "iat": 1000000000,
-        }
-
-        mock_extracted = MagicMock()
-        mock_extracted.session_id = "sess_test"
-        mock_extracted.clerk_user_id = "user_test"
-        mock_extracted.issued_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        mock_extract_claims.return_value = mock_extracted
-
-        mock_token_service = MagicMock()
-        mock_token_service.is_revoked.return_value = True
-        mock_get_ts.return_value = mock_token_service
-
-        app = FastAPI()
-        app.add_middleware(ClerkAuthMiddleware, verifier=mock_verifier)
-
-        @app.get("/api/data")
-        async def data():
-            return {"data": "should not reach"}
-
-        client = TestClient(app)
-        response = client.get("/api/data", headers={"Authorization": "Bearer revoked-token"})
-        assert response.status_code == 401
-        body = response.json()
-        assert body["error_code"] == "session_revoked"
-        assert "revoked" in body["detail"].lower()
-
-    def test_clerk_verification_error_returns_401(self):
-        """ClerkVerificationError should return 401 with error details."""
-        mock_verifier = MagicMock()
-        mock_verifier.verify_token.side_effect = ClerkVerificationError(
-            message="Token has expired",
-            error_code="token_expired",
-        )
-
-        app = _build_app_with_middleware(verifier=mock_verifier)
-
-        @app.get("/api/protected")
-        async def protected():
-            return {"data": "should not reach"}
-
-        client = TestClient(app)
-        response = client.get(
-            "/api/protected",
-            headers={"Authorization": "Bearer expired-token"},
-        )
-        assert response.status_code == 401
-        body = response.json()
-        assert body["error_code"] == "token_expired"
-        assert body["detail"] == "Token has expired"
-
-    def test_unexpected_error_returns_500_auth_error(self):
-        """Unexpected exceptions during auth should return 500 with auth_error."""
-        mock_verifier = MagicMock()
-        mock_verifier.verify_token.side_effect = RuntimeError("Something went wrong")
-
-        app = _build_app_with_middleware(verifier=mock_verifier)
-
-        @app.get("/api/protected")
-        async def protected():
-            return {"data": "should not reach"}
-
-        client = TestClient(app)
-        response = client.get(
-            "/api/protected",
-            headers={"Authorization": "Bearer bad-token"},
-        )
-        assert response.status_code == 500
-        body = response.json()
-        assert body["error_code"] == "auth_error"
-        assert body["detail"] == "Authentication error"
-
-
-# =============================================================================
-# 4. require_auth dependency tests
+# 2. require_auth dependency tests
 # =============================================================================
 
 
@@ -424,14 +135,6 @@ class TestRequireAuth:
     def test_authenticated_context_returns_context(self):
         """Authenticated context should be returned."""
         auth_ctx = _make_auth_context(tenant_id="tenant_1")
-
-        app = FastAPI()
-
-        @app.get("/test")
-        async def route(auth: AuthContext = Depends(require_auth)):
-            return {"user_id": auth.clerk_user_id}
-
-        app.add_middleware(ClerkAuthMiddleware, verifier=MagicMock())
 
         # Manually test the dependency by mocking request.state
         request = MagicMock(spec=Request)
@@ -776,51 +479,7 @@ class TestGetAuthContext:
 
 
 # =============================================================================
-# 12. ClerkAuthMiddleware._is_exempt tests
-# =============================================================================
-
-
-class TestMiddlewareIsExempt:
-    """Tests for ClerkAuthMiddleware._is_exempt instance method."""
-
-    def _make_middleware(self, exempt_paths=None, exempt_prefixes=None):
-        with patch.object(ClerkAuthMiddleware, "__init__", lambda self, *a, **kw: None):
-            mw = ClerkAuthMiddleware.__new__(ClerkAuthMiddleware)
-            mw._exempt_paths = exempt_paths or EXEMPT_PATHS
-            mw._exempt_prefixes = exempt_prefixes or EXEMPT_PREFIXES
-            mw._cookie_name = "__session"
-            mw._verifier = MagicMock()
-            mw._token_service = MagicMock()
-            return mw
-
-    def test_exact_match_exempt_path(self):
-        mw = self._make_middleware()
-        assert mw._is_exempt("/health") is True
-        assert mw._is_exempt("/docs") is True
-
-    def test_prefix_match_exempt_path(self):
-        mw = self._make_middleware()
-        assert mw._is_exempt("/api/webhooks/custom") is True
-        assert mw._is_exempt("/static/image.png") is True
-
-    def test_non_exempt_path(self):
-        mw = self._make_middleware()
-        assert mw._is_exempt("/api/billing") is False
-        assert mw._is_exempt("/api/sources") is False
-
-    def test_custom_exempt_paths(self):
-        mw = self._make_middleware(
-            exempt_paths={"/custom-health"},
-            exempt_prefixes=["/custom-prefix/"],
-        )
-        assert mw._is_exempt("/custom-health") is True
-        assert mw._is_exempt("/custom-prefix/something") is True
-        # Default paths should NOT be exempt with custom config
-        assert mw._is_exempt("/health") is False
-
-
-# =============================================================================
-# 13. Edge cases and integration-style tests
+# 12. Edge cases and integration-style tests
 # =============================================================================
 
 
@@ -879,22 +538,3 @@ class TestEdgeCases:
 
         assert "admin" in exc_info.value.detail
 
-    def test_clerk_verification_error_preserves_error_code(self):
-        """ClerkVerificationError in dispatch should preserve the original error_code."""
-        mock_verifier = MagicMock()
-        mock_verifier.verify_token.side_effect = ClerkVerificationError(
-            message="Invalid token issuer",
-            error_code="invalid_issuer",
-        )
-
-        app = _build_app_with_middleware(verifier=mock_verifier)
-        client = TestClient(app)
-
-        response = client.get(
-            "/api/data",
-            headers={"Authorization": "Bearer bad-issuer-token"},
-        )
-        assert response.status_code == 401
-        body = response.json()
-        assert body["error_code"] == "invalid_issuer"
-        assert body["detail"] == "Invalid token issuer"

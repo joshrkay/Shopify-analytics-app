@@ -292,7 +292,7 @@ async def create_template(
     _require_admin_role(tenant_ctx)
     logger.info(
         "Template creation requested",
-        extra={"tenant_id": tenant_ctx.tenant_id, "name": body.name},
+        extra={"tenant_id": tenant_ctx.tenant_id, "template_name": body.name},  # 'name' is reserved in LogRecord
     )
 
     service = ReportTemplateService(db_session, tenant_ctx.tenant_id)
