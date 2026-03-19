@@ -34,3 +34,4 @@ hypothesis==6.92.2  # Property-based testing (required for critical paths: versi
 
 # Logging and monitoring
 structlog==23.2.0
+sentry-sdk[fastapi]==1.40.0

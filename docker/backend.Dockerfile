@@ -54,8 +54,16 @@ COPY --from=frontend-build /app/frontend/dist /app/backend/static
 # Ensure python can import /app/backend/src
 ENV PYTHONPATH=/app/backend
 
+# Create non-root user for production security
+RUN useradd -m -r -s /bin/false appuser && chown -R appuser:appuser /app
+USER appuser
+
 # Change to backend directory and run uvicorn
 WORKDIR /app/backend
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-10000}/health')" || exit 1
 
 # Render listens on $PORT
 CMD ["sh", "-c", "python scripts/run_required_migrations.py && uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]

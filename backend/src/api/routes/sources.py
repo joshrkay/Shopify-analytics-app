@@ -81,10 +81,17 @@ router = APIRouter(prefix="/api/sources", tags=["sources"])
 # OAuth URL builders per platform
 # =============================================================================
 
-OAUTH_REDIRECT_URI = os.environ.get(
-    "OAUTH_REDIRECT_URI",
-    "https://app.localhost/api/sources/oauth/callback",
+_oauth_redirect_default = (
+    "https://app.localhost/api/sources/oauth/callback"
+    if os.getenv("ENV") != "production"
+    else None
 )
+OAUTH_REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI") or _oauth_redirect_default
+if not OAUTH_REDIRECT_URI:
+    raise RuntimeError(
+        "OAUTH_REDIRECT_URI must be set in production. "
+        "Add it to render.yaml or the environment."
+    )
 
 # OAuth state TTL in seconds (10 minutes)
 OAUTH_STATE_TTL_SECONDS = 600
