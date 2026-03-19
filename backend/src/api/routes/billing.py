@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 from src.services.billing_service import (
     BillingService,
     BillingServiceError,
@@ -95,7 +96,8 @@ def get_billing_service(request: Request, db_session=Depends(get_db_session)) ->
 async def create_checkout(
     request: Request,
     checkout_request: CreateCheckoutRequest,
-    billing_service: BillingService = Depends(get_billing_service)
+    billing_service: BillingService = Depends(get_billing_service),
+    _rate_limit=Depends(rate_limit_dependency("billing_checkout", limit=5, window=60)),
 ):
     """
     Create a Shopify Billing checkout URL.
@@ -167,7 +169,8 @@ async def create_checkout(
 @router.get("/subscription", response_model=SubscriptionResponse)
 async def get_subscription(
     request: Request,
-    billing_service: BillingService = Depends(get_billing_service)
+    billing_service: BillingService = Depends(get_billing_service),
+    _rate_limit=Depends(rate_limit_dependency("billing_subscription", limit=30, window=60)),
 ):
     """
     Get current subscription information.
@@ -210,7 +213,8 @@ async def billing_callback(
     request: Request,
     shop: str = Query(..., description="Shop domain"),
     charge_id: Optional[str] = Query(None, description="Shopify charge ID"),
-    billing_service: BillingService = Depends(get_billing_service)
+    billing_service: BillingService = Depends(get_billing_service),
+    _rate_limit=Depends(rate_limit_dependency("billing_callback", limit=30, window=60)),
 ):
     """
     Handle callback from Shopify Billing after merchant approval/decline.
@@ -242,7 +246,8 @@ async def billing_callback(
 @router.get("/plans", response_model=PlansListResponse)
 async def list_plans(
     request: Request,
-    db_session=Depends(get_db_session)
+    db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("billing_plans", limit=30, window=60)),
 ):
     """
     List all available subscription plans.
@@ -278,7 +283,8 @@ async def list_plans(
 @router.post("/cancel")
 async def cancel_subscription(
     request: Request,
-    billing_service: BillingService = Depends(get_billing_service)
+    billing_service: BillingService = Depends(get_billing_service),
+    _rate_limit=Depends(rate_limit_dependency("billing_cancel", limit=5, window=60)),
 ):
     """
     Request subscription cancellation.
@@ -334,7 +340,8 @@ class EntitlementsResponse(BaseModel):
 async def get_entitlements(
     request: Request,
     billing_service: BillingService = Depends(get_billing_service),
-    db_session=Depends(get_db_session)
+    db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("billing_entitlements", limit=30, window=60)),
 ):
     """
     Get current entitlements for the tenant.
@@ -496,6 +503,7 @@ class ChangePlanRequest(BaseModel):
 async def get_invoices(
     request: Request,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("billing_invoices", limit=30, window=60)),
 ):
     """
     Get billing event history as invoices.
@@ -533,7 +541,10 @@ async def get_invoices(
 
 
 @router.get("/payment-method", response_model=PaymentMethodResponse)
-async def get_payment_method(request: Request):
+async def get_payment_method(
+    request: Request,
+    _rate_limit=Depends(rate_limit_dependency("billing_payment_method", limit=30, window=60)),
+):
     """
     Get payment method information.
 
@@ -557,6 +568,7 @@ async def get_payment_method(request: Request):
 async def get_usage_metrics(
     request: Request,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("billing_usage", limit=30, window=60)),
 ):
     """
     Get current resource usage for the tenant.
@@ -608,6 +620,7 @@ async def change_plan(
     request: Request,
     body: ChangePlanRequest,
     billing_service: BillingService = Depends(get_billing_service),
+    _rate_limit=Depends(rate_limit_dependency("billing_change_plan", limit=5, window=60)),
 ):
     """
     Change subscription plan (upgrade or downgrade).
@@ -667,6 +680,7 @@ async def change_plan(
 async def delete_subscription(
     request: Request,
     billing_service: BillingService = Depends(get_billing_service),
+    _rate_limit=Depends(rate_limit_dependency("billing_delete_subscription", limit=5, window=60)),
 ):
     """
     Cancel subscription (DELETE method).
@@ -697,7 +711,10 @@ async def delete_subscription(
 
 
 @router.put("/payment-method")
-async def update_payment_method(request: Request):
+async def update_payment_method(
+    request: Request,
+    _rate_limit=Depends(rate_limit_dependency("billing_update_payment_method", limit=30, window=60)),
+):
     """
     Update payment method.
 

@@ -7,10 +7,9 @@ WORKDIR /app/frontend
 
 # Copy dependency files first for caching
 COPY frontend/package.json frontend/package-lock.json ./
-# Use npm install instead of npm ci because package.json may have
-# dependencies not yet reflected in the lock file (e.g. @clerk/clerk-react).
-# This updates the lock file in the container and installs everything.
-RUN npm install
+# Use npm ci for deterministic builds from the lockfile.
+# If this fails, run `npm install` locally and commit the updated package-lock.json.
+RUN npm ci
 
 # Copy frontend source and build
 COPY frontend/ ./

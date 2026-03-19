@@ -51,6 +51,7 @@ MIGRATIONS = [
     "raw_schema.sql",
     "ad_budgets_schema.sql",
     "alerts_schema.sql",
+    "analytics_rls.sql",
 ]
 
 

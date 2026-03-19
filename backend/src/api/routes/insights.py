@@ -21,6 +21,7 @@ from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, ConfigDict
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 from src.models.ai_insight import AIInsight, InsightType, InsightSeverity
 from src.api.dependencies.entitlements import check_ai_insights_entitlement
 
@@ -158,6 +159,7 @@ async def list_insights(
     ),
     limit: int = Query(20, le=100, description="Maximum insights to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    _rate_limit=Depends(rate_limit_dependency("insights", limit=30, window=60)),
 ):
     """
     List AI-generated insights for the current tenant.
@@ -241,6 +243,7 @@ async def get_insight(
     request: Request,
     insight_id: str,
     db_session=Depends(check_ai_insights_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("insights", limit=30, window=60)),
 ):
     """
     Get a single insight by ID.
@@ -276,6 +279,7 @@ async def mark_insight_read(
     request: Request,
     insight_id: str,
     db_session=Depends(check_ai_insights_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("insights", limit=30, window=60)),
 ):
     """
     Mark an insight as read.
@@ -322,6 +326,7 @@ async def dismiss_insight(
     request: Request,
     insight_id: str,
     db_session=Depends(check_ai_insights_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("insights", limit=30, window=60)),
 ):
     """
     Dismiss an insight (hide from default list).
@@ -371,6 +376,7 @@ async def mark_insights_read_batch(
     request: Request,
     insight_ids: List[str],
     db_session=Depends(check_ai_insights_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("insights", limit=30, window=60)),
 ):
     """
     Mark multiple insights as read in batch.
