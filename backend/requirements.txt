@@ -13,7 +13,7 @@ svix==1.17.0  # Clerk webhook signature verification
 # Database
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
-alembic==1.13.1
+alembic==1.18.4
 
 # Redis
 redis==5.0.1
