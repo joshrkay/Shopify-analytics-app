@@ -13,8 +13,10 @@ from typing import Dict
 PLAN_RETENTION_DEFAULTS: Dict[str, int] = {
     "free": 30,
     "starter": 90,
-    "professional": 180,
-    "enterprise": 365,
+    "growth": 180,
+    "professional": 365,
+    "pro": 730,
+    "enterprise": 1825,
 }
 
 # Fallback for unknown plans
@@ -22,7 +24,7 @@ DEFAULT_RETENTION_DAYS = 90
 
 # Compliance constraints
 MINIMUM_RETENTION_DAYS = 30
-MAXIMUM_RETENTION_DAYS = 730  # 2 years
+MAXIMUM_RETENTION_DAYS = 1825  # 5 years
 
 # Batch size for deletion (avoid long transactions)
 DELETION_BATCH_SIZE = int(os.getenv("AUDIT_DELETION_BATCH_SIZE", "1000"))
