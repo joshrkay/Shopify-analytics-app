@@ -10,9 +10,10 @@ Provides:
 
 import os
 import uuid
+import hashlib
 import pytest
-from datetime import datetime, timezone
-from typing import Generator, AsyncGenerator, Dict
+from datetime import datetime, timezone, timedelta
+from typing import Generator, AsyncGenerator, Dict, List
 from unittest.mock import patch
 
 from sqlalchemy import create_engine, event, text
@@ -476,9 +477,432 @@ def webhook_secret() -> str:
 # Markers
 # =============================================================================
 
+@pytest.fixture
+def free_tier_headers(free_tier_token) -> Dict[str, str]:
+    """Auth headers for free tier user."""
+    return {"Authorization": f"Bearer {free_tier_token}"}
+
+
+@pytest.fixture
+def admin_headers(admin_token) -> Dict[str, str]:
+    """Auth headers for admin user."""
+    return {"Authorization": f"Bearer {admin_token}"}
+
+
+@pytest.fixture
+def viewer_token(mock_frontegg, test_tenant_id) -> str:
+    """Create token with viewer role only."""
+    return mock_frontegg.create_test_token(
+        tenant_id=test_tenant_id,
+        roles=["viewer"],
+        entitlements=[],
+    )
+
+
+@pytest.fixture
+def viewer_headers(viewer_token) -> Dict[str, str]:
+    """Auth headers for viewer user."""
+    return {"Authorization": f"Bearer {viewer_token}"}
+
+
+@pytest.fixture
+def pro_tier_token(mock_frontegg, test_tenant_id) -> str:
+    """Create token with full pro entitlements."""
+    return mock_frontegg.create_test_token(
+        tenant_id=test_tenant_id,
+        roles=["admin", "user"],
+        entitlements=[
+            "AI_INSIGHTS", "AI_RECOMMENDATIONS", "AI_ACTIONS",
+            "CUSTOM_REPORTS", "ADVANCED_ANALYTICS",
+            "COHORT_ANALYSIS", "BUDGET_PACING", "ALERTS",
+        ],
+    )
+
+
+@pytest.fixture
+def pro_tier_headers(pro_tier_token) -> Dict[str, str]:
+    """Auth headers for pro tier user."""
+    return {"Authorization": f"Bearer {pro_tier_token}"}
+
+
+@pytest.fixture
+def agency_token(mock_frontegg, test_tenant_id, test_tenant_id_b) -> str:
+    """Create agency token with multi-tenant access."""
+    return mock_frontegg.create_agency_token(
+        primary_tenant_id=test_tenant_id,
+        allowed_tenants=[test_tenant_id, test_tenant_id_b],
+    )
+
+
+@pytest.fixture
+def agency_headers(agency_token) -> Dict[str, str]:
+    """Auth headers for agency user."""
+    return {"Authorization": f"Bearer {agency_token}"}
+
+
+@pytest.fixture
+def test_user_id(test_token) -> str:
+    """Extract user_id from the test token."""
+    import jwt as pyjwt
+    claims = pyjwt.decode(test_token, options={"verify_signature": False})
+    return claims["sub"]
+
+
+# =============================================================================
+# Database Entity Fixtures — Subscriptions & Billing
+# =============================================================================
+
+@pytest.fixture
+def test_subscription(db_session, test_tenant_id, test_plan_pro, test_store):
+    """Create active pro subscription."""
+    from src.models.subscription import Subscription
+
+    now = datetime.now(timezone.utc)
+    sub = Subscription(
+        id=str(uuid.uuid4()),
+        tenant_id=test_tenant_id,
+        store_id=test_store.id,
+        plan_id=test_plan_pro.id,
+        status="active",
+        shopify_subscription_id=f"gid://shopify/AppSubscription/{uuid.uuid4().hex[:12]}",
+        current_period_start=now - timedelta(days=15),
+        current_period_end=now + timedelta(days=15),
+    )
+    db_session.add(sub)
+    db_session.flush()
+    return sub
+
+
+# =============================================================================
+# Database Entity Fixtures — AI Features
+# =============================================================================
+
+def _content_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+@pytest.fixture
+def test_insights(db_session, test_tenant_id) -> list:
+    """Seed 5 AI insight records."""
+    from src.models.ai_insight import AIInsight
+
+    now = datetime.now(timezone.utc)
+    insights = []
+    types = ["spend_anomaly", "roas_change", "revenue_vs_spend_divergence", "channel_mix_shift", "cac_anomaly"]
+    severities = ["critical", "warning", "info", "warning", "critical"]
+
+    for i, (itype, sev) in enumerate(zip(types, severities)):
+        insight = AIInsight(
+            id=str(uuid.uuid4()),
+            tenant_id=test_tenant_id,
+            insight_type=itype,
+            severity=sev,
+            summary=f"E2E test insight {i}: {itype} detected",
+            why_it_matters=f"This matters because of test reason {i}",
+            supporting_metrics=[{"metric": "spend", "current": 100 + i * 10, "change_pct": -5.0 * i}],
+            confidence_score=0.85 + i * 0.02,
+            period_type="weekly",
+            period_start=now - timedelta(days=7),
+            period_end=now,
+            comparison_type="week_over_week",
+            content_hash=_content_hash(f"insight-{i}-{test_tenant_id}"),
+            generated_at=now - timedelta(hours=i),
+            is_read=0,
+            is_dismissed=0,
+        )
+        db_session.add(insight)
+        insights.append(insight)
+
+    db_session.flush()
+    return insights
+
+
+@pytest.fixture
+def test_recommendations(db_session, test_tenant_id, test_insights) -> list:
+    """Seed 3 AI recommendation records."""
+    from src.models.ai_recommendation import AIRecommendation
+
+    now = datetime.now(timezone.utc)
+    recs = []
+    rec_types = ["reduce_spend", "increase_spend", "reallocate_budget"]
+    priorities = ["high", "medium", "low"]
+
+    for i, (rtype, prio) in enumerate(zip(rec_types, priorities)):
+        rec = AIRecommendation(
+            id=str(uuid.uuid4()),
+            tenant_id=test_tenant_id,
+            related_insight_id=test_insights[i].id,
+            recommendation_type=rtype,
+            priority=prio,
+            recommendation_text=f"E2E recommendation {i}: {rtype}",
+            rationale=f"Based on test insight {i}",
+            estimated_impact="moderate",
+            risk_level="low",
+            confidence_score=0.80 + i * 0.05,
+            content_hash=_content_hash(f"rec-{i}-{test_tenant_id}"),
+            generated_at=now - timedelta(hours=i),
+            is_accepted=0,
+            is_dismissed=0,
+        )
+        db_session.add(rec)
+        recs.append(rec)
+
+    db_session.flush()
+    return recs
+
+
+@pytest.fixture
+def test_action_proposals(db_session, test_tenant_id, test_recommendations) -> list:
+    """Seed 2 action proposals (1 pending, 1 approved)."""
+    from src.models.action_proposal import ActionProposal
+
+    now = datetime.now(timezone.utc)
+    proposals = []
+
+    for i, status in enumerate(["proposed", "approved"]):
+        proposal = ActionProposal(
+            id=str(uuid.uuid4()),
+            tenant_id=test_tenant_id,
+            source_recommendation_id=test_recommendations[i].id,
+            action_type="reduce_budget" if i == 0 else "increase_budget",
+            status=status,
+            target_platform="meta",
+            target_entity_type="campaign",
+            target_entity_id=f"camp_{uuid.uuid4().hex[:8]}",
+            target_entity_name=f"E2E Test Campaign {i}",
+            proposed_change={"field": "daily_budget", "from": 100, "to": 80 if i == 0 else 120},
+            current_value={"daily_budget": 100},
+            expected_effect=f"Expected to {'save' if i == 0 else 'increase'} spend by 20%",
+            risk_disclaimer="Test risk disclaimer",
+            risk_level="low",
+            confidence_score=0.85,
+            expires_at=now + timedelta(days=7),
+            content_hash=_content_hash(f"proposal-{i}-{test_tenant_id}"),
+            generated_at=now,
+        )
+        db_session.add(proposal)
+        proposals.append(proposal)
+
+    db_session.flush()
+    return proposals
+
+
+@pytest.fixture
+def test_actions(db_session, test_tenant_id, test_recommendations) -> list:
+    """Seed 2 AI action records."""
+    from src.models.ai_action import AIAction
+
+    now = datetime.now(timezone.utc)
+    actions = []
+
+    for i, status in enumerate(["approved", "succeeded"]):
+        action = AIAction(
+            id=str(uuid.uuid4()),
+            tenant_id=test_tenant_id,
+            recommendation_id=test_recommendations[i].id,
+            action_type="adjust_budget" if i == 0 else "pause_campaign",
+            platform="meta",
+            target_entity_id=f"camp_{uuid.uuid4().hex[:8]}",
+            target_entity_type="campaign",
+            action_params={"field": "daily_budget", "value": 80},
+            status=status,
+            content_hash=_content_hash(f"action-{i}-{test_tenant_id}"),
+            created_at=now - timedelta(hours=i),
+        )
+        db_session.add(action)
+        actions.append(action)
+
+    db_session.flush()
+    return actions
+
+
+# =============================================================================
+# Database Entity Fixtures — Dashboards
+# =============================================================================
+
+@pytest.fixture
+def test_dashboard(db_session, test_tenant_id, test_user_id):
+    """Create a custom dashboard with 2 reports."""
+    from src.models.custom_dashboard import CustomDashboard
+    from src.models.custom_report import CustomReport
+
+    dashboard = CustomDashboard(
+        id=str(uuid.uuid4()),
+        tenant_id=test_tenant_id,
+        name="E2E Test Dashboard",
+        description="Dashboard for E2E testing",
+        status="draft",
+        layout_json={"cols": 12, "rowHeight": 30},
+        created_by=test_user_id,
+    )
+    db_session.add(dashboard)
+    db_session.flush()
+
+    reports = []
+    for i in range(2):
+        report = CustomReport(
+            id=str(uuid.uuid4()),
+            tenant_id=test_tenant_id,
+            dashboard_id=dashboard.id,
+            name=f"E2E Report {i}",
+            chart_type="line" if i == 0 else "bar",
+            dataset_name="kpi_summary",
+            config_json={"metric": "revenue", "dimension": "date"},
+            position_json={"x": i * 6, "y": 0, "w": 6, "h": 4},
+            created_by=test_user_id,
+            sort_order=i,
+        )
+        db_session.add(report)
+        reports.append(report)
+
+    db_session.flush()
+    dashboard._test_reports = reports
+    return dashboard
+
+
+# =============================================================================
+# Database Entity Fixtures — Alerts
+# =============================================================================
+
+@pytest.fixture
+def test_alert_rules(db_session, test_tenant_id) -> list:
+    """Seed 3 alert rules."""
+    from src.models.alert_rule import AlertRule
+
+    rules = []
+    configs = [
+        ("Revenue Drop Alert", "total_revenue", "lt", 1000.0, "daily", "critical"),
+        ("High Spend Alert", "total_spend", "gt", 5000.0, "daily", "warning"),
+        ("Low ROAS Alert", "roas", "lt", 1.5, "weekly", "warning"),
+    ]
+
+    for name, metric, op, threshold, period, severity in configs:
+        rule = AlertRule(
+            id=str(uuid.uuid4()),
+            tenant_id=test_tenant_id,
+            name=name,
+            metric_name=metric,
+            comparison_operator=op,
+            threshold_value=threshold,
+            evaluation_period=period,
+            severity=severity,
+            enabled=True,
+        )
+        db_session.add(rule)
+        rules.append(rule)
+
+    db_session.flush()
+    return rules
+
+
+# =============================================================================
+# Database Entity Fixtures — Notifications
+# =============================================================================
+
+@pytest.fixture
+def test_notifications(db_session, test_tenant_id, test_user_id) -> list:
+    """Seed 5 notification records."""
+    from src.models.notification import Notification
+
+    now = datetime.now(timezone.utc)
+    notifications = []
+    event_types = [
+        "insight_generated", "recommendation_created", "action_requires_approval",
+        "sync_completed", "alert_triggered",
+    ]
+
+    for i, etype in enumerate(event_types):
+        notif = Notification(
+            id=str(uuid.uuid4()),
+            tenant_id=test_tenant_id,
+            user_id=test_user_id,
+            event_type=etype,
+            importance="important" if i < 2 else "routine",
+            title=f"E2E Notification {i}",
+            message=f"Test notification message for {etype}",
+            idempotency_key=f"e2e-notif-{uuid.uuid4().hex[:12]}",
+            status="delivered" if i < 3 else "pending",
+            created_at=now - timedelta(hours=i),
+        )
+        db_session.add(notif)
+        notifications.append(notif)
+
+    db_session.flush()
+    return notifications
+
+
+# =============================================================================
+# Database Entity Fixtures — Audit Logs
+# =============================================================================
+
+@pytest.fixture
+def test_audit_logs(db_session, test_tenant_id, test_user_id) -> list:
+    """Seed 10 audit log records."""
+    from src.models.audit_log import GAAuditLog
+
+    now = datetime.now(timezone.utc)
+    correlation = str(uuid.uuid4())
+    logs = []
+    event_types = [
+        "auth.login_success", "dashboard.created", "dashboard.viewed",
+        "dashboard.updated", "dashboard.published", "insight.generated",
+        "recommendation.accepted", "action.executed", "billing.checkout",
+        "team.member_invited",
+    ]
+
+    for i, etype in enumerate(event_types):
+        log = GAAuditLog(
+            id=str(uuid.uuid4()),
+            event_type=etype,
+            user_id=test_user_id,
+            tenant_id=test_tenant_id,
+            access_surface="external_app",
+            success=True,
+            event_metadata={"detail": f"E2E test event {i}"},
+            correlation_id=correlation if i < 3 else str(uuid.uuid4()),
+            created_at=now - timedelta(hours=i),
+        )
+        db_session.add(log)
+        logs.append(log)
+
+    db_session.flush()
+    return logs
+
+
+# =============================================================================
+# Database Entity Fixtures — Store for Tenant B
+# =============================================================================
+
+@pytest.fixture
+def test_store_b(db_session, test_tenant_id_b, test_shop_domain_b):
+    """Create second test Shopify store for tenant B."""
+    from src.models.store import ShopifyStore
+
+    store = ShopifyStore(
+        id=str(uuid.uuid4()),
+        tenant_id=test_tenant_id_b,
+        shop_domain=test_shop_domain_b,
+        shop_id=str(hash(test_shop_domain_b) % 10**12),
+        access_token_encrypted="encrypted-test-token-b",
+        scopes="read_products,write_products,read_orders",
+        currency="USD",
+        timezone="America/New_York",
+        status="active",
+    )
+    db_session.add(store)
+    db_session.flush()
+    return store
+
+
+# =============================================================================
+# Markers
+# =============================================================================
+
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line("markers", "e2e: mark test as end-to-end test")
     config.addinivalue_line("markers", "security: mark test as security-focused")
     config.addinivalue_line("markers", "slow: mark test as slow-running")
     config.addinivalue_line("markers", "ai_features: mark test as testing AI features")
+    config.addinivalue_line("markers", "billing: mark test as billing-focused")
+    config.addinivalue_line("markers", "rbac: mark test as RBAC-focused")
