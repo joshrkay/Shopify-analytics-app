@@ -118,3 +118,43 @@ models:
         description: Timestamp when record was last updated by dbt
         tests:
           - not_null
+
+  - name: multi_touch_session
+    description: |
+      Session-based multi-touch attribution model.
+
+      Uses actual Web Pixel session data to attribute revenue across all
+      sessions a visitor had before converting, replacing the campaign-window
+      approximation in multi_touch_linear.
+
+      For each converted order, finds all prior sessions for the same visitor
+      within a 30-day lookback window and distributes attribution credit
+      using linear weighting (equal credit per session).
+
+      SECURITY: All rows are tenant-isolated via tenant_id.
+    columns:
+      - name: id
+        description: Surrogate key (MD5 of order_id + session_id + tenant_id + model)
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        description: Shopify order ID from the converting session
+        tests:
+          - not_null
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        tests:
+          - not_null
+      - name: attributed_revenue
+        description: Revenue attributed to this touchpoint session (linear weight)
+      - name: touchpoint_role
+        description: Role in the journey (first_touch, assist, converting)
+        tests:
+          - accepted_values:
+              values: ['first_touch', 'assist', 'converting']
+      - name: attribution_model
+        description: Attribution model identifier
+        tests:
+          - accepted_values:
+              values: ['multi_touch_session']

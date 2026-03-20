@@ -54,6 +54,7 @@ MIGRATIONS = [
     "analytics_rls.sql",
     "webhook_order_events.sql",
     "pixel_events.sql",
+    "pixel_registrations.sql",
 ]
 
 

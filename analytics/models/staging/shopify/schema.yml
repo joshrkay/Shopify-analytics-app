@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: stg_webhook_orders
+    description: >
+      Staging model for webhook-delivered Shopify orders. Normalizes
+      webhook_order_events into the same shape as stg_shopify_orders
+      for downstream UNION in canonical/attribution models.
+    columns:
+      - name: record_sk
+        description: Surrogate key (md5 of tenant_id + source + order_id)
+        tests:
+          - not_null
+      - name: tenant_id
+        description: Tenant identifier for multi-tenant isolation
+        tests:
+          - not_null
+      - name: order_id
+        description: Shopify order ID
+        tests:
+          - not_null

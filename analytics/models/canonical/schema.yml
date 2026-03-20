@@ -827,3 +827,38 @@ models:
         description: Whether the session resulted in a purchase
       - name: order_id
         description: Shopify order ID from checkout_completed event (null if no purchase)
+
+  - name: customer_journeys
+    description: |
+      Visitor-level journey profiles aggregated from customer sessions.
+
+      Groups sessions by visitor_key to build longitudinal engagement profiles
+      with first-touch and last-touch attribution, funnel progression, and
+      conversion metrics.
+
+      SECURITY: All rows are tenant-isolated via tenant_id.
+    columns:
+      - name: id
+        description: Surrogate key (MD5 hash of tenant_id + visitor_key)
+        data_tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: visitor_key
+        description: Visitor identifier derived from session linkage
+        data_tests:
+          - not_null
+      - name: first_visit_at
+        description: Timestamp of the visitor's first session
+        data_tests:
+          - not_null
+      - name: total_sessions
+        description: Total number of sessions for this visitor
+      - name: has_converted
+        description: Whether the visitor has completed at least one purchase
+      - name: first_touch_utm_source
+        description: UTM source from the visitor's first attributed session
+      - name: last_touch_utm_source
+        description: UTM source from the visitor's most recent attributed session

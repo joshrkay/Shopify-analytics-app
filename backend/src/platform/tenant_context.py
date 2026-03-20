@@ -773,6 +773,7 @@ class TenantContextMiddleware:
             request.method == "OPTIONS"  # Always pass CORS preflight through to CORSMiddleware
             or request.url.path in PUBLIC_PATHS
             or request.url.path.startswith("/api/webhooks/")
+            or request.url.path.startswith("/api/pixel/events")
             or request.url.path.startswith("/assets/")
             or request.url.path.endswith(STATIC_EXTENSIONS)
             or not request.url.path.startswith("/api/")

@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.database.session import get_db_session
+from src.platform.tenant_context import get_tenant_context
 
 logger = logging.getLogger(__name__)
 
@@ -155,15 +156,10 @@ async def get_pixel_status(
 
     Returns whether the pixel is active and recent event counts.
     """
-    from sqlalchemy import func, text
+    from sqlalchemy import func
 
-    # Get tenant_id from request state (set by TenantContextMiddleware)
-    tenant_id = getattr(request.state, "active_tenant_id", None)
-    if not tenant_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-        )
+    tenant_ctx = get_tenant_context(request)
+    tenant_id = tenant_ctx.tenant_id
 
     try:
         from src.models.pixel_event import PixelEvent
