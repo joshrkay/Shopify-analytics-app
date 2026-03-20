@@ -95,14 +95,15 @@ models:
       - name: attribution_status
         description: |
           Attribution status indicating whether the order was successfully attributed:
-          - 'attributed': Order matched to a campaign
+          - 'attributed': Order matched to a campaign via UTM params in note_attributes
+          - 'attributed_via_session': Order attributed via Web Pixel session UTM fallback
           - 'unattributed_utm_present': Order has UTM parameters but no campaign match found
           - 'unattributed_no_utm': Order has no UTM parameters
         tests:
           - not_null
           - accepted_values:
               arguments:
-                values: ['attributed', 'unattributed_utm_present', 'unattributed_no_utm']
+                values: ['attributed', 'attributed_via_session', 'unattributed_utm_present', 'unattributed_no_utm']
       - name: tenant_id
         description: Tenant identifier for data isolation
         tests:

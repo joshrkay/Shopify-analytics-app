@@ -798,3 +798,32 @@ models:
         description: Timestamp when record was last processed by dbt
         tests:
           - not_null
+
+  - name: customer_sessions
+    description: |
+      Customer sessions aggregated from Web Pixel events.
+
+      Grain: One row per browser session (identified by pixel-generated session_id).
+
+      Used for session-based attribution fallback and funnel analysis.
+
+      SECURITY: All rows are tenant-isolated via tenant_id.
+    columns:
+      - name: id
+        description: Surrogate key (MD5 hash of session_id + tenant_id)
+        data_tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: session_id
+        data_tests:
+          - not_null
+      - name: session_start
+        data_tests:
+          - not_null
+      - name: checkout_completed
+        description: Whether the session resulted in a purchase
+      - name: order_id
+        description: Shopify order ID from checkout_completed event (null if no purchase)

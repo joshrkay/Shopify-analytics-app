@@ -1,0 +1,60 @@
+version: 2
+
+sources:
+  - name: platform
+    schema: public
+    tables:
+      - name: pixel_events
+        description: "Raw customer journey events from Shopify Web Pixel"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: tenant_id
+            description: "Tenant identifier for multi-tenant isolation"
+            data_tests:
+              - not_null
+          - name: session_id
+            description: "Anonymous browser session ID"
+            data_tests:
+              - not_null
+          - name: event_type
+            description: "Event type (page_viewed, product_viewed, checkout_started, etc.)"
+            data_tests:
+              - not_null
+
+models:
+  - name: stg_pixel_events
+    description: "Staged and deduplicated Web Pixel customer journey events"
+    columns:
+      - name: id
+        description: "Primary key"
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        description: "Tenant identifier"
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Anonymous browser session"
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Normalized event type"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values:
+                - page_viewed
+                - product_viewed
+                - collection_viewed
+                - search_submitted
+                - cart_viewed
+                - checkout_started
+                - checkout_completed
+                - payment_info_submitted
+              severity: warn
+      - name: event_timestamp
+        description: "When the event occurred in the browser"
+        data_tests:
+          - not_null

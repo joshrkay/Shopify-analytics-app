@@ -27,7 +27,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # Shopify API version to use
-SHOPIFY_API_VERSION = "2024-01"
+SHOPIFY_API_VERSION = "2025-01"
 
 # Retry configuration
 DEFAULT_MAX_RETRIES = 3

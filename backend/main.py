@@ -73,6 +73,7 @@ from src.api.routes import budget_pacing
 from src.api.routes import alerts
 from src.api.routes import search
 from src.api.routes import notifications
+from src.api.routes import pixel_events
 from src.platform.db_readiness import REQUIRED_IDENTITY_TABLES, check_required_tables
 from src.database.session import get_db_session_sync
 
@@ -410,6 +411,9 @@ app.include_router(search.router)
 # Include notifications routes (requires authentication)
 # Story 9.1 - Notification Framework
 app.include_router(notifications.router)
+
+# Pixel event ingestion (no auth — fires from customer browser)
+app.include_router(pixel_events.router)
 
 
 # ---------------------------------------------------------------------------
