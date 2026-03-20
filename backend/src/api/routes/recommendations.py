@@ -23,6 +23,7 @@ from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, ConfigDict
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 from src.models.ai_recommendation import (
     AIRecommendation,
     RecommendationType,
@@ -137,6 +138,7 @@ async def list_recommendations(
     ),
     limit: int = Query(20, le=100, description="Maximum recommendations to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    _rate_limit=Depends(rate_limit_dependency("recommendations", limit=30, window=60)),
 ):
     """
     List AI-generated recommendations for the current tenant.
@@ -233,6 +235,7 @@ async def get_recommendation(
     request: Request,
     recommendation_id: str,
     db_session=Depends(check_ai_recommendations_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("recommendations", limit=30, window=60)),
 ):
     """
     Get a single recommendation by ID.
@@ -268,6 +271,7 @@ async def accept_recommendation(
     request: Request,
     recommendation_id: str,
     db_session=Depends(check_ai_recommendations_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("recommendations", limit=30, window=60)),
 ):
     """
     Mark a recommendation as accepted.
@@ -318,6 +322,7 @@ async def dismiss_recommendation(
     request: Request,
     recommendation_id: str,
     db_session=Depends(check_ai_recommendations_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("recommendations", limit=30, window=60)),
 ):
     """
     Dismiss a recommendation (hide from default list).
@@ -367,6 +372,7 @@ async def dismiss_recommendations_batch(
     request: Request,
     recommendation_ids: List[str],
     db_session=Depends(check_ai_recommendations_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("recommendations", limit=30, window=60)),
 ):
     """
     Dismiss multiple recommendations in batch.

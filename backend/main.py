@@ -10,6 +10,10 @@ import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -74,7 +78,7 @@ from src.database.session import get_db_session_sync
 
 # Configure structured logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -193,6 +197,22 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down MarkInsight API")
 
 
+# Initialize Sentry error tracking (no-op if SENTRY_DSN is not set)
+_sentry_dsn = os.getenv("SENTRY_DSN")
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        environment=os.getenv("ENV", "development"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        integrations=[
+            FastApiIntegration(),
+            StarletteIntegration(),
+        ],
+        # Don't send PII (emails, IPs) to Sentry
+        send_default_pii=False,
+    )
+    logging.getLogger(__name__).info("Sentry error tracking initialized")
+
 # Create FastAPI app
 app = FastAPI(
     title="MarkInsight API",
@@ -203,7 +223,13 @@ app = FastAPI(
 
 # CORS middleware (configure for your frontend domain)
 # Include Shopify Admin in CORS origins for embedding
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+_cors_raw = os.getenv("CORS_ORIGINS", "")
+if not _cors_raw and os.getenv("ENV") == "production":
+    raise RuntimeError(
+        "CORS_ORIGINS must be set in production. "
+        "Example: CORS_ORIGINS=https://app.markinsight.net"
+    )
+cors_origins = (_cors_raw or "http://localhost:3000").split(",")
 if "https://admin.shopify.com" not in cors_origins:
     cors_origins.append("https://admin.shopify.com")
 

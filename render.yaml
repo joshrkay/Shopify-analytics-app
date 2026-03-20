@@ -82,6 +82,14 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
 
+      # ── Observability ─────────────────────────────────────────────
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.1"
+      - key: LOG_LEVEL
+        value: "INFO"
+
       # ── OAuth redirect URI ────────────────────────────────────────
       - key: OAUTH_REDIRECT_URI
         value: "https://app.markinsight.net/api/sources/oauth/callback"
@@ -347,6 +355,53 @@ services:
       - key: DB_SSLMODE
         value: "require"
 
+  # ------------------------------------------
+  # CRON JOB: DATA RETENTION CLEANUP
+  # Runs daily at 3 AM UTC to enforce 13-month retention policy
+  # on DQ results, incidents, sync runs, and backfill jobs.
+  # ------------------------------------------
+  - type: cron
+    name: markinsight-retention-cleanup
+    runtime: docker
+    schedule: "0 3 * * *"  # Daily at 3:00 AM UTC
+    dockerfilePath: ./docker/worker.Dockerfile
+    dockerContext: .
+    dockerCommand: python -m src.jobs.retention_cleanup
+    region: oregon
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: markinsight-db
+          property: connectionString
+      - key: DQ_RETENTION_MONTHS
+        value: "13"
+      - key: DQ_CLEANUP_BATCH_SIZE
+        value: "1000"
+
+  # ------------------------------------------
+  # CRON JOB: AUDIT LOG RETENTION CLEANUP
+  # Runs weekly on Sunday at 4 AM UTC to enforce 2-year retention policy
+  # on the audit_logs table.
+  # ------------------------------------------
+  - type: cron
+    name: markinsight-audit-log-cleanup
+    runtime: docker
+    schedule: "0 4 * * 0"  # Weekly on Sunday at 4:00 AM UTC
+    dockerfilePath: ./docker/worker.Dockerfile
+    dockerContext: .
+    region: oregon
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: markinsight-db
+          property: connectionString
+    buildCommand: echo "Audit log cleanup cron"
+    startCommand: python -c "import psycopg2, os; conn = psycopg2.connect(os.environ['DATABASE_URL']); cur = conn.cursor(); cur.execute('SELECT public.execute_audit_log_cleanup()'); print(cur.fetchall()); conn.commit(); conn.close()"
+
   # # ------------------------------------------
   # # SUPERSET (Embedded Analytics)
   # # ------------------------------------------
@@ -387,9 +442,10 @@ services:
     name: markinsight-redis
     plan: starter
     region: oregon
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: Allow access from Render services and approved external clients
+    # SECURITY: Restrict to Render internal network only.
+    # 0.0.0.0/0 was previously used — removed for production hardening.
+    # Render services in the same region can connect without ipAllowList.
+    ipAllowList: []
 
 # ============================================
 # DATABASE: POSTGRES
@@ -398,7 +454,9 @@ databases:
   - name: markinsight-db
     databaseName: markinsight
     user: markinsight_user
-    plan: basic-256mb
+    # Upgraded from basic-256mb for production workloads.
+    # basic-256mb has ~20 connection limit; standard-0 supports 50+.
+    plan: standard-0
     region: oregon
     postgresMajorVersion: 15
 

@@ -93,7 +93,7 @@ export function Attribution() {
     setSummary(null);
     getAttributionSummary(timeframe)
       .then((data) => { if (!cancelled) setSummary(data); })
-      .catch(() => {})
+      .catch((err) => { if (!cancelled) console.error('Failed to fetch attribution summary:', err); })
       .finally(() => { if (!cancelled) setSummaryLoading(false); });
     return () => { cancelled = true; };
   }, [timeframe]);
@@ -113,7 +113,7 @@ export function Attribution() {
           setOrdersTotal(data.total);
         }
       })
-      .catch(() => {})
+      .catch((err) => { if (!cancelled) console.error('Failed to fetch attributed orders:', err); })
       .finally(() => { if (!cancelled) setOrdersLoading(false); });
     return () => { cancelled = true; };
   }, [timeframe, platformFilter, ordersPage]);

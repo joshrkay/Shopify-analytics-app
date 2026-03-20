@@ -26,6 +26,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 from src.database.session import get_db_session
 from src.services.airbyte_service import (
     AirbyteService,
@@ -81,10 +82,17 @@ router = APIRouter(prefix="/api/sources", tags=["sources"])
 # OAuth URL builders per platform
 # =============================================================================
 
-OAUTH_REDIRECT_URI = os.environ.get(
-    "OAUTH_REDIRECT_URI",
-    "https://app.localhost/api/sources/oauth/callback",
+_oauth_redirect_default = (
+    "https://app.localhost/api/sources/oauth/callback"
+    if os.getenv("ENV") != "production"
+    else None
 )
+OAUTH_REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI") or _oauth_redirect_default
+if not OAUTH_REDIRECT_URI:
+    raise RuntimeError(
+        "OAUTH_REDIRECT_URI must be set in production. "
+        "Add it to render.yaml or the environment."
+    )
 
 # OAuth state TTL in seconds (10 minutes)
 OAUTH_STATE_TTL_SECONDS = 600
@@ -315,6 +323,7 @@ async def initiate_oauth(
     platform: str,
     body: Optional[OAuthInitiateRequest] = None,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("sources_oauth_initiate", limit=5, window=60)),
 ):
     """
     Initiate OAuth authorization flow for a data source platform.
@@ -537,6 +546,7 @@ async def oauth_callback(
     request: Request,
     body: OAuthCallbackRequest,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("sources_oauth_callback", limit=10, window=60)),
 ):
     """
     Complete OAuth authorization flow.

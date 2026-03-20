@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 from src.models.ai_action import AIAction, ActionStatus, ActionType
 from src.models.action_execution_log import ActionExecutionLog
 from src.models.action_job import ActionJob, ActionJobStatus
@@ -185,6 +186,7 @@ async def list_actions(
     ),
     limit: int = Query(20, le=100, description="Maximum actions to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    _rate_limit=Depends(rate_limit_dependency("actions", limit=30, window=60)),
 ):
     """
     List actions for the current tenant.
@@ -265,6 +267,7 @@ async def list_actions(
 async def get_action_stats(
     request: Request,
     db_session=Depends(check_ai_actions_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("actions", limit=30, window=60)),
 ):
     """
     Get action statistics for the current tenant.
@@ -332,6 +335,7 @@ async def get_action(
     request: Request,
     action_id: str,
     db_session=Depends(check_ai_actions_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("actions", limit=30, window=60)),
 ):
     """
     Get a single action by ID.
@@ -367,6 +371,7 @@ async def execute_action(
     request: Request,
     action_id: str,
     db_session=Depends(check_ai_actions_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("actions_execute", limit=5, window=60)),
 ):
     """
     Trigger execution of an approved action.
@@ -468,6 +473,7 @@ async def rollback_action(
     action_id: str,
     body: Optional[RollbackActionRequest] = None,
     db_session=Depends(check_ai_actions_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("actions_rollback", limit=5, window=60)),
 ):
     """
     Rollback a previously executed action.
@@ -574,6 +580,7 @@ async def get_action_logs(
     request: Request,
     action_id: str,
     db_session=Depends(check_ai_actions_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("actions", limit=30, window=60)),
 ):
     """
     Get execution logs for an action.
@@ -647,6 +654,7 @@ async def list_action_jobs(
     ),
     limit: int = Query(20, le=100, description="Maximum jobs to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    _rate_limit=Depends(rate_limit_dependency("actions", limit=30, window=60)),
 ):
     """
     List action jobs for the current tenant.
@@ -701,6 +709,7 @@ async def get_action_job(
     request: Request,
     job_id: str,
     db_session=Depends(check_ai_actions_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("actions", limit=30, window=60)),
 ):
     """
     Get a single action job by ID.
@@ -736,6 +745,7 @@ async def get_job_actions(
     request: Request,
     job_id: str,
     db_session=Depends(check_ai_actions_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("actions", limit=30, window=60)),
 ):
     """
     Get all actions belonging to a job.

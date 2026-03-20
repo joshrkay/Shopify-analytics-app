@@ -346,7 +346,7 @@ class ClerkJWKSClient:
         except PyJWKClientError as e:
             logger.error("Failed to get signing key from Clerk JWKS", extra={"error": str(e), "jwks_url": self.jwks_url})
             raise
-        except Exception as e:
+        except (ValueError, KeyError, jwt.PyJWTError) as e:
             logger.error("Unexpected error getting signing key", extra={"error": str(e)})
             raise
 
@@ -708,7 +708,7 @@ class TenantContextMiddleware:
 
         except (TenantSelectionRequiredException, NoTenantAccessException):
             raise
-        except Exception as db_err:
+        except SQLAlchemyError as db_err:
             # DB tables may not exist (e.g. in-memory SQLite test env) or
             # other DB-level errors. Fall back to JWT-based tenant resolution.
             # CRITICAL: rollback before closing so the connection is returned
@@ -717,7 +717,7 @@ class TenantContextMiddleware:
             # will also fail with DataError.
             try:
                 db.rollback()
-            except Exception as rollback_err:
+            except SQLAlchemyError as rollback_err:
                 logger.debug(
                     "Rollback failed during _resolve_tenant_from_db fallback",
                     extra={"rollback_error": str(rollback_err)},
