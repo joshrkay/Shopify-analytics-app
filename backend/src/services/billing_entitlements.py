@@ -44,6 +44,9 @@ class BillingFeature:
     COHORT_ANALYSIS = "cohort_analysis"
     BUDGET_PACING = "budget_pacing"
     ALERTS = "alerts"
+    WAREHOUSE_EXPORT = "warehouse_export"
+    SHEETS_EXPORT = "sheets_export"
+    SCHEDULED_EXPORTS = "scheduled_exports"
 
 
 # Billing tier feature matrix
@@ -63,6 +66,9 @@ BILLING_TIER_FEATURES = {
         BillingFeature.COHORT_ANALYSIS: False,
         BillingFeature.BUDGET_PACING: False,
         BillingFeature.ALERTS: False,
+        BillingFeature.WAREHOUSE_EXPORT: False,
+        BillingFeature.SHEETS_EXPORT: False,
+        BillingFeature.SCHEDULED_EXPORTS: False,
         'max_dashboard_access': 3,
         'max_dashboard_shares': 0,
         'max_users': 2,
@@ -73,7 +79,7 @@ BILLING_TIER_FEATURES = {
         BillingFeature.MULTI_TENANT: True,   # Up to 5 stores
         BillingFeature.ADVANCED_DASHBOARDS: True,
         BillingFeature.EXPLORE_MODE: True,
-        BillingFeature.DATA_EXPORT: False,
+        BillingFeature.DATA_EXPORT: True,     # CSV export
         BillingFeature.AI_INSIGHTS: True,
         BillingFeature.AI_RECOMMENDATIONS: True,  # Story 8.3
         BillingFeature.AI_ACTIONS: True,     # Limited
@@ -83,11 +89,39 @@ BILLING_TIER_FEATURES = {
         BillingFeature.COHORT_ANALYSIS: True,
         BillingFeature.BUDGET_PACING: True,
         BillingFeature.ALERTS: True,
+        BillingFeature.WAREHOUSE_EXPORT: False,
+        BillingFeature.SHEETS_EXPORT: True,   # Limited
+        BillingFeature.SCHEDULED_EXPORTS: False,
         'max_dashboard_access': 10,
         'max_dashboard_shares': 5,
         'max_users': 10,
         'max_agency_stores': 5,
         'max_alert_rules': 10,
+    },
+    'pro': {
+        BillingFeature.AGENCY_ACCESS: True,   # Limited
+        BillingFeature.MULTI_TENANT: True,    # Up to 10 stores
+        BillingFeature.ADVANCED_DASHBOARDS: True,
+        BillingFeature.EXPLORE_MODE: True,
+        BillingFeature.DATA_EXPORT: True,
+        BillingFeature.AI_INSIGHTS: True,
+        BillingFeature.AI_RECOMMENDATIONS: True,
+        BillingFeature.AI_ACTIONS: True,
+        BillingFeature.CUSTOM_REPORTS: True,
+        BillingFeature.LLM_ROUTING: True,
+        BillingFeature.CUSTOM_PROMPTS: False,
+        BillingFeature.COHORT_ANALYSIS: True,
+        BillingFeature.BUDGET_PACING: True,
+        BillingFeature.ALERTS: True,
+        BillingFeature.WAREHOUSE_EXPORT: True,   # 1 destination
+        BillingFeature.SHEETS_EXPORT: True,
+        BillingFeature.SCHEDULED_EXPORTS: True,
+        'max_dashboard_access': 50,
+        'max_dashboard_shares': 20,
+        'max_users': 20,
+        'max_agency_stores': 10,
+        'max_alert_rules': 50,
+        'max_warehouse_destinations': 1,
     },
     'enterprise': {
         BillingFeature.AGENCY_ACCESS: True,   # Full (agency_admin + agency_viewer)
@@ -104,6 +138,9 @@ BILLING_TIER_FEATURES = {
         BillingFeature.COHORT_ANALYSIS: True,
         BillingFeature.BUDGET_PACING: True,
         BillingFeature.ALERTS: True,
+        BillingFeature.WAREHOUSE_EXPORT: True,
+        BillingFeature.SHEETS_EXPORT: True,
+        BillingFeature.SCHEDULED_EXPORTS: True,
         'max_dashboard_access': 999,
         'max_dashboard_shares': 999,
         'max_users': 999,

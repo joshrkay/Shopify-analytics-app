@@ -416,6 +416,10 @@ app.include_router(notifications.router)
 # Pixel event ingestion (no auth — fires from customer browser)
 app.include_router(pixel_events.router)
 app.include_router(pixel_admin.router)
+# Data export and warehouse export routes
+from src.api.routes import data_export, warehouse_export
+app.include_router(data_export.router)
+app.include_router(warehouse_export.router)
 
 
 # ---------------------------------------------------------------------------

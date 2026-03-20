@@ -231,6 +231,12 @@ PLATFORM_TO_AIRBYTE_SOURCE_TYPE: dict[str, str] = {
     "attentive": "source-attentive",
     "postscript": "source-postscript",
     "smsbump": "source-smsbump",
+    # New connectors — Gap 1
+    "linkedin_ads": "source-linkedin-ads",
+    "google_analytics": "source-google-analytics-data-api",
+    "microsoft_ads": "source-bing-ads",
+    "hubspot": "source-hubspot",
+    "mailchimp": "source-mailchimp",
 }
 
 
