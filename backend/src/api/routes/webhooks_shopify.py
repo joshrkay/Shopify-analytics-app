@@ -269,7 +269,7 @@ async def handle_subscription_update(
         })
         session.rollback()
         # Return 200 to acknowledge receipt (Shopify will retry on 4xx/5xx)
-        return WebhookResponse(message=f"Error: {str(e)}")
+        return WebhookResponse(message="Error processing webhook")
 
 
 @router.post("/app-uninstalled", response_model=WebhookResponse)
@@ -345,7 +345,7 @@ async def handle_app_uninstalled(
             "error": str(e)
         })
         session.rollback()
-        return WebhookResponse(message=f"Error: {str(e)}")
+        return WebhookResponse(message="Error processing webhook")
 
 
 @router.post("/customers-redact", response_model=WebhookResponse)
@@ -448,7 +448,7 @@ async def handle_shop_redact(
             "error": str(e)
         })
         session.rollback()
-        return WebhookResponse(message=f"Error during shop redact: {str(e)}")
+        return WebhookResponse(message="Error processing webhook")
 
 
 @router.post("/customers-data-request", response_model=WebhookResponse)
@@ -590,7 +590,7 @@ async def handle_orders_create(
             "error": str(e),
         })
         session.rollback()
-        return WebhookResponse(message=f"Error: {str(e)}")
+        return WebhookResponse(message="Error processing webhook")
 
 
 @router.post("/orders-updated", response_model=WebhookResponse)
@@ -701,4 +701,4 @@ async def handle_orders_updated(
             "error": str(e),
         })
         session.rollback()
-        return WebhookResponse(message=f"Error: {str(e)}")
+        return WebhookResponse(message="Error processing webhook")

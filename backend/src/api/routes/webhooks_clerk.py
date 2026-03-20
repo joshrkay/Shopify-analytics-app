@@ -296,7 +296,7 @@ async def handle_clerk_webhook(
             return WebhookResponse(
                 received=True,
                 status="error",
-                message=f"Error processing event: {str(e)}",
+                message="Error processing event",
             )
 
         finally:

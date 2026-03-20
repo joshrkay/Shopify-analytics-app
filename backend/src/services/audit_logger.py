@@ -1837,7 +1837,7 @@ def _write_ga_audit_event(db: Session, event) -> None:
         try:
             db.rollback()
         except Exception:
-            pass
+            _GA_LOGGER.warning("ga_audit_rollback_failed", exc_info=True)
         _GA_LOGGER.error(
             "ga_audit_write_failed",
             extra={

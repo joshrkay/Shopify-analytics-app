@@ -8,6 +8,7 @@
  * Phase 3 - Dashboard Builder UI
  */
 
+import { useMemo } from 'react';
 import { BlockStack, InlineStack, Select, TextField, Button, Text } from '@shopify/polaris';
 import type { MetricConfig, Aggregation, ColumnMetadata } from '../../../types/customDashboards';
 
@@ -30,13 +31,13 @@ export function MetricBuilder({
   columns,
   onChange,
 }: MetricBuilderProps) {
-  const columnOptions = [
+  const columnOptions = useMemo(() => [
     { label: 'Select column', value: '' },
     ...columns.map((col) => ({
       label: col.column_name,
       value: col.column_name,
     })),
-  ];
+  ], [columns]);
 
   const handleColumnChange = (index: number, column: string) => {
     const updated = [...metrics];

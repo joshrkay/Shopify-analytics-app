@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, HTTPException, Depends
 
 from src.platform.tenant_context import get_tenant_context
+from src.api.error_utils import api_error
 from src.database.session import get_db_session
 from src.services.dashboard_share_service import (
     DashboardShareService,
@@ -102,12 +103,12 @@ async def create_share(
         )
     except DashboardNotFoundError:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    except ShareValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ShareLimitExceededError as e:
-        raise HTTPException(status_code=402, detail=str(e))
-    except ShareConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    except ShareValidationError:
+        raise api_error(400, "Invalid share configuration")
+    except ShareLimitExceededError:
+        raise api_error(402, "Share limit exceeded for this dashboard")
+    except ShareConflictError:
+        raise api_error(409, "This share already exists")
 
     return _share_to_response(share)
 

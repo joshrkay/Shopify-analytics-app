@@ -8,6 +8,7 @@
  * Phase 3 - Dashboard Builder UI
  */
 
+import { useMemo } from 'react';
 import { Select } from '@shopify/polaris';
 import type { Dataset } from '../../../types/customDashboards';
 
@@ -22,13 +23,13 @@ export function DatasetPicker({
   value,
   onChange,
 }: DatasetPickerProps) {
-  const options = [
+  const options = useMemo(() => [
     { label: 'Select a dataset', value: '' },
     ...datasets.map((ds) => ({
       label: ds.dataset_name,
       value: ds.dataset_name,
     })),
-  ];
+  ], [datasets]);
 
   return (
     <Select

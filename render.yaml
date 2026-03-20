@@ -86,7 +86,7 @@ services:
       - key: SENTRY_DSN
         sync: false
       - key: SENTRY_TRACES_SAMPLE_RATE
-        value: "0.1"
+        value: "0.5"
       - key: LOG_LEVEL
         value: "INFO"
 

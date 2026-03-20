@@ -406,7 +406,7 @@ class RecommendationGenerationService:
             try:
                 affected_entity_type_enum = AffectedEntityType(detected.affected_entity_type)
             except ValueError:
-                pass
+                logger.debug("Unrecognized entity type, skipping", extra={"value": detected.affected_entity_type})
 
         recommendation = AIRecommendation(
             tenant_id=self.tenant_id,

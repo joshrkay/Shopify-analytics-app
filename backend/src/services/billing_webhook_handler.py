@@ -327,8 +327,8 @@ class BillingWebhookHandler:
                 current_period_end = datetime.fromisoformat(
                     payload["current_period_end"].replace("Z", "+00:00")
                 )
-            except (ValueError, AttributeError):
-                pass
+            except (ValueError, AttributeError) as e:
+                logger.warning("Failed to parse current_period_end", extra={"error": str(e)})
 
         # Handle based on status
         if new_status == SubscriptionStatus.ACTIVE:

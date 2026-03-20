@@ -26,7 +26,7 @@ def _production_guard():
 
 
 @router.get("/debug/env-status")
-def env_status():
+async def env_status():
     """
     Check which environment variables are configured.
     Returns status without exposing sensitive values.

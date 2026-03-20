@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.platform.tenant_context import get_tenant_context
+from src.api.error_utils import api_error
 from src.middleware.rate_limit import rate_limit_dependency
 from src.services.billing_service import (
     BillingService,
@@ -662,10 +663,10 @@ async def change_plan(
             can_access_features=info.can_access_features,
         )
 
-    except PlanNotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except SubscriptionError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except PlanNotFoundError:
+        raise api_error(404, "Plan not found")
+    except SubscriptionError:
+        raise api_error(400, "Invalid subscription operation")
     except BillingServiceError as e:
         logger.error("Plan change failed", extra={
             "tenant_id": tenant_ctx.tenant_id, "error": str(e)

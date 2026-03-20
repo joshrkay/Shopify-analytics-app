@@ -12,3 +12,17 @@
 .idea
 *.swp
 .DS_Store
+
+# Test and documentation files (not needed in production image)
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.egg-info
+docs/
+*.md
+!README.md
+
+# CI/CD and config files not needed in image
+.github/
+.env*
+!.env.example

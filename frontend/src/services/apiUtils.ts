@@ -150,6 +150,44 @@ export function createHeaders(): HeadersInit {
 }
 
 // =============================================================================
+// Request Deduplication
+// =============================================================================
+// Prevents duplicate concurrent GET requests to the same URL.
+// When multiple components mount simultaneously and request the same data,
+// only one fetch is made and the response is shared.
+
+const _inflightRequests = new Map<string, Promise<Response>>();
+
+/**
+ * Deduplicate concurrent GET requests to the same URL.
+ * Non-GET requests are passed through without deduplication.
+ */
+export async function fetchDeduped(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const method = (init.method || 'GET').toUpperCase();
+  if (method !== 'GET') {
+    return fetch(input, init);
+  }
+
+  const key = typeof input === 'string' ? input : input.toString();
+
+  const inflight = _inflightRequests.get(key);
+  if (inflight) {
+    // Clone the response so each consumer gets their own body stream
+    return inflight.then((r) => r.clone());
+  }
+
+  const promise = fetch(input, init).finally(() => {
+    _inflightRequests.delete(key);
+  });
+  _inflightRequests.set(key, promise);
+
+  return promise;
+}
+
+// =============================================================================
 // Fetch Retry Helper
 // =============================================================================
 

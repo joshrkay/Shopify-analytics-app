@@ -134,7 +134,7 @@ class MockShopifyServer:
     def handle_graphql(self, shop: str, query: str, variables: Dict) -> Dict:
         """Handle POST /admin/api/2024-01/graphql.json"""
         # Try to find a matching configured response
-        query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
+        query_hash = hashlib.md5(query.encode(), usedforsecurity=False).hexdigest()[:8]
         key = f"{shop}:{query_hash}"
 
         if key in self._graphql_responses:

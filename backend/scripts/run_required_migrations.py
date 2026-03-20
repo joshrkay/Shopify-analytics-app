@@ -55,6 +55,7 @@ MIGRATIONS = [
     "webhook_order_events.sql",
     "pixel_events.sql",
     "pixel_registrations.sql",
+    "tenant_id_app_indexes.sql",
 ]
 
 
