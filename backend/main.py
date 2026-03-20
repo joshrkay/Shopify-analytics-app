@@ -411,6 +411,11 @@ app.include_router(search.router)
 # Story 9.1 - Notification Framework
 app.include_router(notifications.router)
 
+# Data export and warehouse export routes
+from src.api.routes import data_export, warehouse_export
+app.include_router(data_export.router)
+app.include_router(warehouse_export.router)
+
 
 # ---------------------------------------------------------------------------
 # Serve the built React frontend (bundled into /app/backend/static by Docker)
