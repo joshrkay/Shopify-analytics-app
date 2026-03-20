@@ -52,6 +52,9 @@ MIGRATIONS = [
     "ad_budgets_schema.sql",
     "alerts_schema.sql",
     "analytics_rls.sql",
+    "webhook_order_events.sql",
+    "pixel_events.sql",
+    "pixel_registrations.sql",
 ]
 
 

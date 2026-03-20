@@ -83,7 +83,7 @@ class PlatformOAuthConfig:
 _SHOPIFY_OAUTH_CONFIG = PlatformOAuthConfig(
     auth_url="https://{shop_domain}/admin/oauth/authorize",
     token_url="https://{shop_domain}/admin/oauth/access_token",
-    scope="read_orders,read_products,read_customers,read_marketing_events",
+    scope="read_orders,read_products,read_customers,read_marketing_events,read_analytics,write_pixels,read_customer_events",
     client_id_env="SHOPIFY_API_KEY",
     client_secret_env="SHOPIFY_API_SECRET",
     token_to_source_config={"access_token": "access_token"},

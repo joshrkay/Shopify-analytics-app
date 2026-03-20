@@ -672,6 +672,32 @@ async def oauth_callback(
             db_session=db_session,
         )
 
+        # For Shopify: register order webhooks and web pixel after connection
+        if platform in ("shopify", "shopify_email") and shop_domain and tokens.get("access_token"):
+            try:
+                from src.services.shopify_webhook_manager import register_webhooks
+                from src.services.shopify_pixel_manager import create_web_pixel
+
+                webhook_results = await register_webhooks(shop_domain, tokens["access_token"])
+                logger.info("Shopify webhooks registered after OAuth", extra={
+                    "shop_domain": shop_domain,
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "results": webhook_results,
+                })
+
+                pixel_result = await create_web_pixel(shop_domain, tokens["access_token"])
+                logger.info("Shopify web pixel created after OAuth", extra={
+                    "shop_domain": shop_domain,
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "result": pixel_result,
+                })
+            except Exception as e:
+                # Non-fatal: log but don't fail the OAuth flow
+                logger.warning("Failed to register Shopify webhooks/pixel (non-fatal)", extra={
+                    "shop_domain": shop_domain,
+                    "error": str(e),
+                })
+
         return OAuthCallbackResponse(
             success=True,
             connection_id=conn_info.id,

@@ -180,9 +180,59 @@ attribution_raw as (
                 campaign_fact_id desc nulls last  -- Tie-breaker for same date
         ) as attribution_rank
     from attribution_joined
+),
+
+-- Session-based UTM fallback for orders without UTM in note_attributes
+-- When an order has no UTM params, try to match via pixel session checkout_completed event
+session_utm_fallback as (
+    select
+        cs.order_id,
+        cs.tenant_id,
+        cs.utm_source,
+        cs.utm_medium,
+        cs.utm_campaign,
+        cs.utm_term,
+        cs.utm_content
+    from {{ ref('customer_sessions') }} cs
+    where cs.order_id is not null
+      and cs.checkout_completed = true
+      and (cs.utm_source is not null or cs.utm_campaign is not null)
+),
+
+-- Enrich attribution_raw with session fallback
+attribution_with_session as (
+    select
+        ar.*,
+        -- Use session UTM as fallback when order has no UTM from note_attributes
+        case
+            when ar.utm_source is not null then ar.utm_source
+            else sf.utm_source
+        end as final_utm_source,
+        case
+            when ar.utm_medium is not null then ar.utm_medium
+            else sf.utm_medium
+        end as final_utm_medium,
+        case
+            when ar.utm_campaign is not null then ar.utm_campaign
+            else sf.utm_campaign
+        end as final_utm_campaign,
+        case
+            when ar.utm_term is not null then ar.utm_term
+            else sf.utm_term
+        end as final_utm_term,
+        case
+            when ar.utm_content is not null then ar.utm_content
+            else sf.utm_content
+        end as final_utm_content,
+        sf.order_id is not null as has_session_utm
+    from attribution_raw ar
+    left join session_utm_fallback sf
+        on ar.order_id = sf.order_id
+        and ar.tenant_id = sf.tenant_id
+    where ar.attribution_rank = 1
 )
 
--- Final output: only the top-ranked attribution (last-click)
+-- Final output: only the top-ranked attribution (last-click) with session fallback
 select
     -- Primary key: deterministic hash of order_id + tenant_id
     md5(concat(order_id, '|', tenant_id, '|', 'last_click')) as id,
@@ -193,18 +243,18 @@ select
     order_number,
     customer_key,
     order_created_at,
-    
+
     -- Financial metrics
     revenue,
     currency,
-    
-    -- UTM parameters (the last-click touchpoint)
-    utm_source,
-    utm_medium,
-    utm_campaign,
-    utm_term,
-    utm_content,
-    
+
+    -- UTM parameters (from note_attributes or session fallback)
+    final_utm_source as utm_source,
+    final_utm_medium as utm_medium,
+    final_utm_campaign as utm_campaign,
+    final_utm_term as utm_term,
+    final_utm_content as utm_content,
+
     -- Attributed campaign (null if no match found)
     campaign_fact_id,
     ad_account_id,
@@ -216,19 +266,20 @@ select
     campaign_clicks,
     campaign_impressions,
     campaign_conversions,
-    
-    -- Attribution metadata
-    case 
+
+    -- Attribution metadata (now includes session-based attribution)
+    case
         when campaign_fact_id is not null then 'attributed'
+        when has_session_utm and final_utm_campaign is not null then 'attributed_via_session'
         when utm_campaign is not null then 'unattributed_utm_present'
+        when has_session_utm then 'attributed_via_session'
         else 'unattributed_no_utm'
     end as attribution_status,
-    
+
     -- Tenant isolation (CRITICAL)
     tenant_id,
-    
+
     -- Audit fields
     current_timestamp as dbt_updated_at
-    
-from attribution_raw
-where attribution_rank = 1  -- Only the last-click attribution
+
+from attribution_with_session

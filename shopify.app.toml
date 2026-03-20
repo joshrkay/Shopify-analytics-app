@@ -17,7 +17,7 @@ embedded = true
 # - read_products: Access product catalog
 # - read_customers: Access customer data
 # - read_analytics: Access Shopify's built-in analytics
-scopes = "read_orders,read_products,read_customers,read_analytics"
+scopes = "read_orders,read_products,read_customers,read_analytics,read_marketing_events,write_pixels,read_customer_events"
 
 # Allowed redirect URLs for OAuth flow
 [auth]
@@ -29,7 +29,7 @@ redirect_urls = [
 # Webhooks configuration
 # These match your existing webhook routes in backend/src/api/routes/webhooks_shopify.py
 [webhooks]
-api_version = "2024-01"
+api_version = "2025-01"
 
   # App lifecycle webhooks
   [[webhooks.subscriptions]]
@@ -53,6 +53,15 @@ api_version = "2024-01"
   [[webhooks.subscriptions]]
   topics = ["customers/data_request"]
   uri = "/api/webhooks/shopify/customers-data-request"
+
+  # Order webhooks for real-time attribution
+  [[webhooks.subscriptions]]
+  topics = ["orders/create"]
+  uri = "/api/webhooks/shopify/orders-create"
+
+  [[webhooks.subscriptions]]
+  topics = ["orders/updated"]
+  uri = "/api/webhooks/shopify/orders-updated"
 
 # App distribution settings
 [access_scopes]
