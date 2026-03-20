@@ -17,6 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Depends, Query, status
 
 from src.platform.tenant_context import get_tenant_context
+from src.api.error_utils import api_error
 from src.database.session import get_db_session
 from src.services.billing_entitlements import BillingEntitlementsService, BillingFeature
 from src.services.custom_dashboard_service import (
@@ -183,8 +184,8 @@ async def create_dashboard(
                 "max_count": e.max_count,
             },
         )
-    except DashboardNameConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    except DashboardNameConflictError:
+        raise api_error(409, "A dashboard with this name already exists")
 
     return _dashboard_to_response(dashboard, service)
 
@@ -209,10 +210,10 @@ async def update_dashboard(
         )
     except DashboardNotFoundError:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    except DashboardConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except DashboardNameConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    except DashboardConflictError:
+        raise api_error(409, "Dashboard was modified by another session")
+    except DashboardNameConflictError:
+        raise api_error(409, "A dashboard with this name already exists")
 
     return _dashboard_to_response(dashboard, service)
 
@@ -274,8 +275,8 @@ async def duplicate_dashboard(
                 "max_count": e.max_count,
             },
         )
-    except DashboardNameConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    except DashboardNameConflictError:
+        raise api_error(409, "A dashboard with this name already exists")
 
     return _dashboard_to_response(dashboard, service)
 
@@ -316,8 +317,8 @@ async def get_version_detail(
     """Get a single version with its full snapshot for preview."""
     try:
         version = service.get_version(dashboard_id, version_number)
-    except DashboardNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except DashboardNotFoundError:
+        raise api_error(404, "Dashboard or version not found")
 
     return DashboardVersionDetailResponse.model_validate(version)
 
@@ -333,8 +334,8 @@ async def restore_version(
     """Restore a dashboard to a previous version."""
     try:
         dashboard = service.restore_version(dashboard_id, version_number)
-    except DashboardNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except DashboardNotFoundError:
+        raise api_error(404, "Dashboard or version not found")
 
     return _dashboard_to_response(dashboard, service)
 
@@ -405,12 +406,12 @@ async def add_report(
         )
     except DashboardNotFoundError:
         raise HTTPException(status_code=404, detail="Dashboard not found")
-    except DatasetNotFoundError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ReportNameConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    except DatasetNotFoundError:
+        raise api_error(400, "Dataset not found")
+    except ReportNameConflictError:
+        raise api_error(409, "A report with this name already exists in this dashboard")
+    except ValueError:
+        raise api_error(422, "Invalid report configuration")
 
     return ReportResponse.model_validate(report)
 
@@ -439,10 +440,10 @@ async def update_report(
         raise HTTPException(status_code=404, detail="Dashboard not found")
     except ReportNotFoundError:
         raise HTTPException(status_code=404, detail="Report not found")
-    except ReportNameConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    except ReportNameConflictError:
+        raise api_error(409, "A report with this name already exists in this dashboard")
+    except ValueError:
+        raise api_error(422, "Invalid report configuration")
 
     return ReportResponse.model_validate(report)
 

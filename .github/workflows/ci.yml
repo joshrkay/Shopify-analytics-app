@@ -322,6 +322,14 @@ jobs:
           echo "=========================================="
           dbt debug --profiles-dir . --project-dir . || exit 1
 
+      - name: Cache dbt packages
+        uses: actions/cache@v4
+        with:
+          path: analytics/dbt_packages
+          key: dbt-packages-${{ hashFiles('analytics/packages.yml') }}
+          restore-keys: |
+            dbt-packages-
+
       - name: Install dbt packages
         working-directory: ./analytics
         env:

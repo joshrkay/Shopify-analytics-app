@@ -8,6 +8,7 @@
  * Phase 3 - Dashboard Builder UI
  */
 
+import { useMemo } from 'react';
 import { ChoiceList, BlockStack, Text, Banner } from '@shopify/polaris';
 import type { ColumnMetadata } from '../../../types/customDashboards';
 
@@ -24,12 +25,12 @@ export function DimensionPicker({
   columns,
   onChange,
 }: DimensionPickerProps) {
-  const choices = columns.map((col) => ({
+  const choices = useMemo(() => columns.map((col) => ({
     label: col.column_name,
     value: col.column_name,
     disabled:
       dimensions.length >= MAX_DIMENSIONS && !dimensions.includes(col.column_name),
-  }));
+  })), [columns, dimensions]);
 
   const handleChange = (selected: string[]) => {
     if (selected.length <= MAX_DIMENSIONS) {

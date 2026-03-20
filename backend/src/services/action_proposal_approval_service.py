@@ -430,21 +430,21 @@ class ActionProposalApprovalService:
                 action_type_enum = AT(action_type)
                 query = query.filter(ActionProposal.action_type == action_type_enum)
             except ValueError:
-                pass
+                logger.debug("Unrecognized action_type filter value", extra={"value": action_type})
 
         if platform:
             try:
                 platform_enum = TP(platform)
                 query = query.filter(ActionProposal.target_platform == platform_enum)
             except ValueError:
-                pass
+                logger.debug("Unrecognized platform filter value", extra={"value": platform})
 
         if risk_level:
             try:
                 risk_level_enum = RL(risk_level)
                 query = query.filter(ActionProposal.risk_level == risk_level_enum)
             except ValueError:
-                pass
+                logger.debug("Unrecognized risk_level filter value", extra={"value": risk_level})
 
         # Get total count
         total = query.count()

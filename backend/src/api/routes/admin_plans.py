@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 from pydantic import BaseModel, Field, field_validator
 
 from src.platform.tenant_context import get_tenant_context, TenantContext
+from src.middleware.rate_limit import rate_limit_dependency
 from src.services.plan_service import (
     PlanService,
     PlanServiceError,
@@ -169,7 +170,8 @@ async def list_plans(
     limit: int = Query(100, ge=1, le=500, description="Maximum plans to return"),
     offset: int = Query(0, ge=0, description="Number of plans to skip"),
     tenant_ctx: TenantContext = Depends(verify_admin_role),
-    plan_service: PlanService = Depends(get_plan_service)
+    plan_service: PlanService = Depends(get_plan_service),
+    _rate_limit=Depends(rate_limit_dependency("admin_plans")),
 ):
     """
     List all plans with pagination.
@@ -218,7 +220,8 @@ async def get_plan(
     request: Request,
     plan_id: str,
     tenant_ctx: TenantContext = Depends(verify_admin_role),
-    plan_service: PlanService = Depends(get_plan_service)
+    plan_service: PlanService = Depends(get_plan_service),
+    _rate_limit=Depends(rate_limit_dependency("admin_plans")),
 ):
     """
     Get a specific plan by ID.
@@ -262,7 +265,8 @@ async def create_plan(
     request: Request,
     plan_request: CreatePlanRequest,
     tenant_ctx: TenantContext = Depends(verify_admin_role),
-    plan_service: PlanService = Depends(get_plan_service)
+    plan_service: PlanService = Depends(get_plan_service),
+    _rate_limit=Depends(rate_limit_dependency("admin_plans", limit=20, window=60)),
 ):
     """
     Create a new plan.
@@ -317,7 +321,7 @@ async def create_plan(
     except PlanValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail={"message": str(e), "error_code": "PLAN_VALIDATION_ERROR"}
         )
     except PlanServiceError as e:
         logger.error("Failed to create plan", extra={
@@ -336,7 +340,8 @@ async def update_plan(
     plan_id: str,
     plan_request: UpdatePlanRequest,
     tenant_ctx: TenantContext = Depends(verify_admin_role),
-    plan_service: PlanService = Depends(get_plan_service)
+    plan_service: PlanService = Depends(get_plan_service),
+    _rate_limit=Depends(rate_limit_dependency("admin_plans", limit=20, window=60)),
 ):
     """
     Update an existing plan.
@@ -397,7 +402,7 @@ async def update_plan(
     except PlanValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail={"message": str(e), "error_code": "PLAN_VALIDATION_ERROR"}
         )
     except PlanServiceError as e:
         logger.error("Failed to update plan", extra={
@@ -417,7 +422,8 @@ async def toggle_feature(
     plan_id: str,
     feature_request: ToggleFeatureRequest,
     tenant_ctx: TenantContext = Depends(verify_admin_role),
-    plan_service: PlanService = Depends(get_plan_service)
+    plan_service: PlanService = Depends(get_plan_service),
+    _rate_limit=Depends(rate_limit_dependency("admin_plans", limit=20, window=60)),
 ):
     """
     Toggle a specific feature on/off for a plan.
@@ -464,7 +470,8 @@ async def delete_plan(
     request: Request,
     plan_id: str,
     tenant_ctx: TenantContext = Depends(verify_admin_role),
-    plan_service: PlanService = Depends(get_plan_service)
+    plan_service: PlanService = Depends(get_plan_service),
+    _rate_limit=Depends(rate_limit_dependency("admin_plans", limit=10, window=60)),
 ):
     """
     Delete a plan.
@@ -497,7 +504,8 @@ async def validate_shopify_sync(
     plan_id: str,
     validation_request: ShopifyValidationRequest,
     tenant_ctx: TenantContext = Depends(verify_admin_role),
-    plan_service: PlanService = Depends(get_plan_service)
+    plan_service: PlanService = Depends(get_plan_service),
+    _rate_limit=Depends(rate_limit_dependency("admin_plans", limit=10, window=60)),
 ):
     """
     Validate that a plan can be synced to Shopify Billing.

@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Depends, Query, status
 
 from src.platform.tenant_context import get_tenant_context
+from src.api.error_utils import api_error
 from src.database.session import get_db_session
 from src.services.billing_entitlements import BillingEntitlementsService, BillingFeature
 from src.services.report_template_service import (
@@ -124,8 +125,8 @@ async def instantiate_template(
                 "missing_datasets": e.missing_datasets,
             },
         )
-    except ValueError as e:
-        raise HTTPException(status_code=402, detail=str(e))
+    except ValueError:
+        raise api_error(402, "Template limit reached for current plan")
 
     dashboard_service = CustomDashboardService(db, ctx.tenant_id, ctx.user_id)
     access_level = dashboard_service.get_access_level(dashboard)
