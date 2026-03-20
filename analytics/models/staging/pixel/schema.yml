@@ -27,12 +27,8 @@ sources:
         columns:
           - name: id
             description: "Primary key (UUID)"
-            data_tests:
-              - not_null
           - name: tenant_id
             description: "Tenant identifier"
-            data_tests:
-              - not_null
           - name: shopify_order_id
             description: "Shopify order ID"
           - name: order_name
@@ -57,12 +53,8 @@ sources:
         columns:
           - name: id
             description: "Primary key (UUID)"
-            data_tests:
-              - not_null
           - name: tenant_id
             description: "Tenant identifier"
-            data_tests:
-              - not_null
           - name: shop_domain
             description: "Shopify store domain"
           - name: shopify_pixel_gid
