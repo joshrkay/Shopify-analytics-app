@@ -10,6 +10,9 @@
 }}
 
 {#
+    DEPRECATED: This model is disabled. Use canonical/orders.sql instead.
+    Kept for reference only — will be removed in a future cleanup.
+
     Canonical fact table for Shopify orders (v1).
 
     Source of truth for actual revenue (Shopify orders).

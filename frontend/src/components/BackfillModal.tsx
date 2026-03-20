@@ -6,7 +6,7 @@
  * Shows estimated scope and warnings about rate limits.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Modal,
   BlockStack,
@@ -59,6 +59,18 @@ const BackfillModal: React.FC<BackfillModalProps> = ({
   const [estimating, setEstimating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Ref for auto-close timeout to prevent memory leak
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Initialize dates (default to last 7 days)
   useEffect(() => {
@@ -133,12 +145,13 @@ const BackfillModal: React.FC<BackfillModalProps> = ({
       setSuccess(true);
 
       // Auto-close after success
-      setTimeout(() => {
+      successTimeoutRef.current = setTimeout(() => {
         onSuccess();
       }, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to trigger backfill:', err);
-      setError(err.detail || 'Failed to trigger backfill. Please try again.');
+      const detail = err instanceof Object && 'detail' in err ? (err as { detail: string }).detail : undefined;
+      setError(detail || 'Failed to trigger backfill. Please try again.');
     } finally {
       setLoading(false);
     }

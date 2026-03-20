@@ -86,7 +86,7 @@ export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSo
   }, [reset, onClose]);
 
   const handlePlatformSelect = useCallback(
-    (platform: any) => {
+    (platform: DataSourceDefinition) => {
       selectPlatform(platform);
     },
     [selectPlatform]

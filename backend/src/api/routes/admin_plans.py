@@ -580,5 +580,5 @@ async def validate_shopify_sync(
             plan_name=None,
             price_amount=None,
             currency_code=None,
-            error=str(e)
+            error="Shopify validation failed. Please try again."
         )

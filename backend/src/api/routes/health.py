@@ -9,7 +9,7 @@ from src.platform.db_readiness import (
 router = APIRouter()
 
 @router.get("/health")
-def health():
+async def health():
     return {"status": "ok"}
 
 

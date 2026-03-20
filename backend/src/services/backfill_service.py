@@ -363,7 +363,7 @@ class BackfillService:
             match = re.search(r"Total=(\d+)", dbt_output)
             if match:
                 return int(match.group(1))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to parse dbt output for total count", extra={"error": str(e)})
 
         return None

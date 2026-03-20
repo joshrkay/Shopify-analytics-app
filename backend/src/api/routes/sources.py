@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import secrets
+import time
 from typing import List, Optional
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 
@@ -121,8 +122,21 @@ def _get_redis_client():
     return None
 
 
-# In-memory fallback when Redis is unavailable
+# In-memory fallback when Redis is unavailable.
+# Stores {state: {"data": dict, "created_at": float}} with TTL-based eviction.
 _oauth_state_store_fallback: dict[str, dict] = {}
+_FALLBACK_MAX_ENTRIES = 200
+
+
+def _evict_expired_states() -> None:
+    """Remove expired entries from the in-memory fallback store."""
+    now = time.monotonic()
+    expired = [
+        key for key, val in _oauth_state_store_fallback.items()
+        if now - val.get("created_at", 0) > OAUTH_STATE_TTL_SECONDS
+    ]
+    for key in expired:
+        _oauth_state_store_fallback.pop(key, None)
 
 
 def _store_oauth_state(state: str, data: dict) -> None:
@@ -131,7 +145,18 @@ def _store_oauth_state(state: str, data: dict) -> None:
     if redis:
         redis.set(f"oauth_state:{state}", json.dumps(data), OAUTH_STATE_TTL_SECONDS)
     else:
-        _oauth_state_store_fallback[state] = data
+        _evict_expired_states()
+        # Enforce max entries to prevent unbounded growth
+        if len(_oauth_state_store_fallback) >= _FALLBACK_MAX_ENTRIES:
+            oldest_key = min(
+                _oauth_state_store_fallback,
+                key=lambda k: _oauth_state_store_fallback[k].get("created_at", 0),
+            )
+            _oauth_state_store_fallback.pop(oldest_key, None)
+        _oauth_state_store_fallback[state] = {
+            "data": data,
+            "created_at": time.monotonic(),
+        }
 
 
 def _pop_oauth_state(state: str) -> Optional[dict]:
@@ -143,7 +168,13 @@ def _pop_oauth_state(state: str) -> Optional[dict]:
             redis.delete(f"oauth_state:{state}")
             return json.loads(raw)
         return None
-    return _oauth_state_store_fallback.pop(state, None)
+    entry = _oauth_state_store_fallback.pop(state, None)
+    if entry is None:
+        return None
+    # Check TTL
+    if time.monotonic() - entry.get("created_at", 0) > OAUTH_STATE_TTL_SECONDS:
+        return None
+    return entry.get("data")
 
 
 # =============================================================================

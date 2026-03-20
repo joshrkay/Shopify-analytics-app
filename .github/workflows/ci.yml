@@ -558,6 +558,30 @@ jobs:
           echo "✓ TypeScript compilation passed"
           echo "✓ Vite production build passed"
 
+  # Static Application Security Testing (SAST)
+  sast:
+    name: SAST Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Bandit
+        run: pip install bandit
+      - name: Run Bandit SAST scan
+        run: bandit -r backend/src/ -ll -ii --format json --output bandit-report.json || true
+      - name: Check for high-severity findings
+        run: |
+          bandit -r backend/src/ -ll -ii
+      - name: Upload SAST report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-sast-report
+          path: bandit-report.json
+          retention-days: 30
+
   # Dependency vulnerability scanning
   dependency-audit:
     name: Dependency Vulnerability Scan
@@ -575,20 +599,18 @@ jobs:
       - name: Python dependency audit
         run: |
           pip install pip-audit
-          pip-audit -r backend/requirements.txt --desc || true
-        continue-on-error: true
+          pip-audit -r backend/requirements.txt --desc
       - name: Node dependency audit
         working-directory: frontend
         run: |
           npm ci
-          npm audit --audit-level=high || true
-        continue-on-error: true
+          npm audit --audit-level=high
 
   # Block PR merge if quality gates fail
   pr-check:
     name: PR Merge Gate
     runs-on: ubuntu-latest
-    needs: [quality-gates, platform-tests, billing-regression-tests, dbt-validation, frontend-validation, dependency-audit]
+    needs: [quality-gates, platform-tests, billing-regression-tests, dbt-validation, frontend-validation, dependency-audit, sast]
     if: github.event_name == 'pull_request'
     
     steps:
