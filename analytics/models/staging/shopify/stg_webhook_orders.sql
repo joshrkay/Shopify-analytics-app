@@ -12,9 +12,49 @@
     so downstream models (canonical, attribution) can UNION both sources.
 
     Deduplicates by (tenant_id, order_id) keeping the latest webhook event.
+    Returns empty result if source table doesn't exist yet (CI safety).
 
     SECURITY: Tenant isolation enforced via tenant_id (set at webhook ingestion time).
 #}
+
+-- Check if source table exists; if not, return empty result set
+{% if not source_exists('platform', 'webhook_order_events') %}
+
+select
+    cast(null as text) as record_sk,
+    cast(null as text) as source_system,
+    cast(null as text) as source_primary_key,
+    cast(null as text) as tenant_id,
+    cast(null as text) as order_id,
+    cast(null as text) as order_name,
+    cast(null as integer) as order_number,
+    cast(null as date) as report_date,
+    cast(null as text) as customer_email,
+    cast(null as text) as customer_id_raw,
+    cast(null as timestamp with time zone) as created_at,
+    cast(null as timestamp with time zone) as updated_at,
+    cast(null as timestamp with time zone) as cancelled_at,
+    cast(null as timestamp with time zone) as closed_at,
+    cast(null as numeric) as total_price,
+    cast(null as numeric) as subtotal_price,
+    cast(null as numeric) as total_tax,
+    cast(null as numeric) as total_shipping_price,
+    cast(null as text) as currency,
+    cast(null as text) as financial_status,
+    cast(null as text) as fulfillment_status,
+    cast(null as text) as tags,
+    cast(null as text) as note,
+    cast(null as jsonb) as refunds_json,
+    cast(null as text) as utm_source,
+    cast(null as text) as utm_medium,
+    cast(null as text) as utm_campaign,
+    cast(null as text) as utm_term,
+    cast(null as text) as utm_content,
+    cast(null as text) as airbyte_record_id,
+    cast(null as timestamp with time zone) as airbyte_emitted_at
+where 1=0
+
+{% else %}
 
 with webhook_orders as (
     select
@@ -129,3 +169,5 @@ select
 
 from orders_deduped
 where _row_num = 1
+
+{% endif %}

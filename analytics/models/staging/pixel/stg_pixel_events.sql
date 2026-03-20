@@ -13,9 +13,33 @@
     - Normalizes event types and extracts UTM fields
     - Deduplicates by (session_id, event_type, event_timestamp) within 1-second window
     - Applies tenant isolation via tenant_id
+    - Returns empty result if source table doesn't exist yet (CI safety)
 
     SECURITY: Tenant isolation enforced via tenant_id column.
 #}
+
+-- Check if source table exists; if not, return empty result set
+{% if not source_exists('platform', 'pixel_events') %}
+
+select
+    cast(null as text) as id,
+    cast(null as text) as tenant_id,
+    cast(null as text) as shop_domain,
+    cast(null as text) as session_id,
+    cast(null as text) as event_type,
+    cast(null as jsonb) as event_data,
+    cast(null as text) as page_url,
+    cast(null as text) as referrer,
+    cast(null as text) as utm_source,
+    cast(null as text) as utm_medium,
+    cast(null as text) as utm_campaign,
+    cast(null as text) as utm_term,
+    cast(null as text) as utm_content,
+    cast(null as timestamp with time zone) as event_timestamp,
+    cast(null as timestamp with time zone) as created_at
+where 1=0
+
+{% else %}
 
 with raw_events as (
     select
@@ -70,3 +94,5 @@ select
     created_at
 from deduped
 where dedup_rank = 1
+
+{% endif %}
