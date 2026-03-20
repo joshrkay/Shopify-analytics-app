@@ -180,7 +180,7 @@ attribution_raw as (
                 campaign_fact_id desc nulls last  -- Tie-breaker for same date
         ) as attribution_rank
     from attribution_joined
-)
+),
 
 -- Session-based UTM fallback for orders without UTM in note_attributes
 -- When an order has no UTM params, try to match via pixel session checkout_completed event

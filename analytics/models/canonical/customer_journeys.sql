@@ -28,21 +28,20 @@ with sessions as (
         tenant_id,
         session_id as raw_session_id,
         landing_page_url,
-        landing_utm_source,
-        landing_utm_medium,
-        landing_utm_campaign,
+        utm_source,
+        utm_medium,
+        utm_campaign,
         session_start,
         session_end,
         session_duration_seconds,
         pages_viewed,
         products_viewed,
-        collections_viewed,
-        searches_performed,
+        searches,
         cart_viewed,
         checkout_started,
         checkout_completed,
         payment_submitted,
-        linked_order_id
+        order_id
     from {{ ref('customer_sessions') }}
     where tenant_id is not null
 
@@ -84,8 +83,7 @@ journey_aggregation as (
         count(*) as total_sessions,
         sum(pages_viewed) as total_page_views,
         sum(products_viewed) as total_products_viewed,
-        sum(collections_viewed) as total_collections_viewed,
-        sum(searches_performed) as total_searches,
+        sum(searches) as total_searches,
 
         -- Funnel progression (any session)
         bool_or(cart_viewed) as ever_viewed_cart,
@@ -94,26 +92,26 @@ journey_aggregation as (
         bool_or(payment_submitted) as ever_submitted_payment,
 
         -- Conversion
-        count(distinct linked_order_id) filter (
-            where linked_order_id is not null
+        count(distinct order_id) filter (
+            where order_id is not null
         ) as total_orders,
-        bool_or(linked_order_id is not null) as has_converted,
+        bool_or(order_id is not null) as has_converted,
 
         -- First-touch attribution
-        (array_agg(landing_utm_source order by session_start asc)
-            filter (where landing_utm_source is not null))[1] as first_touch_utm_source,
-        (array_agg(landing_utm_medium order by session_start asc)
-            filter (where landing_utm_medium is not null))[1] as first_touch_utm_medium,
-        (array_agg(landing_utm_campaign order by session_start asc)
-            filter (where landing_utm_campaign is not null))[1] as first_touch_utm_campaign,
+        (array_agg(utm_source order by session_start asc)
+            filter (where utm_source is not null))[1] as first_touch_utm_source,
+        (array_agg(utm_medium order by session_start asc)
+            filter (where utm_medium is not null))[1] as first_touch_utm_medium,
+        (array_agg(utm_campaign order by session_start asc)
+            filter (where utm_campaign is not null))[1] as first_touch_utm_campaign,
 
         -- Last-touch attribution
-        (array_agg(landing_utm_source order by session_start desc)
-            filter (where landing_utm_source is not null))[1] as last_touch_utm_source,
-        (array_agg(landing_utm_medium order by session_start desc)
-            filter (where landing_utm_medium is not null))[1] as last_touch_utm_medium,
-        (array_agg(landing_utm_campaign order by session_start desc)
-            filter (where landing_utm_campaign is not null))[1] as last_touch_utm_campaign,
+        (array_agg(utm_source order by session_start desc)
+            filter (where utm_source is not null))[1] as last_touch_utm_source,
+        (array_agg(utm_medium order by session_start desc)
+            filter (where utm_medium is not null))[1] as last_touch_utm_medium,
+        (array_agg(utm_campaign order by session_start desc)
+            filter (where utm_campaign is not null))[1] as last_touch_utm_campaign,
 
         -- Engagement metrics
         avg(session_duration_seconds) as avg_session_duration_seconds,
@@ -132,7 +130,6 @@ select
     total_sessions,
     total_page_views,
     total_products_viewed,
-    total_collections_viewed,
     total_searches,
     ever_viewed_cart,
     ever_started_checkout,

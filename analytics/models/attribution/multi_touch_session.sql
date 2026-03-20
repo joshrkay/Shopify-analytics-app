@@ -34,18 +34,18 @@ with converted_sessions as (
         id as converting_session_id,
         tenant_id,
         session_id,
-        linked_order_id as order_id,
+        order_id,
         session_start as conversion_session_start,
-        landing_utm_source,
-        landing_utm_medium,
-        landing_utm_campaign,
-        landing_utm_term,
-        landing_utm_content,
+        utm_source,
+        utm_medium,
+        utm_campaign,
+        utm_term,
+        utm_content,
         -- Use session_id prefix as visitor key (same logic as customer_journeys)
         split_part(session_id, '-', 1) || '-' ||
         split_part(session_id, '-', 2) as visitor_key
     from {{ ref('customer_sessions') }}
-    where linked_order_id is not null
+    where order_id is not null
         and checkout_completed = true
 ),
 
@@ -60,11 +60,11 @@ touchpoint_sessions as (
         s.id as touchpoint_session_id,
         s.session_id as touchpoint_raw_session_id,
         s.session_start as touchpoint_session_start,
-        s.landing_utm_source as touchpoint_utm_source,
-        s.landing_utm_medium as touchpoint_utm_medium,
-        s.landing_utm_campaign as touchpoint_utm_campaign,
-        s.landing_utm_term as touchpoint_utm_term,
-        s.landing_utm_content as touchpoint_utm_content,
+        s.utm_source as touchpoint_utm_source,
+        s.utm_medium as touchpoint_utm_medium,
+        s.utm_campaign as touchpoint_utm_campaign,
+        s.utm_term as touchpoint_utm_term,
+        s.utm_content as touchpoint_utm_content,
         s.landing_page_url as touchpoint_landing_page,
         s.pages_viewed as touchpoint_pages_viewed,
         s.products_viewed as touchpoint_products_viewed,
