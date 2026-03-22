@@ -73,7 +73,7 @@ interface DashboardBuilderActions {
   // Dashboard actions
   setDashboard: (dashboard: Dashboard) => void;
   updateDashboardMeta: (updates: { name?: string; description?: string }) => void;
-  saveDashboard: () => Promise<void>;
+  saveDashboard: () => Promise<string | undefined>;
   publishDashboard: () => Promise<void>;
 
   // Report actions
@@ -347,7 +347,7 @@ export function DashboardBuilderProvider({
     [],
   );
 
-  const saveDashboard = useCallback(async () => {
+  const saveDashboard = useCallback(async (): Promise<string | undefined> => {
     setState((prev) => ({ ...prev, isSaving: true, saveError: null, saveErrorStatus: null }));
 
     try {
@@ -387,7 +387,7 @@ export function DashboardBuilderProvider({
           isDirty: false,
           isSaving: false,
         }));
-        return;
+        return completeDashboard.id;
       }
 
       // EDIT MODE: Existing save logic

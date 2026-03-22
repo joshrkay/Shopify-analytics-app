@@ -18,6 +18,8 @@ import {
   Box,
   Text,
   Banner,
+  Toast,
+  Frame,
 } from '@shopify/polaris';
 import type { ChartType, WidgetCatalogItem } from '../../../types/customDashboards';
 import { useDashboardBuilder } from '../../../contexts/DashboardBuilderContext';
@@ -64,6 +66,9 @@ export function WizardFlow() {
   const [previewUseLiveData, setPreviewUseLiveData] = useState(false);
   const [refetchKey, setRefetchKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Success toast state
+  const [toastActive, setToastActive] = useState(false);
 
   // Enter wizard mode on mount
   useEffect(() => {
@@ -121,9 +126,16 @@ export function WizardFlow() {
 
   const handleSave = useCallback(async () => {
     try {
-      await saveDashboard();
-      // Navigate to dashboards list on success
-      navigate('/dashboards');
+      const newDashboardId = await saveDashboard();
+      setToastActive(true);
+      // Brief delay so the user sees the toast before navigation
+      setTimeout(() => {
+        if (newDashboardId) {
+          navigate(`/dashboards/${newDashboardId}`);
+        } else {
+          navigate('/dashboards');
+        }
+      }, 800);
     } catch (err) {
       console.error('Failed to save dashboard:', err);
       // Error is handled by context
@@ -291,6 +303,15 @@ export function WizardFlow() {
           isSaving={isSaving}
         />
       </BlockStack>
+
+      {toastActive && (
+        <Frame>
+          <Toast
+            content="Dashboard created successfully"
+            onDismiss={() => setToastActive(false)}
+          />
+        </Frame>
+      )}
     </Page>
   );
 }

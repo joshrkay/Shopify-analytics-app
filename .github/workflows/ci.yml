@@ -448,6 +448,64 @@ jobs:
             (_airbyte_ab_id, _airbyte_emitted_at, _airbyte_data)
           values
             ('google-1', '2024-01-15 08:00:00+00', '{"customer_id": "1234567890", "campaign_id": "987654321", "ad_group_id": "111222333", "ad_id": "444555666", "date": "2024-01-15", "cost_micros": "25500000", "impressions": "5000", "clicks": "150", "conversions": "5.0", "conversion_value": "250.00", "currency_code": "USD", "campaign_name": "Test Campaign", "ad_group_name": "Test Ad Group", "ad_type": "SEARCH", "device": "DESKTOP", "network": "SEARCH"}'::jsonb);
+
+          -- Pixel/webhook source tables (public schema)
+          -- Required for dbt source tests in models/staging/pixel/schema.yml
+          create table if not exists public.pixel_events (
+            id text primary key,
+            tenant_id text not null,
+            shop_domain text not null,
+            session_id text not null,
+            event_type text not null,
+            event_data jsonb,
+            page_url text,
+            referrer text,
+            utm_source text,
+            utm_medium text,
+            utm_campaign text,
+            utm_term text,
+            utm_content text,
+            event_timestamp timestamptz not null,
+            created_at timestamptz default now(),
+            updated_at timestamptz default now()
+          );
+
+          create table if not exists public.pixel_registrations (
+            id text primary key,
+            tenant_id text not null,
+            shop_domain text not null,
+            pixel_id text,
+            shopify_pixel_gid text,
+            status text not null default 'active',
+            created_at timestamptz default now(),
+            updated_at timestamptz default now()
+          );
+
+          create table if not exists public.webhook_order_events (
+            id text primary key,
+            tenant_id text not null,
+            shop_domain text not null,
+            shopify_order_id text not null,
+            order_name text,
+            order_number text,
+            total_price numeric(12,2),
+            subtotal_price numeric(12,2),
+            currency text,
+            financial_status text,
+            fulfillment_status text,
+            utm_source text,
+            utm_medium text,
+            utm_campaign text,
+            utm_term text,
+            utm_content text,
+            note_attributes_json jsonb,
+            raw_payload jsonb,
+            event_type text not null,
+            order_created_at timestamptz,
+            received_at timestamptz default now(),
+            created_at timestamptz default now(),
+            updated_at timestamptz default now()
+          );
           SQL
 
       - name: Run dbt compile

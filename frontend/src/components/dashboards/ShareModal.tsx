@@ -506,7 +506,7 @@ export function ShareModal({
             <FormLayout>
               <FormLayout.Group>
                 <TextField
-                  label="User email or ID"
+                  label="User ID"
                   value={userId}
                   onChange={setUserId}
                   placeholder="Enter user ID"
