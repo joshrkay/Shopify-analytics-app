@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bell,
   CreditCard,
@@ -18,6 +18,16 @@ import { DataSourcesSettingsTab } from '../components/settings/DataSourcesSettin
 import { SyncSettingsTab } from '../components/settings/SyncSettingsTab';
 import { TeamSettings } from '../components/settings/TeamSettings';
 import { NotificationsSettingsTab } from '../components/settings/NotificationsSettingsTab';
+import {
+  createApiKey,
+  fetchAiInsightsSettings,
+  fetchApiKeys,
+  revokeApiKey,
+  updateAiInsightsSettings,
+  type AiInsightsSettings,
+  type ApiKeySummary,
+} from '../services/settingsApi';
+import { getErrorMessage } from '../services/apiUtils';
 
 const ROLE_RANK = {
   viewer: 0,
@@ -121,26 +131,162 @@ function BillingSettingsTab() {
 }
 
 function ApiKeysSettingsTab() {
+  const [keys, setKeys] = useState<ApiKeySummary[]>([]);
+  const [name, setName] = useState('');
+  const [expiresInDays, setExpiresInDays] = useState('90');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetchApiKeys();
+        if (!mounted) return;
+        setKeys(response.keys);
+      } catch (err) {
+        if (!mounted) return;
+        setError(getErrorMessage(err, 'Failed to load API keys'));
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const submitCreateKey = async () => {
+    const trimmedName = name.trim();
+    if (trimmedName.length < 3) {
+      setError('Key name must be at least 3 characters.');
+      return;
+    }
+
+    const parsedExpires = Number.parseInt(expiresInDays, 10);
+    if (Number.isNaN(parsedExpires) || parsedExpires < 1 || parsedExpires > 365) {
+      setError('Expiration must be between 1 and 365 days.');
+      return;
+    }
+
+    const optimisticKey: ApiKeySummary = {
+      id: `optimistic-${Date.now()}`,
+      name: trimmedName,
+      key_prefix: 'creating...',
+      created_at: new Date().toISOString(),
+      last_used_at: null,
+      expires_at: null,
+      revoked_at: null,
+      is_active: true,
+    };
+
+    const previousKeys = keys;
+    setSaving(true);
+    setError(null);
+    setNewlyCreatedKey(null);
+    setKeys([optimisticKey, ...keys]);
+
+    try {
+      const response = await createApiKey({
+        name: trimmedName,
+        expires_in_days: parsedExpires,
+      });
+      setKeys((current) => [response.key, ...current.filter((key) => key.id !== optimisticKey.id)]);
+      setNewlyCreatedKey(response.plaintext_key);
+      setName('');
+    } catch (err) {
+      setKeys(previousKeys);
+      setError(getErrorMessage(err, 'Failed to create API key'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onRevoke = async (keyId: string) => {
+    const previousKeys = keys;
+    setRevokingId(keyId);
+    setKeys((current) => current.map((key) => (key.id === keyId ? { ...key, is_active: false } : key)));
+    try {
+      await revokeApiKey(keyId);
+    } catch (err) {
+      setKeys(previousKeys);
+      setError(getErrorMessage(err, 'Failed to revoke API key'));
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
   return (
     <section data-testid="settings-panel-api">
       <h2 className="text-xl font-semibold mb-1">API Keys</h2>
       <p className="text-gray-500 text-sm mb-6">Programmatic access to your analytics data.</p>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="bg-gray-100 p-2 rounded-lg">
-            <Key className="w-5 h-5 text-gray-600" />
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
           </div>
-          <div>
-            <p className="font-semibold text-gray-900">API Access</p>
-            <p className="text-sm text-gray-500">
-              Coming soon — API key management is under development.
-            </p>
+        )}
+        {newlyCreatedKey && (
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Save this key now (it will only be shown once): <span className="font-mono">{newlyCreatedKey}</span>
           </div>
+        )}
+
+        <div className="grid gap-3 md:grid-cols-[1fr_150px_auto] mb-5">
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Key name (e.g. CI pipeline)"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <input
+            type="number"
+            min={1}
+            max={365}
+            value={expiresInDays}
+            onChange={(event) => setExpiresInDays(event.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            aria-label="Expires in days"
+          />
+          <button
+            onClick={submitCreateKey}
+            disabled={saving}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saving ? 'Creating...' : 'Create key'}
+          </button>
         </div>
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-700">
-          API access will let you pull your analytics data into external tools and workflows.
-          This feature is on the roadmap for the next release.
+
+        <div className="space-y-3">
+          {loading && <p className="text-sm text-gray-500">Loading keys...</p>}
+          {!loading && keys.length === 0 && (
+            <p className="text-sm text-gray-500">No API keys yet. Create one to get started.</p>
+          )}
+          {keys.map((key) => (
+            <div key={key.id} className="rounded-lg border border-gray-200 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-gray-900">{key.name}</p>
+                  <p className="text-xs text-gray-500">
+                    Prefix: <span className="font-mono">{key.key_prefix}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => onRevoke(key.id)}
+                  disabled={!key.is_active || revokingId === key.id}
+                  className="rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-700 disabled:opacity-50"
+                >
+                  {!key.is_active ? 'Revoked' : revokingId === key.id ? 'Revoking...' : 'Revoke'}
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
@@ -148,6 +294,68 @@ function ApiKeysSettingsTab() {
 }
 
 function AiInsightsSettingsTab() {
+  const [form, setForm] = useState<AiInsightsSettings>({
+    enabled: true,
+    model: 'gpt-4.1-mini',
+    cadence: 'weekly',
+    include_recommendations: true,
+    max_insights_per_run: 5,
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [entitled, setEntitled] = useState(true);
+  const [entitlementReason, setEntitlementReason] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetchAiInsightsSettings();
+        if (!mounted) return;
+        setForm(response.settings);
+        setEntitled(response.entitled);
+        setEntitlementReason(response.entitlement_reason);
+      } catch (err) {
+        if (!mounted) return;
+        setError(getErrorMessage(err, 'Failed to load AI settings'));
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const save = async () => {
+    if (form.max_insights_per_run < 1 || form.max_insights_per_run > 20) {
+      setError('Max insights per run must be between 1 and 20.');
+      return;
+    }
+
+    const previousState = form;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await updateAiInsightsSettings(form);
+      setForm(response.settings);
+      setEntitled(response.entitled);
+      setEntitlementReason(response.entitlement_reason);
+      setSuccess('Saved AI insights settings.');
+    } catch (err) {
+      setForm(previousState);
+      setError(getErrorMessage(err, 'Failed to save AI settings'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <section data-testid="settings-panel-ai">
       <h2 className="text-xl font-semibold mb-1">AI Insights</h2>
@@ -156,21 +364,89 @@ function AiInsightsSettingsTab() {
       </p>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="bg-purple-100 p-2 rounded-lg">
-            <Sparkles className="w-5 h-5 text-purple-600" />
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
           </div>
-          <div>
-            <p className="font-semibold text-gray-900">AI Configuration</p>
-            <p className="text-sm text-gray-500">
-              Advanced AI settings are coming soon.
-            </p>
+        )}
+        {success && (
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {success}
           </div>
-        </div>
-        <div className="bg-purple-50 border border-purple-100 rounded-lg p-4 text-sm text-purple-700">
-          Upcoming settings will include AI model selection, insight frequency, and custom analysis
-          prompts. AI insights are currently enabled and running with default settings.
-        </div>
+        )}
+        {!entitled && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            AI Insights is not available on your current plan. {entitlementReason ?? ''}
+          </div>
+        )}
+        {loading ? (
+          <p className="text-sm text-gray-500">Loading AI settings...</p>
+        ) : (
+          <div className="space-y-4">
+            <label className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+              <span className="text-sm text-gray-700">Enable AI insights</span>
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))}
+                disabled={!entitled}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm text-gray-700">Model</span>
+              <select
+                value={form.model}
+                onChange={(event) => setForm((current) => ({ ...current, model: event.target.value as AiInsightsSettings['model'] }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                disabled={!entitled}
+              >
+                <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+                <option value="gpt-4.1">GPT-4.1</option>
+                <option value="gpt-5-mini">GPT-5 Mini</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm text-gray-700">Insight cadence</span>
+              <select
+                value={form.cadence}
+                onChange={(event) => setForm((current) => ({ ...current, cadence: event.target.value as AiInsightsSettings['cadence'] }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                disabled={!entitled}
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm text-gray-700">Max insights per run</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={form.max_insights_per_run}
+                onChange={(event) => setForm((current) => ({ ...current, max_insights_per_run: Number.parseInt(event.target.value, 10) || 0 }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                disabled={!entitled}
+              />
+            </label>
+            <label className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+              <span className="text-sm text-gray-700">Include recommendations</span>
+              <input
+                type="checkbox"
+                checked={form.include_recommendations}
+                onChange={(event) => setForm((current) => ({ ...current, include_recommendations: event.target.checked }))}
+                disabled={!entitled}
+              />
+            </label>
+            <button
+              onClick={save}
+              disabled={saving || !entitled}
+              className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save AI settings'}
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
