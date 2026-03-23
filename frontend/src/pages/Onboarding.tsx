@@ -44,9 +44,16 @@ const AD_PLATFORMS = [
   { id: "google_ads",    name: "Google Ads",           icon: "🔍", description: "Search, Shopping & Display" },
   { id: "tiktok_ads",    name: "TikTok Ads",           icon: "🎵", description: "Short-form video campaigns"  },
   { id: "snapchat_ads",  name: "Snapchat Ads",         icon: "👻", description: "Snap story & discover ads"   },
-  { id: "pinterest_ads", name: "Pinterest Ads",        icon: "📌", description: "Promoted pins (coming soon)", comingSoon: true },
-  { id: "twitter_ads",   name: "Twitter / X Ads",      icon: "🐦", description: "Promoted tweets (coming soon)", comingSoon: true },
+  { id: "pinterest_ads", name: "Pinterest Ads",        icon: "📌", description: "Promoted pins" },
+  { id: "twitter_ads",   name: "Twitter / X Ads",      icon: "🐦", description: "Promoted tweets" },
 ];
+
+function isPlatformConnectable(definition: DataSourceDefinition | null): boolean {
+  if (!definition) return false;
+  const capabilityFlag = definition.capabilities?.connect ?? definition.capabilities?.canConnect ?? definition.canConnect;
+  if (typeof capabilityFlag === 'boolean') return capabilityFlag;
+  return definition.isEnabled;
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -62,6 +69,8 @@ export function Onboarding() {
   const { catalog } = useDataSourceCatalog();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardPlatform, setWizardPlatform] = useState<DataSourceDefinition | null>(null);
+  const shopifyDefinition = catalog.find((entry) => entry.platform === 'shopify') ?? null;
+  const shopifyConnectable = isPlatformConnectable(shopifyDefinition);
 
   const openWizard = (platformId: string) => {
     const def = catalog.find(p => p.platform === platformId) ?? null;
@@ -151,6 +160,7 @@ export function Onboarding() {
             <ShopifyStep
               connected={shopifyConnected}
               catalogLoaded={catalog.length > 0}
+              connectable={shopifyConnectable}
               onConnect={() => openWizard('shopify')}
               onNext={() => setStep(3)}
               onSkip={() => setStep(3)}
@@ -160,6 +170,7 @@ export function Onboarding() {
             <AdPlatformsStep
               connectedPlatforms={connectedPlatforms}
               catalogLoaded={catalog.length > 0}
+              catalog={catalog}
               onConnect={(id) => openWizard(id)}
               onNext={() => setStep(4)}
               onSkip={() => setStep(4)}
@@ -238,16 +249,20 @@ function FeaturePill({ icon, label }: { icon: string; label: string }) {
 function ShopifyStep({
   connected,
   catalogLoaded,
+  connectable,
   onConnect,
   onNext,
   onSkip,
 }: {
   connected: boolean;
   catalogLoaded: boolean;
+  connectable: boolean;
   onConnect: () => void;
   onNext: () => void;
   onSkip: () => void;
 }) {
+  const canStartConnection = catalogLoaded && connectable;
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
@@ -289,7 +304,7 @@ function ShopifyStep({
         {!connected ? (
           <button
             onClick={onConnect}
-            disabled={!catalogLoaded}
+            disabled={!canStartConnection}
             className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {!catalogLoaded ? (
@@ -297,6 +312,8 @@ function ShopifyStep({
                 <Loader2 className="w-5 h-5 animate-spin" />
                 Loading...
               </>
+            ) : !connectable ? (
+              "Not available yet"
             ) : (
               <>
                 Connect Shopify Store
@@ -332,12 +349,14 @@ function ShopifyStep({
 function AdPlatformsStep({
   connectedPlatforms,
   catalogLoaded,
+  catalog,
   onConnect,
   onNext,
   onSkip,
 }: {
   connectedPlatforms: Set<string>;
   catalogLoaded: boolean;
+  catalog: DataSourceDefinition[];
   onConnect: (id: string) => void;
   onNext: () => void;
   onSkip: () => void;
@@ -357,11 +376,15 @@ function AdPlatformsStep({
       <div className="space-y-2 mb-6">
         {AD_PLATFORMS.map(platform => {
           const isConnected = connectedPlatforms.has(platform.id);
+          const catalogMatch = catalog.find((entry) => entry.platform === platform.id) ?? null;
+          const isConnectable = isPlatformConnectable(catalogMatch);
+          const showNotAvailable = catalogLoaded && !isConnectable;
+
           return (
             <div
               key={platform.id}
               className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                platform.comingSoon
+                showNotAvailable
                   ? "opacity-50 border-gray-100 bg-gray-50"
                   : isConnected
                   ? "border-green-300 bg-green-50"
@@ -372,8 +395,8 @@ function AdPlatformsStep({
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-gray-900">{platform.name}</p>
-                  {platform.comingSoon && (
-                    <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-500 rounded-full">Soon</span>
+                  {showNotAvailable && (
+                    <span className="px-2 py-0.5 text-xs bg-gray-200 text-gray-500 rounded-full">Not available</span>
                   )}
                 </div>
                 <p className="text-xs text-gray-500">{platform.description}</p>
@@ -382,19 +405,21 @@ function AdPlatformsStep({
                 <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
                   <Check className="w-4 h-4 text-white" />
                 </div>
-              ) : !platform.comingSoon ? (
+              ) : (
                 <button
                   onClick={() => onConnect(platform.id)}
-                  disabled={!catalogLoaded}
+                  disabled={!catalogLoaded || !isConnectable}
                   className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                 >
                   {!catalogLoaded ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : !isConnectable ? (
+                    "Unavailable"
                   ) : (
                     "Connect"
                   )}
                 </button>
-              ) : null}
+              )}
             </div>
           );
         })}
