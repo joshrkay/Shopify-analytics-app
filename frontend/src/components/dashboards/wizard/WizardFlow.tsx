@@ -32,6 +32,8 @@ import { WidgetGallery } from './WidgetGallery';
 import { LayoutCustomizer } from '../../builder/LayoutCustomizer';
 import { PreviewGrid } from './PreviewGrid';
 import { PreviewControls } from './PreviewControls';
+import { createTemplate } from '../../../services/templatesApi';
+import { getErrorMessage } from '../../../services/apiUtils';
 
 export function WizardFlow() {
   const navigate = useNavigate();
@@ -67,8 +69,16 @@ export function WizardFlow() {
   const [refetchKey, setRefetchKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Success toast state
-  const [toastActive, setToastActive] = useState(false);
+  // Toast state
+  const [toastState, setToastState] = useState<{
+    active: boolean;
+    content: string;
+    error: boolean;
+  }>({
+    active: false,
+    content: '',
+    error: false,
+  });
 
   // Enter wizard mode on mount
   useEffect(() => {
@@ -127,7 +137,11 @@ export function WizardFlow() {
   const handleSave = useCallback(async () => {
     try {
       const newDashboardId = await saveDashboard();
-      setToastActive(true);
+      setToastState({
+        active: true,
+        content: 'Dashboard created successfully',
+        error: false,
+      });
       // Brief delay so the user sees the toast before navigation
       setTimeout(() => {
         if (newDashboardId) {
@@ -147,11 +161,51 @@ export function WizardFlow() {
     navigate('/dashboards');
   }, [exitWizardMode, navigate]);
 
-  const handleSaveAsTemplate = useCallback(() => {
-    // Template saving requires backend integration (Epic 6 scope)
-    console.info('Save as Template feature coming soon!');
-    alert('Save as Template feature coming soon! This will be available in a future release.');
-  }, []);
+  const handleSaveAsTemplate = useCallback(async () => {
+    try {
+      const templateName = wizardState.dashboardName.trim() || 'Untitled Dashboard Template';
+      const templateDescription = wizardState.dashboardDescription.trim();
+
+      await createTemplate({
+        name: templateName,
+        description: templateDescription || undefined,
+        category: 'operations',
+        min_billing_tier: 'free',
+        config_json: {
+          dashboard: {
+            name: templateName,
+            description: templateDescription || null,
+          },
+          reports: wizardState.selectedWidgets.map((widget) => ({
+            name: widget.name,
+            description: widget.description,
+            chart_type: widget.chart_type,
+            dataset_name: widget.dataset_name,
+            config_json: widget.config_json,
+            position_json: widget.position_json,
+            sort_order: widget.sort_order,
+          })),
+        },
+      });
+
+      setToastState({
+        active: true,
+        content: 'Template saved successfully',
+        error: false,
+      });
+    } catch (err) {
+      console.error('Failed to save template:', err);
+      setToastState({
+        active: true,
+        content: getErrorMessage(err, 'Failed to save template'),
+        error: true,
+      });
+    }
+  }, [
+    wizardState.dashboardName,
+    wizardState.dashboardDescription,
+    wizardState.selectedWidgets,
+  ]);
 
   const handleAddWidget = useCallback(
     (item: WidgetCatalogItem) => {
@@ -304,11 +358,12 @@ export function WizardFlow() {
         />
       </BlockStack>
 
-      {toastActive && (
+      {toastState.active && (
         <Frame>
           <Toast
-            content="Dashboard created successfully"
-            onDismiss={() => setToastActive(false)}
+            content={toastState.content}
+            error={toastState.error}
+            onDismiss={() => setToastState((prev) => ({ ...prev, active: false }))}
           />
         </Frame>
       )}
