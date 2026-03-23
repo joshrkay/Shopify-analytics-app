@@ -14,6 +14,7 @@ import type {
   TemplateListResponse,
   TemplateFilters,
   Dashboard,
+  CreateTemplateRequest,
 } from '../types/customDashboards';
 import {
   API_BASE_URL,
@@ -78,4 +79,22 @@ export async function instantiateTemplate(
     },
   );
   return handleResponse<Dashboard>(response);
+}
+
+/**
+ * Create a new template.
+ */
+export async function createTemplate(
+  body: CreateTemplateRequest,
+): Promise<ReportTemplate> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(
+    `${API_BASE_URL}${API_ROUTES.templates}`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    },
+  );
+  return handleResponse<ReportTemplate>(response);
 }
