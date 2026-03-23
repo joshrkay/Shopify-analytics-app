@@ -14,7 +14,7 @@ SECURITY:
 
 import logging
 from typing import List, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, HTTPException, status
 from pydantic import BaseModel, Field
@@ -28,6 +28,7 @@ from src.services.billing_entitlements import (
     BillingFeature,
     check_billing_entitlement_decorator,
 )
+from src.services.agency_token_service import AgencyTokenService, SwitchTokenClaims
 
 logger = logging.getLogger(__name__)
 
@@ -123,53 +124,6 @@ def _validate_tenant_access(tenant_context: TenantContext, tenant_id: str) -> No
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have access to this store"
         )
-
-
-def _generate_jwt_token(
-    user_id: str,
-    tenant_id: str,
-    roles: List[str],
-    allowed_tenants: List[str],
-    billing_tier: str,
-    org_id: str,
-    access_surface: str = "external_app",
-    access_expiring_at: Optional[datetime] = None,
-) -> str:
-    """
-    Generate a new JWT token with updated tenant context.
-
-    Args:
-        access_surface: "shopify_embed" or "external_app"
-        access_expiring_at: Grace period expiry (Story 5.5.4)
-
-    NOTE: In production, this should call your auth service (e.g., Clerk)
-    to issue a new token. This is a placeholder implementation.
-    """
-    import jwt
-    import os
-
-    jwt_secret = os.getenv("JWT_SECRET")
-    if not jwt_secret:
-        raise ValueError("JWT_SECRET environment variable must be set")
-
-    payload = {
-        "sub": user_id,
-        "user_id": user_id,
-        "org_id": org_id,
-        "tenant_id": tenant_id,
-        "active_tenant_id": tenant_id,
-        "roles": roles,
-        "allowed_tenants": allowed_tenants,
-        "billing_tier": billing_tier,
-        "access_surface": access_surface,
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
-    }
-
-    if access_expiring_at:
-        payload["access_expiring_at"] = access_expiring_at.isoformat()
-
-    return jwt.encode(payload, jwt_secret, algorithm="HS256")
 
 
 def _get_store_info_from_tenant(
@@ -279,14 +233,16 @@ async def switch_active_store(request: Request, body: SwitchStoreRequest):
 
     db = _get_db_session(request)
 
-    # Generate new JWT with updated tenant context
-    new_token = _generate_jwt_token(
-        user_id=tenant_context.user_id,
-        tenant_id=target_tenant_id,
-        roles=tenant_context.roles,
-        allowed_tenants=tenant_context.allowed_tenants,
-        billing_tier=tenant_context.billing_tier,
-        org_id=tenant_context.org_id,
+    # Issue new signed JWT with updated tenant context
+    new_token = AgencyTokenService().issue_switched_token(
+        SwitchTokenClaims(
+            user_id=tenant_context.user_id,
+            tenant_id=target_tenant_id,
+            roles=tenant_context.roles,
+            allowed_tenants=tenant_context.allowed_tenants,
+            billing_tier=tenant_context.billing_tier,
+            org_id=tenant_context.org_id,
+        )
     )
 
     # Get store info
