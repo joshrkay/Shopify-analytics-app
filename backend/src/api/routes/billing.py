@@ -23,6 +23,7 @@ from src.entitlements.policy import EntitlementPolicy, BillingState
 from src.models.subscription import Subscription
 from src.models.billing_event import BillingEvent
 from src.services.billing_entitlements import BILLING_TIER_FEATURES, BillingFeature
+from src.services.usage_metrics_service import UsageMetricsService
 
 logger = logging.getLogger(__name__)
 
@@ -604,13 +605,17 @@ async def get_usage_metrics(
     }
     limits = tier_limits.get(tier, tier_limits["free"])
 
+    usage_service = UsageMetricsService(db_session, tenant_ctx.tenant_id)
+    billing_period = usage_service.get_current_billing_period()
+    usage_metrics = usage_service.get_usage_for_period(billing_period)
+
     return UsageMetricsResponse(
         data_sources_used=data_sources,
         team_members_used=team_members,
         dashboards_used=dashboards,
-        storage_used_gb=0.0,  # Storage tracking not yet implemented
+        storage_used_gb=usage_metrics.storage_used_gb,
         storage_limit_gb=limits["storage_gb"],
-        ai_requests_used=0,  # AI usage tracking not yet implemented
+        ai_requests_used=usage_metrics.ai_requests_used,
         ai_requests_limit=limits["ai_limit"],
     )
 
