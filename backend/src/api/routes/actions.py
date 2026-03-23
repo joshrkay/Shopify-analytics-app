@@ -149,15 +149,19 @@ def _action_to_response(action: AIAction) -> ActionResponse:
 
 def _job_to_response(job: ActionJob) -> ActionJobResponse:
     """Convert ActionJob model to response model."""
+    error_message = None
+    if job.error_summary:
+        error_message = "; ".join(str(msg) for msg in job.error_summary.values())
+
     return ActionJobResponse(
         job_id=job.job_id,
         status=job.status.value if job.status else "",
         action_count=len(job.action_ids) if job.action_ids else 0,
-        succeeded_count=job.succeeded_count or 0,
-        failed_count=job.failed_count or 0,
+        succeeded_count=job.actions_succeeded or 0,
+        failed_count=job.actions_failed or 0,
         started_at=job.started_at,
         completed_at=job.completed_at,
-        error_message=job.error_message,
+        error_message=error_message,
         created_at=job.created_at,
     )
 
