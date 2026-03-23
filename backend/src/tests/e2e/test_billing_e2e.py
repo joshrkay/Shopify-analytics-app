@@ -9,6 +9,7 @@ Priority: P0 (Critical Path)
 
 import pytest
 import uuid
+from datetime import datetime, timedelta, timezone
 
 
 @pytest.mark.e2e
@@ -197,6 +198,143 @@ class TestBillingEntitlements:
             data = response.json()
             # Should have some usage fields
             assert isinstance(data, dict)
+
+
+    async def test_get_usage_aggregates_storage_and_ai_by_billing_period(
+        self,
+        async_client,
+        auth_headers,
+        db_session,
+        test_tenant_id,
+    ):
+        """Usage endpoint should aggregate storage and AI usage within current billing period."""
+        from src.ingestion.jobs.models import IngestionJob, JobStatus
+        from src.models.llm_routing import LLMUsageLog
+        from src.models.plan import Plan
+        from src.models.subscription import Subscription
+
+        now = datetime.now(timezone.utc)
+        period_start = now - timedelta(days=10)
+        period_end = now + timedelta(days=20)
+
+        plan = Plan(
+            id=f"usage-plan-{uuid.uuid4().hex[:8]}",
+            name="usage_plan",
+            display_name="Usage Plan",
+            description="Usage test plan",
+            price_monthly_cents=2900,
+            is_active=True,
+        )
+        db_session.add(plan)
+        db_session.flush()
+
+        subscription = Subscription(
+            tenant_id=test_tenant_id,
+            plan_id=plan.id,
+            status="active",
+            current_period_start=period_start,
+            current_period_end=period_end,
+        )
+        db_session.add(subscription)
+
+        in_period_job = IngestionJob(
+            tenant_id=test_tenant_id,
+            connector_id=f"conn-{uuid.uuid4().hex[:8]}",
+            external_account_id="acct-1",
+            status=JobStatus.SUCCESS,
+            completed_at=now - timedelta(days=1),
+            job_metadata={"bytes_synced": 2 * 1024 * 1024 * 1024},
+        )
+        out_of_period_job = IngestionJob(
+            tenant_id=test_tenant_id,
+            connector_id=f"conn-{uuid.uuid4().hex[:8]}",
+            external_account_id="acct-2",
+            status=JobStatus.SUCCESS,
+            completed_at=now - timedelta(days=45),
+            job_metadata={"bytes_synced": 9 * 1024 * 1024 * 1024},
+        )
+        db_session.add_all([in_period_job, out_of_period_job])
+
+        db_session.add_all([
+            LLMUsageLog(
+                tenant_id=test_tenant_id,
+                model_id="gpt-test",
+                input_tokens=10,
+                output_tokens=20,
+                total_tokens=30,
+                latency_ms=100,
+                cost_usd=0,
+                was_fallback=False,
+                request_metadata={},
+                response_status="success",
+                created_at=now - timedelta(hours=2),
+            ),
+            LLMUsageLog(
+                tenant_id=test_tenant_id,
+                model_id="gpt-test",
+                input_tokens=10,
+                output_tokens=20,
+                total_tokens=30,
+                latency_ms=100,
+                cost_usd=0,
+                was_fallback=False,
+                request_metadata={},
+                response_status="success",
+                created_at=now - timedelta(hours=1),
+            ),
+            LLMUsageLog(
+                tenant_id=test_tenant_id,
+                model_id="gpt-test",
+                input_tokens=10,
+                output_tokens=20,
+                total_tokens=30,
+                latency_ms=100,
+                cost_usd=0,
+                was_fallback=False,
+                request_metadata={},
+                response_status="success",
+                created_at=now - timedelta(days=60),
+            ),
+        ])
+        db_session.commit()
+
+        response = await async_client.get("/api/billing/usage", headers=auth_headers)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["storageUsedGb"] == 2.0
+        assert data["aiRequestsUsed"] == 2
+
+    async def test_get_usage_returns_tier_limits(
+        self,
+        async_client,
+        mock_frontegg,
+        test_tenant_id,
+    ):
+        """Usage endpoint should return configured limits for the tenant billing tier."""
+        pro_token = mock_frontegg.create_test_token(
+            tenant_id=test_tenant_id,
+            roles=["admin"],
+            entitlements=["AI_INSIGHTS"],
+            custom_claims={
+                "metadata": {
+                    "roles": ["admin"],
+                    "entitlements": ["AI_INSIGHTS"],
+                    "allowed_tenants": [test_tenant_id],
+                    "billing_tier": "pro",
+                }
+            },
+        )
+
+        response = await async_client.get(
+            "/api/billing/usage",
+            headers={"Authorization": f"Bearer {pro_token}"},
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["storageLimitGb"] == 50.0
+        assert data["aiRequestsLimit"] == 5000
 
     async def test_get_invoices(
         self,
