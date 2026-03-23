@@ -28,11 +28,13 @@ Usage:
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -52,6 +54,7 @@ REFRESH_BACKOFF_MINUTES = [5, 30, 120]  # Backoff between retry attempts
 
 class RefreshResult(str, Enum):
     """Outcome of a token refresh attempt."""
+
     SUCCESS = "success"
     FAILED_RETRYABLE = "failed_retryable"
     FAILED_PERMANENT = "failed_permanent"
@@ -62,6 +65,7 @@ class RefreshResult(str, Enum):
 
 class RevocationReason(str, Enum):
     """Reason for credential revocation."""
+
     USER_DISCONNECT = "user_disconnect"
     PROVIDER_REVOKED = "provider_revoked"
     ADMIN_ACTION = "admin_action"
@@ -72,6 +76,7 @@ class RevocationReason(str, Enum):
 @dataclass
 class RefreshOutcome:
     """Result of a single credential refresh attempt."""
+
     credential_id: str
     source_type: str
     result: RefreshResult
@@ -83,6 +88,7 @@ class RefreshOutcome:
 @dataclass
 class RefreshStats:
     """Aggregate stats from a proactive refresh run."""
+
     credentials_checked: int = 0
     refreshed: int = 0
     failed: int = 0
@@ -196,9 +202,7 @@ class TokenManager:
     # Reactive Refresh
     # =========================================================================
 
-    async def reactive_refresh(
-        self, credential_id: str
-    ) -> RefreshOutcome:
+    async def reactive_refresh(self, credential_id: str) -> RefreshOutcome:
         """
         Attempt to refresh a credential after an auth failure during sync.
 
@@ -232,7 +236,9 @@ class TokenManager:
         outcome = await self._attempt_refresh(credential)
 
         if outcome.result == RefreshResult.FAILED_PERMANENT:
-            self._mark_expired(credential, outcome.error or "Refresh attempts exhausted")
+            self._mark_expired(
+                credential, outcome.error or "Refresh attempts exhausted"
+            )
 
         self.db.flush()
 
@@ -419,9 +425,7 @@ class TokenManager:
     # Internal: Refresh Logic
     # =========================================================================
 
-    async def _attempt_refresh(
-        self, credential: ConnectorCredential
-    ) -> RefreshOutcome:
+    async def _attempt_refresh(self, credential: ConnectorCredential) -> RefreshOutcome:
         """
         Attempt to refresh a single credential's tokens.
 
@@ -588,9 +592,7 @@ class TokenManager:
             attempt_number=0,
         )
 
-    async def _platform_refresh(
-        self, source_type: str, current_tokens: dict
-    ) -> dict:
+    async def _platform_refresh(self, source_type: str, current_tokens: dict) -> dict:
         """
         Perform platform-specific token refresh.
 
@@ -639,42 +641,157 @@ class TokenManager:
         """
         Refresh Meta/Facebook credentials.
 
-        Exchanges a short-lived token for a long-lived one, or refreshes
-        an existing long-lived token. Long-lived tokens are valid for ~60
-        days and can be refreshed before expiry.
-
-        In production, this calls the Graph API:
-        GET /oauth/access_token?grant_type=fb_exchange_token&
-            client_id={app_id}&client_secret={app_secret}&
-            fb_exchange_token={existing_token}
+        Exchanges an existing token for a fresh long-lived token via Graph API.
         """
-        # Placeholder for Meta token refresh
-        # Production implementation would call the Graph API
-        raise TokenRefreshError(
-            "Meta token refresh requires Graph API integration",
-            permanent=False,
-        )
+        client_id = os.getenv("META_APP_ID", "").strip()
+        client_secret = os.getenv("META_APP_SECRET", "").strip()
+        exchange_token = tokens.get("refresh_token") or tokens.get("access_token")
+
+        if not client_id or not client_secret:
+            raise TokenRefreshError(
+                "Meta app credentials are not configured", permanent=True
+            )
+        if not exchange_token:
+            raise TokenRefreshError(
+                "Meta credential missing exchange token", permanent=True
+            )
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as http:
+                response = await http.get(
+                    "https://graph.facebook.com/v19.0/oauth/access_token",
+                    params={
+                        "grant_type": "fb_exchange_token",
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "fb_exchange_token": exchange_token,
+                    },
+                )
+        except httpx.RequestError as exc:
+            raise TokenRefreshError(
+                f"Meta token refresh network error: {type(exc).__name__}",
+                permanent=False,
+            ) from exc
+
+        payload = response.json() if response.content else {}
+
+        if response.status_code != 200:
+            error_type = (
+                (payload.get("error") or {}).get("type")
+                if isinstance(payload, dict)
+                else None
+            ) or ""
+            permanent = response.status_code in {400, 401, 403}
+            # OAuthException generally indicates invalid/expired/revoked token.
+            if error_type == "OAuthException":
+                permanent = True
+            raise TokenRefreshError(
+                f"Meta token refresh failed ({response.status_code})",
+                permanent=permanent,
+            )
+
+        access_token = payload.get("access_token")
+        if not access_token:
+            raise TokenRefreshError(
+                "Meta token refresh response missing access_token", permanent=False
+            )
+
+        refreshed = dict(tokens)
+        refreshed.update(payload)
+        refreshed["access_token"] = access_token
+        refreshed["refresh_token"] = payload.get("refresh_token") or access_token
+
+        expires_in = payload.get("expires_in")
+        if expires_in is not None:
+            try:
+                expires_seconds = int(expires_in)
+            except (TypeError, ValueError) as exc:
+                raise TokenRefreshError(
+                    "Meta token refresh returned invalid expires_in", permanent=False
+                ) from exc
+            refreshed["expires_in"] = expires_seconds
+            refreshed["expires_at"] = (
+                datetime.now(timezone.utc) + timedelta(seconds=expires_seconds)
+            ).isoformat()
+
+        return refreshed
 
     async def _refresh_google(self, tokens: dict) -> dict:
         """
         Refresh Google OAuth2 credentials.
 
         Uses the standard OAuth2 refresh_token grant to obtain a new
-        access_token. Refresh tokens for Google Ads don't expire unless
-        revoked by the user.
-
-        In production, this calls:
-        POST https://oauth2.googleapis.com/token
-            grant_type=refresh_token&
-            client_id={client_id}&client_secret={client_secret}&
-            refresh_token={refresh_token}
+        access_token.
         """
-        # Placeholder for Google OAuth2 refresh
-        # Production implementation would call the token endpoint
-        raise TokenRefreshError(
-            "Google token refresh requires OAuth2 integration",
-            permanent=False,
-        )
+        client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+        client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+        refresh_token = tokens.get("refresh_token")
+
+        if not client_id or not client_secret:
+            raise TokenRefreshError(
+                "Google OAuth client credentials are not configured", permanent=True
+            )
+        if not refresh_token:
+            raise TokenRefreshError(
+                "Google credential missing refresh_token", permanent=True
+            )
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as http:
+                response = await http.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "refresh_token": refresh_token,
+                    },
+                )
+        except httpx.RequestError as exc:
+            raise TokenRefreshError(
+                f"Google token refresh network error: {type(exc).__name__}",
+                permanent=False,
+            ) from exc
+
+        payload = response.json() if response.content else {}
+
+        if response.status_code != 200:
+            error = payload.get("error") if isinstance(payload, dict) else None
+            permanent = response.status_code in {400, 401, 403} or error in {
+                "invalid_grant",
+                "unauthorized_client",
+            }
+            raise TokenRefreshError(
+                f"Google token refresh failed ({response.status_code})",
+                permanent=permanent,
+            )
+
+        access_token = payload.get("access_token")
+        if not access_token:
+            raise TokenRefreshError(
+                "Google token refresh response missing access_token", permanent=False
+            )
+
+        refreshed = dict(tokens)
+        refreshed.update(payload)
+        refreshed["access_token"] = access_token
+        refreshed["refresh_token"] = payload.get("refresh_token") or refresh_token
+
+        expires_in = payload.get("expires_in")
+        if expires_in is not None:
+            try:
+                expires_seconds = int(expires_in)
+            except (TypeError, ValueError) as exc:
+                raise TokenRefreshError(
+                    "Google token refresh returned invalid expires_in",
+                    permanent=False,
+                ) from exc
+            refreshed["expires_in"] = expires_seconds
+            refreshed["expires_at"] = (
+                datetime.now(timezone.utc) + timedelta(seconds=expires_seconds)
+            ).isoformat()
+
+        return refreshed
 
     # =========================================================================
     # Internal: Status Management
@@ -768,9 +885,7 @@ class TokenManager:
 
             is_success = outcome.result == RefreshResult.SUCCESS
             action = AuditAction.AUTH_TOKEN_REFRESH
-            audit_outcome = (
-                AuditOutcome.SUCCESS if is_success else AuditOutcome.FAILURE
-            )
+            audit_outcome = AuditOutcome.SUCCESS if is_success else AuditOutcome.FAILURE
 
             metadata = {
                 "source_type": credential.source_type,
