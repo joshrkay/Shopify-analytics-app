@@ -24,6 +24,8 @@ MIGRATIONS = [
     "0056_agency_access.sql",
     "0057_access_revocation.sql",
     "0060_audit_logs.sql",
+    "audit_export_jobs.sql",
+    "0061_settings_api_keys.sql",
     "add_tenant_airbyte_workspace.sql",
     "create_tenant_airbyte_connections.sql",
     "add_configuration_column.sql",
