@@ -1,0 +1,4 @@
+interface:
+  display_name: "n8n Transcript Analyzer"
+  short_description: "Fetch YouTube transcripts and map key workflow insights."
+  default_prompt: "Design n8n automations that capture complete video transcripts and produce structured key points, summaries, and action items."
