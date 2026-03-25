@@ -232,7 +232,11 @@ function AppWithOrg() {
             <Route path="/billing/checkout" element={<BillingCheckout />} />
             <Route path="/billing/callback" element={<BillingCheckout />} />
             <Route path="/insights" element={<InsightsFeed />} />
-            <Route path="/approvals" element={<ApprovalsInbox />} />
+            <Route path="/approvals" element={
+              <FeatureGateRoute feature="ai_actions" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
+                <ApprovalsInbox />
+              </FeatureGateRoute>
+            } />
             <Route path="/attribution" element={<Attribution />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/channels/:platform" element={<ChannelAnalytics />} />

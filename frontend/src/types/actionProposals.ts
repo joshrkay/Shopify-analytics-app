@@ -7,10 +7,10 @@
 export type ActionType =
   | 'pause_campaign'
   | 'resume_campaign'
-  | 'adjust_budget'
-  | 'adjust_bid'
-  | 'update_targeting'
-  | 'update_schedule';
+  | 'reduce_budget'
+  | 'increase_budget'
+  | 'adjust_targeting'
+  | 'modify_bidding';
 
 export type ActionStatus =
   | 'proposed'
@@ -114,10 +114,10 @@ export function getActionTypeLabel(type: ActionType): string {
   const labels: Record<ActionType, string> = {
     pause_campaign: 'Pause Campaign',
     resume_campaign: 'Resume Campaign',
-    adjust_budget: 'Adjust Budget',
-    adjust_bid: 'Adjust Bid',
-    update_targeting: 'Update Targeting',
-    update_schedule: 'Update Schedule',
+    reduce_budget: 'Reduce Budget',
+    increase_budget: 'Increase Budget',
+    adjust_targeting: 'Adjust Targeting',
+    modify_bidding: 'Modify Bidding',
   };
   return labels[type] || type;
 }
