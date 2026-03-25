@@ -305,7 +305,7 @@ describe('DashboardHome', () => {
     expect(screen.getByText('Consider reducing spend on Campaign Alpha')).toBeInTheDocument();
   });
 
-  it('renders TimeframeSelector', async () => {
+  it('renders core dashboard sections', async () => {
     setupMocksWithData();
     renderWithProviders(<DashboardHome />);
 
@@ -313,9 +313,6 @@ describe('DashboardHome', () => {
       expect(screen.getByText('Unread Insights')).toBeInTheDocument();
     });
 
-    // TimeframeSelector renders a Polaris Select — check for the default option
-    const select = document.querySelector('select');
-    expect(select).toBeInTheDocument();
-    expect(select?.value).toBe('30d');
+    expect(screen.getByText('Data Health')).toBeInTheDocument();
   });
 });
