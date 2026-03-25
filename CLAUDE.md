@@ -290,6 +290,7 @@ For every table referenced in a new SQL query:
 | `canonical/marketing_spend.sql` | `analytics.marketing_spend` | Ad spend facts: `source_platform`, `clicks`, `impressions`, `ctr`, `conversions`, `date` |
 | `attribution/last_click.sql` | `attribution.last_click` | Attribution overlay: `attribution_status`, `revenue`, `platform`, `utm_*`, `order_id`, `order_created_at` |
 | `marts/mart_marketing_metrics.sql` | `marts.mart_marketing_metrics` | Pre-aggregated KPI mart: `spend`, `orders`, `gross_revenue`, `gross_roas`, `platform`, `period_type`, `period_end`, `period_start` |
+| `marts/mart_revenue_metrics.sql` | `marts.mart_revenue_metrics` | Pre-aggregated revenue mart: `gross_revenue`, `net_revenue`, `order_count`, `aov`, `period_type`, `period_start`, `period_end` |
 | `marts/marketing/fct_marketing_metrics.sql` | `marts.fct_marketing_metrics` | Canonical ROAS/CAC: `channel`, `total_spend`, `total_clicks`, `total_impressions`, `roas`, `cac`, `ctr` |
 | `canonical/order_line_items` | **DOES NOT EXIST** | No dbt model — any query joining this table will 503 |
 | `canonical/products` | **DOES NOT EXIST** | No dbt model — any query joining this table will 503 |
