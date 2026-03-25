@@ -53,9 +53,6 @@ from src.api.routes import user_tenants
 from src.api.routes import dashboard_bindings
 from src.api.dq import routes as sync_health
 from src.api.routes import admin_diagnostics
-from src.api.routes import admin_super_admin
-from src.api.routes import audit as audit_story_87
-from src.api.routes import templates as templates_legacy
 from src.api.routes import agency_access
 from src.api.routes import auth_refresh_jwt
 from src.api.routes import auth_provision
@@ -365,15 +362,6 @@ app.include_router(dashboard_bindings.router)
 # Include admin diagnostics routes (requires admin role)
 # Story 4.2 - Data Quality Root Cause Signals
 app.include_router(admin_diagnostics.router)
-
-# Super-admin grant/revoke + tenant listing (database-resolved super admin only)
-app.include_router(admin_super_admin.router)
-
-# Story 8.7 — tenant-scoped audit / safety APIs under /api/audit (distinct from /api/v1/audit-logs)
-app.include_router(audit_story_87.router)
-
-# Legacy template gallery under /api/templates (v1 templates use report_templates router)
-app.include_router(templates_legacy.router)
 
 # Include agency access routes (requires authentication)
 # Story 5.5.2 - Agency Access Request + Tenant Approval Workflow

@@ -1,8 +1,12 @@
 /**
- * Layout components — production shell is `Root` (Tailwind + Lucide sidebar).
+ * Layout Components
+ *
+ * Shared layout components for the application.
  */
 
+export { AppHeader } from './AppHeader';
+export { Sidebar } from './Sidebar';
 export { ProfileMenu } from './ProfileMenu';
 export { ProfileSwitcher } from './ProfileSwitcher';
 export { Root } from './Root';
-export { GlobalSearch } from './GlobalSearch';
+export { RootLayout, SidebarProvider, useSidebar } from './RootLayout';

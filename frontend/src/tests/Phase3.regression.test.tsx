@@ -6,7 +6,7 @@
  * and context preservation.
  *
  * R#   Regression Test                                    Why It Exists
- * R1   SyncStatus page component still importable         Health monitoring preserved
+ * R1   SyncHealth page component still importable         Health monitoring preserved
  * R2   ConnectorHealthCard still importable               Health card preserved
  * R3   BackfillModal still importable                     Backfill pipeline preserved
  * R4   DataHealthContext still provides health state       Context unbroken
@@ -62,10 +62,10 @@ describe('Phase 3 Regression Suite', () => {
   // =========================================================================
 
   describe('Data Health & Sync Regressions', () => {
-    it('R1: SyncStatus page component is importable', async () => {
-      const module = await import('../pages/SyncStatus');
+    it('R1: SyncHealth page component is importable', async () => {
+      const module = await import('../pages/SyncHealth');
       expect(module).toBeDefined();
-      expect(module.SyncStatus).toBeDefined();
+      expect(module.default).toBeDefined();
     });
 
     it('R2: ConnectorHealthCard component is importable', async () => {

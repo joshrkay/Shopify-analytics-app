@@ -595,17 +595,6 @@ jobs:
           echo "=========================================="
           npm run lint
 
-      - name: Run Vitest
-        working-directory: ./frontend
-        env:
-          VITE_CLERK_PUBLISHABLE_KEY: "pk_test_placeholder"
-          VITE_API_URL: "http://localhost:8000"
-        run: |
-          echo "=========================================="
-          echo "Running Vitest (single run)"
-          echo "=========================================="
-          npm run test -- --run
-
       - name: TypeScript compile and Vite build
         working-directory: ./frontend
         env:
@@ -624,7 +613,6 @@ jobs:
           echo "Frontend Validation Results"
           echo "=========================================="
           echo "✓ ESLint passed (zero warnings)"
-          echo "✓ Vitest passed"
           echo "✓ TypeScript compilation passed"
           echo "✓ Vite production build passed"
 

@@ -1,0 +1,26 @@
+.root-layout {
+  display: flex;
+  height: calc(100vh - 49px);
+  overflow: hidden;
+}
+
+.root-layout__content {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+/* Mobile overlay — hidden by default */
+.root-layout__overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .root-layout__overlay--visible {
+    display: block;
+    position: fixed;
+    inset: 49px 0 0 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 99;
+  }
+}

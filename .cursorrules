@@ -345,7 +345,7 @@ When you respond with code changes, include:
 
 ### Key Files
 - **Routes**: `frontend/src/App.tsx` — all routes, FeatureGateRoute with redirect loop prevention
-- **Nav / shell**: `frontend/src/components/layout/Root.tsx` — sidebar + mobile header; additional routes (e.g. `/analytics`, `/insights`, `/dashboards`) reachable from in-page links or bookmarks
+- **Nav**: `frontend/src/components/layout/AppHeader.tsx` — Analytics + Dashboards nav
 - **Dashboard types**: `frontend/src/types/customDashboards.ts`
 - **Dashboard API**: `frontend/src/services/customDashboardsApi.ts`
 - **Share API**: `frontend/src/services/dashboardSharesApi.ts`
@@ -376,7 +376,7 @@ When you respond with code changes, include:
 #### Integration (4D)
 - `DashboardCard.tsx` — Reusable card with status badge, SharedBadge, access-level-based actions
 - `App.tsx` — FeatureGateRoute wraps /dashboards and /dashboards/:id/edit; /dashboards/:id NOT gated (shared dashboards viewable on any plan)
-- `Root.tsx` — Primary app navigation (Overview, Attribution, Orders, Intelligence, Channels, System)
+- `AppHeader.tsx` — Analytics + Dashboards nav links with active state
 - `Analytics.tsx` — CTA card + custom dashboards in dropdown (5 most recent + "View all")
 
 ### Edge Cases Handled
