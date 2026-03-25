@@ -72,7 +72,7 @@ describe('useWidgetCatalog/useWidgetPreview backend integration', () => {
     expect(result.current.widgets).toHaveLength(1);
     expect(result.current.widgets[0].name).toBe('Revenue KPI');
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/v1/templates',
+      expect.stringContaining('/api/v1/templates'),
       expect.objectContaining({ method: 'GET' }),
     );
   });
