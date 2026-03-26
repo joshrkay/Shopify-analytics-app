@@ -1,5 +1,5 @@
 # dbt Profiles Configuration Template
-# 
+#
 # SECURITY: This file contains connection templates only.
 # Never commit actual credentials. Copy this to profiles.yml and fill in values.
 # profiles.yml is gitignored and should never be committed.
@@ -8,6 +8,17 @@
 #   1. Copy this file to profiles.yml: cp profiles.yml.example profiles.yml
 #   2. Set environment variables (see below for options)
 #   3. Run: dbt debug (to verify connection)
+#
+# Schema naming:
+#   The generate_schema_name macro (analytics/macros/generate_schema_name.sql)
+#   deploys each model to its +schema config value EXACTLY, without prefixing
+#   the target schema.  So the `schema` value below only affects models that
+#   have no +schema config (none in this project).  Set it to any value.
+#
+#     +schema: analytics  →  analytics.<model>   (canonical, metrics, attribution)
+#     +schema: staging    →  staging.<model>      (staging views + dimensions)
+#     +schema: marts      →  marts.<model>        (mart tables)
+#     +schema: utils      →  utils.<model>        (utility tables)
 #
 # Environment Variable Options:
 #   Option A: Set individual connection parameters:
@@ -27,6 +38,17 @@
 markinsight:
   target: local
   outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DB_HOST', 'localhost') }}"
+      user: "{{ env_var('DB_USER', 'postgres') }}"
+      password: "{{ env_var('DB_PASSWORD', '') }}"
+      port: "{{ env_var('DB_PORT', '5432') | as_number }}"
+      dbname: "{{ env_var('DB_NAME', 'markinsight') }}"
+      schema: public        # fallback only; named schemas use generate_schema_name macro
+      threads: 4
+      sslmode: "{{ env_var('DB_SSLMODE', 'disable') }}"
+
     local:
       type: postgres
       host: "{{ env_var('DB_HOST', 'localhost') }}"
@@ -34,9 +56,9 @@ markinsight:
       password: "{{ env_var('DB_PASSWORD', '') }}"
       port: "{{ env_var('DB_PORT', '5432') | as_number }}"
       dbname: "{{ env_var('DB_NAME', 'markinsight') }}"
-      schema: analytics
+      schema: public        # fallback only; named schemas use generate_schema_name macro
       threads: 4
-      sslmode: "{{ env_var('DB_SSLMODE', 'require') }}"
+      sslmode: "{{ env_var('DB_SSLMODE', 'disable') }}"
     
     staging:
       type: postgres
@@ -45,9 +67,9 @@ markinsight:
       password: "{{ env_var('DB_PASSWORD', '') }}"
       port: "{{ env_var('DB_PORT', '5432') | as_number }}"
       dbname: "{{ env_var('DB_NAME', 'markinsight') }}"
-      schema: analytics
+      schema: public        # fallback only; named schemas use generate_schema_name macro
       threads: 4
-      sslmode: "{{ env_var('DB_SSLMODE', 'require') }}"
+      sslmode: "{{ env_var('DB_SSLMODE', 'disable') }}"
     
     production:
       type: postgres
@@ -56,6 +78,6 @@ markinsight:
       password: "{{ env_var('DB_PASSWORD', '') }}"
       port: "{{ env_var('DB_PORT', '5432') | as_number }}"
       dbname: "{{ env_var('DB_NAME', 'markinsight') }}"
-      schema: analytics
+      schema: public        # fallback only; named schemas use generate_schema_name macro
       threads: 4
-      sslmode: "{{ env_var('DB_SSLMODE', 'require') }}"
+      sslmode: "{{ env_var('DB_SSLMODE', 'disable') }}"
