@@ -904,7 +904,7 @@ async def test_webhook_driven_updates(
     # Verify order was ingested (check raw tables)
     result = await db_session.execute(
         text("""
-            SELECT * FROM _airbyte_raw_shopify_orders
+            SELECT * FROM airbyte_raw._airbyte_raw_shopify_orders
             WHERE _airbyte_data->>'id' = :order_id
         """),
         {"order_id": str(new_order["id"])}
@@ -1283,8 +1283,16 @@ Cross-platform marketing data for attribution testing.
 
 ```python
 async def validate_raw_data(db_session, tenant_id, expected_counts: dict):
-    """Validate data landed correctly in raw tables."""
-    for table, expected_count in expected_counts.items():
+    """Validate data landed correctly in Airbyte raw tables."""
+    raw_tables = [
+        "airbyte_raw._airbyte_raw_shopify_orders",
+        "airbyte_raw._airbyte_raw_shopify_customers",
+        "airbyte_raw._airbyte_raw_meta_ads",
+        "airbyte_raw._airbyte_raw_google_ads",
+    ]
+
+    for table in raw_tables:
+        expected_count = expected_counts.get(table, 0)
         result = await db_session.execute(
             text(f"SELECT COUNT(*) FROM {table} WHERE _airbyte_data->>'tenant_id' = :tid"),
             {"tid": tenant_id}

@@ -531,7 +531,7 @@ class SampleDataGenerator:
         """
         Create Shopify orders, refunds, and cancellations.
 
-        Inserts data directly into raw.raw_shopify_orders table to simulate
+        Inserts data directly into airbyte_raw._airbyte_raw_shopify_orders table to simulate
         what Airbyte would sync from Shopify API. This creates real database
         records that flow through the full analytics pipeline.
 
@@ -570,7 +570,7 @@ class SampleDataGenerator:
         source_account_id = f"test-shop-{self.tenant_id[:8]}.myshopify.com"
         run_id = f"e2e-test-run-{int(time.time())}"
 
-        # Insert orders into raw.raw_shopify_orders
+        # Insert orders into airbyte_raw._airbyte_raw_shopify_orders
         for i, order_data in enumerate(SHOPIFY_PURCHASES[:SHOPIFY_ORDERS_COUNT]):
             try:
                 order_id = str(uuid.uuid4())
@@ -583,7 +583,7 @@ class SampleDataGenerator:
                 total_price_cents = int(total_price * 100)
 
                 self.db_session.execute(text("""
-                    INSERT INTO raw.raw_shopify_orders (
+                    INSERT INTO airbyte_raw._airbyte_raw_shopify_orders (
                         id, tenant_id, source_account_id,
                         extracted_at, loaded_at, run_id,
                         shopify_order_id, order_number,
@@ -636,7 +636,7 @@ class SampleDataGenerator:
                 total_price_cents = int(total_price * 100)
 
                 self.db_session.execute(text("""
-                    INSERT INTO raw.raw_shopify_orders (
+                    INSERT INTO airbyte_raw._airbyte_raw_shopify_orders (
                         id, tenant_id, source_account_id,
                         extracted_at, loaded_at, run_id,
                         shopify_order_id, order_number,
@@ -687,7 +687,7 @@ class SampleDataGenerator:
                 total_price_cents = int(total_price * 100)
 
                 self.db_session.execute(text("""
-                    INSERT INTO raw.raw_shopify_orders (
+                    INSERT INTO airbyte_raw._airbyte_raw_shopify_orders (
                         id, tenant_id, source_account_id,
                         extracted_at, loaded_at, run_id,
                         shopify_order_id, order_number,
@@ -778,14 +778,14 @@ class SampleDataGenerator:
 
             # Count Shopify orders in raw table
             shopify_orders_result = self.db_session.execute(text("""
-                SELECT COUNT(*) FROM raw.raw_shopify_orders
+                SELECT COUNT(*) FROM airbyte_raw._airbyte_raw_shopify_orders
                 WHERE tenant_id = :tenant_id
             """), {"tenant_id": self.tenant_id})
             shopify_orders_count = shopify_orders_result.scalar() or 0
 
             # Verify tenant isolation for Shopify orders
             other_shopify_orders_result = self.db_session.execute(text("""
-                SELECT COUNT(*) FROM raw.raw_shopify_orders
+                SELECT COUNT(*) FROM airbyte_raw._airbyte_raw_shopify_orders
                 WHERE tenant_id != :tenant_id
             """), {"tenant_id": self.tenant_id})
             other_shopify_orders_count = other_shopify_orders_result.scalar() or 0
