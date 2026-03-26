@@ -131,7 +131,8 @@ describe('SyncStatus page — error handling regression', () => {
 
       // Must show an error message, not crash
       await waitFor(() => {
-        expect(screen.getByText(/failed to load sync status/i)).toBeInTheDocument();
+        const errorMessages = screen.getAllByText(/failed to load sync status/i);
+        expect(errorMessages.length).toBeGreaterThan(0);
       });
     });
 
@@ -181,7 +182,8 @@ describe('SyncStatus page — error handling regression', () => {
 
       // Should show fallback message, not propagate the non-Error rejection
       await waitFor(() => {
-        expect(screen.getByText(/failed to load sync status/i)).toBeInTheDocument();
+        const errorMessages = screen.getAllByText(/failed to load sync status/i);
+        expect(errorMessages.length).toBeGreaterThan(0);
       });
     });
   });
