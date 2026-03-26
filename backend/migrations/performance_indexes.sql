@@ -39,6 +39,8 @@ BEGIN
     ELSE
         RAISE NOTICE 'performance_indexes: analytics.orders does not exist yet (created by dbt) — skipping indexes';
     END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: analytics.orders index creation skipped — %', SQLERRM;
 END
 $$;
 
@@ -60,6 +62,8 @@ BEGIN
     ELSE
         RAISE NOTICE 'performance_indexes: analytics.marketing_spend does not exist yet (created by dbt) — skipping indexes';
     END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: analytics.marketing_spend index creation skipped — %', SQLERRM;
 END
 $$;
 
@@ -81,6 +85,8 @@ BEGIN
     ELSE
         RAISE NOTICE 'performance_indexes: analytics.campaign_performance does not exist yet (created by dbt) — skipping indexes';
     END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: analytics.campaign_performance index creation skipped — %', SQLERRM;
 END
 $$;
 
@@ -118,8 +124,14 @@ BEGIN
 END
 $$;
 
-ALTER ROLE analytics_reader SET statement_timeout = '20s';
-ALTER ROLE analytics_reader SET analytics.max_rows = '50000';
+DO $$
+BEGIN
+    ALTER ROLE analytics_reader SET statement_timeout = '20s';
+    ALTER ROLE analytics_reader SET analytics.max_rows = '50000';
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: ALTER ROLE analytics_reader skipped — %', SQLERRM;
+END
+$$;
 
 -- Superset service role: same schema access for metadata and query execution
 DO $$
@@ -142,16 +154,22 @@ $$;
 -- 5. Max Result Size Guard (row_limit enforcement at DB level)
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION analytics.enforce_row_limit(
-    max_rows INTEGER DEFAULT 50000
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
+DO $$
 BEGIN
-    PERFORM set_config('analytics.max_rows', max_rows::TEXT, TRUE);
-END;
+    CREATE OR REPLACE FUNCTION analytics.enforce_row_limit(
+        max_rows INTEGER DEFAULT 50000
+    )
+    RETURNS VOID
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    AS $func$
+    BEGIN
+        PERFORM set_config('analytics.max_rows', max_rows::TEXT, TRUE);
+    END;
+    $func$;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: enforce_row_limit function creation skipped — %', SQLERRM;
+END
 $$;
 
 -- ---------------------------------------------------------------------------
