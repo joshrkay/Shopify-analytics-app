@@ -473,24 +473,65 @@ def check_stage_metrics(cur, stage: Stage) -> None:
 
 def check_stage_api(stage: Stage) -> None:
     api_url = os.environ.get("MARKINSIGHT_API_URL")
-    api_token = os.environ.get("MARKINSIGHT_API_TOKEN")
-    if not api_url or not api_token:
-        stage.ok("api_check_skipped: set MARKINSIGHT_API_URL + MARKINSIGHT_API_TOKEN to enable")
+    if not api_url:
+        stage.ok("api_check_skipped: set MARKINSIGHT_API_URL to enable")
         return
 
+    import urllib.request
+    import urllib.error
+
+    # 1. Unauthenticated health check (always runs)
     try:
-        import urllib.request
-        req = urllib.request.Request(
-            f"{api_url.rstrip('/')}/api/health",
-            headers={"Authorization": f"Bearer {api_token}"},
-        )
+        health_url = f"{api_url.rstrip('/')}/health"
+        req = urllib.request.Request(health_url)
         with urllib.request.urlopen(req, timeout=10) as resp:
             if resp.status == 200:
-                stage.ok(f"api_health: 200 OK from {api_url}/api/health")
+                stage.ok(f"api_health: 200 OK from {health_url}")
             else:
-                stage.fail(f"api_health: HTTP {resp.status} from {api_url}/api/health")
+                stage.fail(f"api_health: HTTP {resp.status} from {health_url}")
     except Exception as e:
         stage.fail(f"api_health: {e}")
+
+    # 2. Readiness check (database connectivity)
+    try:
+        readiness_url = f"{api_url.rstrip('/')}/api/health/readiness"
+        req = urllib.request.Request(readiness_url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status == 200:
+                stage.ok(f"api_readiness: 200 OK from {readiness_url}")
+            else:
+                stage.fail(f"api_readiness: HTTP {resp.status}")
+    except urllib.error.HTTPError as e:
+        if e.code == 401 or e.code == 403:
+            stage.ok(f"api_readiness: {e.code} (auth required, endpoint exists)")
+        else:
+            stage.fail(f"api_readiness: HTTP {e.code}")
+    except Exception as e:
+        stage.fail(f"api_readiness: {e}")
+
+    # 3. Authenticated endpoint checks (optional — needs MARKINSIGHT_API_TOKEN)
+    api_token = os.environ.get("MARKINSIGHT_API_TOKEN")
+    if not api_token:
+        stage.ok("api_auth_checks_skipped: set MARKINSIGHT_API_TOKEN for authenticated endpoint tests")
+        return
+
+    auth_headers = {"Authorization": f"Bearer {api_token}"}
+    for path, label in [
+        ("/api/health/readiness", "api_auth_readiness"),
+        ("/api/sources", "api_auth_sources"),
+    ]:
+        try:
+            url = f"{api_url.rstrip('/')}{path}"
+            req = urllib.request.Request(url, headers=auth_headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    stage.ok(f"{label}: 200 OK")
+                else:
+                    stage.fail(f"{label}: HTTP {resp.status}")
+        except urllib.error.HTTPError as e:
+            stage.fail(f"{label}: HTTP {e.code}")
+        except Exception as e:
+            stage.fail(f"{label}: {e}")
 
 
 # ---------------------------------------------------------------------------
