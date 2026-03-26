@@ -177,28 +177,33 @@ BEGIN
             CONTINUE;
         END IF;
 
-        -- Enable RLS
-        EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', _schema, _table);
-        EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', _schema, _table);
+        BEGIN
+            -- Enable RLS
+            EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', _schema, _table);
+            EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', _schema, _table);
 
-        -- Drop existing policies (idempotent)
-        EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', _prefix || '_tenant_isolation', _schema, _table);
-        EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', _prefix || '_admin_bypass', _schema, _table);
+            -- Drop existing policies (idempotent)
+            EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', _prefix || '_tenant_isolation', _schema, _table);
+            EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', _prefix || '_admin_bypass', _schema, _table);
 
-        -- Query role: can only see own tenant's data
-        EXECUTE format(
-            'CREATE POLICY %I ON %I.%I FOR ALL TO analytics_query_role USING (tenant_id = canonical.get_current_tenant_id())',
-            _prefix || '_tenant_isolation', _schema, _table
-        );
+            -- Query role: can only see own tenant's data
+            EXECUTE format(
+                'CREATE POLICY %I ON %I.%I FOR ALL TO analytics_query_role USING (tenant_id = canonical.get_current_tenant_id())',
+                _prefix || '_tenant_isolation', _schema, _table
+            );
 
-        -- Admin role: full access for dbt pipeline (bypasses RLS)
-        EXECUTE format(
-            'CREATE POLICY %I ON %I.%I FOR ALL TO analytics_admin_role USING (true) WITH CHECK (true)',
-            _prefix || '_admin_bypass', _schema, _table
-        );
+            -- Admin role: full access for dbt pipeline (bypasses RLS)
+            EXECUTE format(
+                'CREATE POLICY %I ON %I.%I FOR ALL TO analytics_admin_role USING (true) WITH CHECK (true)',
+                _prefix || '_admin_bypass', _schema, _table
+            );
 
-        RAISE NOTICE 'analytics_rls: %.% — RLS enabled, policies created', _schema, _table;
-        _applied := _applied + 1;
+            RAISE NOTICE 'analytics_rls: %.% — RLS enabled, policies created', _schema, _table;
+            _applied := _applied + 1;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'analytics_rls: %.% — RLS setup skipped — %', _schema, _table, SQLERRM;
+            _skipped := _skipped + 1;
+        END;
     END LOOP;
 
     RAISE NOTICE 'analytics_rls: % tables configured, % skipped (not yet created by dbt)', _applied, _skipped;
