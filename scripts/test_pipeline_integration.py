@@ -98,6 +98,8 @@ def _q(cur, sql: str, params: tuple = ()) -> tuple | None:
         cur.execute(sql, params)
         return cur.fetchone()
     except Exception as e:
+        # Rollback so subsequent queries on this connection are not blocked
+        cur.connection.rollback()
         return None
 
 
@@ -345,9 +347,9 @@ def check_stage_marts(cur, stage: Stage) -> None:
                  f"""
                  SELECT count(*) FROM {mart_table}
                  WHERE tenant_id = %s
-                   AND (roas IS NULL
-                        OR roas = 'Infinity'::numeric
-                        OR roas = '-Infinity'::numeric)
+                   AND (net_roas IS NULL
+                        OR net_roas = 'Infinity'::numeric
+                        OR net_roas = '-Infinity'::numeric)
                  """,
                  (TENANT_ID,))
         if row is not None:
