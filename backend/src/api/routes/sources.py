@@ -89,10 +89,12 @@ _oauth_redirect_default = (
 )
 OAUTH_REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI") or _oauth_redirect_default
 if not OAUTH_REDIRECT_URI:
-    raise RuntimeError(
-        "OAUTH_REDIRECT_URI must be set in production. "
-        "Add it to render.yaml or the environment."
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "OAUTH_REDIRECT_URI is not set in production. "
+        "OAuth flows will fail until it is configured in render.yaml or the environment."
     )
+    OAUTH_REDIRECT_URI = "https://app.markinsight.net/api/sources/oauth/callback"
 
 # OAuth state TTL in seconds (10 minutes)
 OAUTH_STATE_TTL_SECONDS = 600
