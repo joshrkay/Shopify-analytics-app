@@ -1,7 +1,7 @@
 # AI Growth Analytics - Backend Makefile
 # Provides common commands for development and testing
 
-.PHONY: help install test test-unit test-regression test-billing test-platform test-raw-rls lint format clean
+.PHONY: help install test test-unit test-regression test-billing test-platform test-raw-rls lint format clean check-imports check-migration-safety smoke-test test-graceful-degradation safety-gates
 
 # Default target
 help:
@@ -24,6 +24,13 @@ help:
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean         Remove cached files"
+	@echo ""
+	@echo "Deploy Safety Gates (run these before pushing to main):"
+	@echo "  make check-imports          Verify all local imports resolve (static + runtime)"
+	@echo "  make check-migration-safety Scan SQL migrations for unsafe dbt table refs"
+	@echo "  make smoke-test             Import the full FastAPI app (catches startup crashes)"
+	@echo "  make test-graceful-degradation  Verify no endpoint returns 500 when dbt absent"
+	@echo "  make safety-gates           Run all 4 deploy safety gates"
 
 # =============================================================================
 # Setup
@@ -91,6 +98,40 @@ lint:
 
 format:
 	ruff format src/
+
+# =============================================================================
+# Deploy Safety Gates
+# =============================================================================
+
+check-imports:
+	@echo "Running import verification (static + runtime)..."
+	PYTHONPATH=. python scripts/check_imports.py
+
+check-migration-safety:
+	@echo "Running migration safety check..."
+	python scripts/check_migration_safety.py
+
+smoke-test:
+	@echo "Running app startup smoke test..."
+	PYTHONPATH=. python scripts/smoke_test_startup.py
+
+test-graceful-degradation:
+	@echo "Running graceful degradation tests..."
+	PYTHONPATH=. pytest src/tests/integration/test_graceful_degradation.py \
+		-v \
+		--tb=short \
+		-m "not slow"
+
+safety-gates:
+	@echo "=========================================="
+	@echo "Running all 4 deploy safety gates"
+	@echo "=========================================="
+	@$(MAKE) check-imports && \
+	 $(MAKE) smoke-test && \
+	 $(MAKE) check-migration-safety && \
+	 $(MAKE) test-graceful-degradation
+	@echo ""
+	@echo "All safety gates passed."
 
 # =============================================================================
 # Utilities
