@@ -106,6 +106,103 @@ jobs:
           echo "::error::Review test output above for details"
           exit 1
 
+  # ============================================================================
+  # Deploy Safety Gates — run in parallel with quality-gates.
+  # Catches the class of failures that only appear at startup / deploy time:
+  #   1. Import verification  — missing/broken module files (caused 13 deploys to fail)
+  #   2. Migration safety     — unguarded dbt table refs in SQL migrations
+  #   3. Startup smoke test   — app can be imported without crashing
+  #   4. Graceful degradation — no endpoint returns 500 when dbt tables absent
+  # ============================================================================
+  deploy-safety-gates:
+    name: Deploy Safety Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-mock
+
+      - name: Gate 1 — Import Verification (static + runtime)
+        working-directory: ./backend
+        env:
+          PYTHONPATH: "${{ github.workspace }}/backend"
+          DATABASE_URL: "sqlite:///:memory:"
+          CLERK_FRONTEND_API: "test.clerk.accounts.dev"
+          ENV: "test"
+        run: |
+          echo "=========================================="
+          echo "Gate 1: Import Verification"
+          echo "=========================================="
+          echo "Phase 1: verifying all imported module files exist on disk..."
+          echo "Phase 2: runtime-importing each route module (catches NameErrors)..."
+          python scripts/check_imports.py || exit 1
+
+      - name: Gate 2 — Migration Safety Check
+        working-directory: ./backend
+        run: |
+          echo "=========================================="
+          echo "Gate 2: Migration Safety Check"
+          echo "=========================================="
+          echo "Scanning migrations/ for unguarded dbt table references..."
+          echo "Strict mode: new migration files with unguarded dbt refs will fail."
+          echo "performance_indexes.sql has DO blocks (classified as WARNING, not ERROR)."
+          python scripts/check_migration_safety.py || exit 1
+
+      - name: Gate 3 — App Startup Smoke Test
+        working-directory: ./backend
+        env:
+          PYTHONPATH: "${{ github.workspace }}/backend"
+          DATABASE_URL: "sqlite:///:memory:"
+          CLERK_FRONTEND_API: "test.clerk.accounts.dev"
+          ENV: "test"
+        run: |
+          echo "=========================================="
+          echo "Gate 3: App Startup Smoke Test"
+          echo "=========================================="
+          echo "Verifying `import main` completes without errors..."
+          python scripts/smoke_test_startup.py || exit 1
+
+      - name: Gate 4 — Graceful Degradation Tests
+        working-directory: ./backend
+        env:
+          PYTHONPATH: "${{ github.workspace }}/backend"
+          DATABASE_URL: "sqlite:///:memory:"
+          CLERK_FRONTEND_API: "test.clerk.accounts.dev"
+          ENV: "test"
+        run: |
+          echo "=========================================="
+          echo "Gate 4: Graceful Degradation Tests"
+          echo "=========================================="
+          echo "Verifying no endpoint returns HTTP 500 when dbt tables absent..."
+          pytest src/tests/integration/test_graceful_degradation.py \
+            -v \
+            --tb=short \
+            --disable-warnings || exit 1
+
+      - name: Deploy Safety Gate Summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "Deploy Safety Gate Results"
+          echo "=========================================="
+          echo "Gate 1 (Import Verification):      Prevents NameError startup crashes"
+          echo "Gate 2 (Migration Safety):          Prevents deploy failures on fresh DB"
+          echo "Gate 3 (Startup Smoke Test):        Verifies app imports cleanly"
+          echo "Gate 4 (Graceful Degradation):      Ensures 503 not 500 when dbt absent"
+
   # Additional job for full platform test suite
   platform-tests:
     name: Full Platform Test Suite
