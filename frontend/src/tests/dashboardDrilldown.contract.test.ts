@@ -99,10 +99,10 @@ describe('Dashboard drill-down Total rows use authoritative KPI values', () => {
     expect(dashboard).toContain('kpi?.total_ad_spend.value');
     expect(dashboard).toContain('kpi?.total_conversions.value');
 
-    // Confirm optional-chained kpi fields (same source of truth as card + drill-down)
-    expect(dashboard).toContain('kpi?.total_revenue');
-    expect(dashboard).toContain('kpi?.total_ad_spend');
-    expect(dashboard).toContain('kpi?.total_conversions');
+    // Confirm the fields are from the kpi object (not channel-level data)
+    expect(dashboard).toContain('kpi.total_revenue');
+    expect(dashboard).toContain('kpi.total_ad_spend');
+    expect(dashboard).toContain('kpi.total_conversions');
   });
 
   it('drill-down modal comment documents the source-of-truth intent', () => {

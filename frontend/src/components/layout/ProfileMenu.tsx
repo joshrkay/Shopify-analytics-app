@@ -1,7 +1,7 @@
 /**
  * ProfileMenu Component
  *
- * Profile dropdown (Polaris) — usable standalone or in future top bars.
+ * Profile dropdown menu in the AppHeader with:
  * - Current user name and email from Clerk
  * - Active workspace info from AgencyContext
  * - Settings link
