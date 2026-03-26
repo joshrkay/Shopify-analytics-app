@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Sparkles,
   TrendingUp,
@@ -18,10 +19,16 @@ import {
   Lightbulb,
   ArrowRight,
   X,
+  Clock,
+  ExternalLink,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react';
 import { listRecommendations, acceptRecommendation, dismissRecommendation } from '../services/recommendationsApi';
+import { getInsight } from '../services/insightsApi';
 import type { Recommendation, RecommendationPriority } from '../types/recommendations';
 import { getRecommendationTypeLabel } from '../types/recommendations';
+import type { Insight, SupportingMetric } from '../types/insights';
 
 type FilterOption = 'all' | RecommendationPriority;
 
@@ -68,13 +75,74 @@ function impactLabel(impact: string): string {
   return map[impact] ?? impact;
 }
 
+function impactLevel(impact: string): number {
+  return impact === 'significant' ? 3 : impact === 'moderate' ? 2 : 1;
+}
+
+function formatMetricValue(value: number | null, metric: string): string {
+  if (value === null) return '-';
+  if (metric.toLowerCase().includes('spend') || metric.toLowerCase().includes('cost')) {
+    return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  if (metric.toLowerCase().includes('rate') || metric.toLowerCase().includes('roas') || metric.toLowerCase().includes('ctr')) {
+    return `${value.toFixed(2)}%`;
+  }
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function formatChange(changePct: number | null): string {
+  if (changePct === null) return '-';
+  const sign = changePct >= 0 ? '+' : '';
+  return `${sign}${changePct.toFixed(1)}%`;
+}
+
+function isNegativeChange(changePct: number | null, metric: string): boolean {
+  if (changePct === null) return false;
+  const isCostMetric = metric.toLowerCase().includes('spend') ||
+    metric.toLowerCase().includes('cost') ||
+    metric.toLowerCase().includes('cpc');
+  return isCostMetric ? changePct > 0 : changePct < 0;
+}
+
+function relativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMin = Math.floor((now - then) / 60000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export function AIConsultant() {
+  const navigate = useNavigate();
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterOption>('all');
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null);
+  const [relatedInsight, setRelatedInsight] = useState<Insight | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+
+  // Fetch related insight when a recommendation is selected
+  useEffect(() => {
+    if (!selectedRec) {
+      setRelatedInsight(null);
+      return;
+    }
+    let cancelled = false;
+    setInsightLoading(true);
+    setRelatedInsight(null);
+    getInsight(selectedRec.related_insight_id)
+      .then((data) => { if (!cancelled) setRelatedInsight(data); })
+      .catch(() => { /* graceful — insight sections just won't show */ })
+      .finally(() => { if (!cancelled) setInsightLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedRec]);
 
   const loadRecommendations = useCallback(async () => {
     setLoading(true);
@@ -364,168 +432,316 @@ export function AIConsultant() {
         </div>
       )}
 
+      {/* Modal keyframes */}
+      <style>{`
+        @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes modalScaleIn { from { opacity: 0; transform: scale(0.95) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+      `}</style>
+
       {/* Recommendation Detail Modal */}
       {selectedRec && (() => {
         const ModalIcon = getTypeIcon(selectedRec.recommendation_type);
-        const riskColorClass =
-          selectedRec.risk_level === 'high'
-            ? 'text-red-600 bg-red-50'
-            : selectedRec.risk_level === 'medium'
-            ? 'text-yellow-600 bg-yellow-50'
-            : 'text-green-600 bg-green-50';
         const confidencePct = Math.round(selectedRec.confidence_score * 100);
+        const confidenceColor = confidencePct >= 70 ? '#2563eb' : confidencePct >= 40 ? '#d97706' : '#dc2626';
+        const riskDotColor = selectedRec.risk_level === 'high' ? 'bg-red-500' : selectedRec.risk_level === 'medium' ? 'bg-yellow-500' : 'bg-green-500';
+        const impactLvl = impactLevel(selectedRec.estimated_impact);
+        // SVG confidence ring calculations
+        const radius = 26;
+        const circumference = 2 * Math.PI * radius;
+        const strokeDashoffset = circumference - (confidencePct / 100) * circumference;
 
         return (
           <div
             className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+            style={{ animation: 'modalFadeIn 150ms ease-out' }}
             onClick={() => setSelectedRec(null)}
             onKeyDown={(e) => { if (e.key === 'Escape') setSelectedRec(null); }}
           >
             <div
-              className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto p-6 shadow-xl"
+              className="bg-white rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl"
+              style={{ animation: 'modalScaleIn 200ms ease-out' }}
               role="dialog"
               aria-modal="true"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Modal Header */}
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                    <ModalIcon className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      {getRecommendationTypeLabel(selectedRec.recommendation_type)}
-                    </h2>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          selectedRec.priority === 'high'
-                            ? 'bg-red-100 text-red-800'
-                            : selectedRec.priority === 'medium'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {selectedRec.priority.toUpperCase()} PRIORITY
-                      </span>
-                      {selectedRec.is_accepted && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Applied
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSelectedRec(null)}
-                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Recommendation Text */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-gray-500 mb-2">Recommendation</h3>
-                <p className="text-gray-800">{selectedRec.recommendation_text}</p>
-              </div>
-
-              {/* Rationale */}
-              {selectedRec.rationale && (
-                <div className="mb-6">
-                  <h3 className="text-sm font-medium text-gray-500 mb-2">Rationale</h3>
-                  <p className="text-gray-700 bg-gray-50 rounded-lg p-4">{selectedRec.rationale}</p>
-                </div>
-              )}
-
-              {/* Details Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-500 mb-1">Expected Impact</p>
-                  <p className="font-semibold text-green-600">{impactLabel(selectedRec.estimated_impact)}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-500 mb-1">Risk Level</p>
-                  <span className={`inline-block px-2 py-1 rounded text-sm font-medium ${riskColorClass}`}>
-                    {selectedRec.risk_level.charAt(0).toUpperCase() + selectedRec.risk_level.slice(1)}
-                  </span>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-500 mb-1">Confidence Score</p>
+              {/* Header with gradient accent */}
+              <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-t-xl px-6 py-4">
+                <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="font-semibold text-blue-600">{confidencePct}%</span>
-                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-600 rounded-full"
-                        style={{ width: `${confidencePct}%` }}
-                      />
+                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                      <ModalIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold text-white">
+                        {getRecommendationTypeLabel(selectedRec.recommendation_type)}
+                      </h2>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          selectedRec.priority === 'high' ? 'bg-red-400/30 text-red-100'
+                            : selectedRec.priority === 'medium' ? 'bg-yellow-400/30 text-yellow-100'
+                            : 'bg-white/20 text-white/80'
+                        }`}>
+                          {selectedRec.priority.toUpperCase()}
+                        </span>
+                        {selectedRec.affected_entity && (
+                          <span className="text-white/70 text-xs">
+                            {selectedRec.affected_entity_type && `${selectedRec.affected_entity_type.charAt(0).toUpperCase() + selectedRec.affected_entity_type.slice(1)}: `}
+                            {selectedRec.affected_entity}
+                          </span>
+                        )}
+                        {selectedRec.is_accepted && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-400/30 text-green-100">
+                            Accepted
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedRec(null)}
+                    className="p-1 text-white/70 hover:text-white transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="px-6 py-5 space-y-5">
+                {/* Dollar Impact Hero (from related insight) */}
+                {relatedInsight?.estimated_dollar_impact != null && (
+                  <div className={`rounded-lg p-4 ${
+                    relatedInsight.estimated_dollar_impact >= 0
+                      ? 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200'
+                      : 'bg-gradient-to-r from-red-50 to-orange-50 border border-red-200'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        relatedInsight.estimated_dollar_impact >= 0 ? 'bg-green-100' : 'bg-red-100'
+                      }`}>
+                        <DollarSign className={`w-5 h-5 ${
+                          relatedInsight.estimated_dollar_impact >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`} />
+                      </div>
+                      <div>
+                        <p className={`text-lg font-bold ${
+                          relatedInsight.estimated_dollar_impact >= 0 ? 'text-green-700' : 'text-red-700'
+                        }`}>
+                          {relatedInsight.estimated_dollar_impact >= 0 ? '+' : ''}${Math.abs(relatedInsight.estimated_dollar_impact).toLocaleString(undefined, { maximumFractionDigits: 0 })}/mo estimated impact
+                        </p>
+                        {relatedInsight.dollar_impact_explanation && (
+                          <p className="text-sm text-gray-600 mt-0.5">{relatedInsight.dollar_impact_explanation}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Insight loading skeleton for dollar impact */}
+                {insightLoading && (
+                  <div className="rounded-lg p-4 bg-gray-50 border border-gray-200 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gray-200" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-5 w-48 bg-gray-200 rounded" />
+                        <div className="h-4 w-72 bg-gray-200 rounded" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Recommendation */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Recommendation</h3>
+                  <p className="text-gray-800 leading-relaxed">{selectedRec.recommendation_text}</p>
+                </div>
+
+                {/* Why This Matters (from related insight) */}
+                {relatedInsight?.why_it_matters && (
+                  <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
+                    <div className="flex gap-3">
+                      <Lightbulb className="w-5 h-5 text-purple-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-sm font-medium text-purple-800 mb-1">Why This Matters</h4>
+                        <p className="text-sm text-purple-700 leading-relaxed">{relatedInsight.why_it_matters}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Rationale */}
+                {selectedRec.rationale && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Rationale</h3>
+                    <p className="text-gray-700 bg-gray-50 rounded-lg p-4 leading-relaxed">{selectedRec.rationale}</p>
+                  </div>
+                )}
+
+                {/* Metrics Row: Impact / Risk / Confidence */}
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Expected Impact */}
+                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Impact</p>
+                    <p className="font-semibold text-green-600 text-sm mb-2">{impactLabel(selectedRec.estimated_impact)}</p>
+                    <div className="flex justify-center gap-1">
+                      {[1, 2, 3].map((dot) => (
+                        <div key={dot} className={`w-2.5 h-2.5 rounded-full ${
+                          dot <= impactLvl ? 'bg-green-500' : 'bg-gray-200'
+                        }`} />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Risk Level */}
+                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Risk</p>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${riskDotColor}`} />
+                      <span className="font-semibold text-gray-800 text-sm">
+                        {selectedRec.risk_level.charAt(0).toUpperCase() + selectedRec.risk_level.slice(1)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Confidence Gauge */}
+                  <div className="bg-gray-50 rounded-lg p-4 flex flex-col items-center">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Confidence</p>
+                    <div className="relative w-16 h-16">
+                      <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                        <circle cx="32" cy="32" r={radius} fill="none" stroke="#e5e7eb" strokeWidth="6" />
+                        <circle
+                          cx="32" cy="32" r={radius} fill="none"
+                          stroke={confidenceColor} strokeWidth="6"
+                          strokeLinecap="round"
+                          strokeDasharray={circumference}
+                          strokeDashoffset={strokeDashoffset}
+                          style={{ transition: 'stroke-dashoffset 0.5s ease-out' }}
+                        />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold" style={{ color: confidenceColor }}>
+                        {confidencePct}%
+                      </span>
                     </div>
                   </div>
                 </div>
-                {selectedRec.affected_entity && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-500 mb-1">Affected Entity</p>
-                    <p className="font-medium text-gray-800">
-                      {selectedRec.affected_entity}
-                      {selectedRec.affected_entity_type && (
-                        <span className="text-sm text-gray-500 ml-2">
-                          ({selectedRec.affected_entity_type})
+
+                {/* Supporting Metrics Table (from related insight) */}
+                {insightLoading && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">Supporting Metrics</h3>
+                    <div className="space-y-2">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="animate-pulse flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                          <div className="h-4 w-24 bg-gray-200 rounded" />
+                          <div className="h-4 w-40 bg-gray-200 rounded" />
+                          <div className="h-5 w-16 bg-gray-200 rounded-full" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {relatedInsight && relatedInsight.supporting_metrics.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide">Supporting Metrics</h3>
+                      {relatedInsight.timeframe && (
+                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {relatedInsight.timeframe}
                         </span>
                       )}
-                    </p>
+                    </div>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+                            <th className="text-left px-4 py-2 font-medium">Metric</th>
+                            <th className="text-right px-4 py-2 font-medium">Previous</th>
+                            <th className="text-center px-2 py-2 font-medium" />
+                            <th className="text-right px-4 py-2 font-medium">Current</th>
+                            <th className="text-right px-4 py-2 font-medium">Change</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {relatedInsight.supporting_metrics.map((m: SupportingMetric, idx: number) => {
+                            const negative = isNegativeChange(m.change_pct, m.metric);
+                            return (
+                              <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                                <td className="px-4 py-2.5 text-gray-700 font-medium">{m.metric}</td>
+                                <td className="px-4 py-2.5 text-right text-gray-500">{formatMetricValue(m.previous, m.metric)}</td>
+                                <td className="px-1 py-2.5 text-center text-gray-300">
+                                  <ArrowRight className="w-3 h-3 inline" />
+                                </td>
+                                <td className="px-4 py-2.5 text-right text-gray-800 font-medium">{formatMetricValue(m.current, m.metric)}</td>
+                                <td className="px-4 py-2.5 text-right">
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    negative ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+                                  }`}>
+                                    {negative
+                                      ? <ArrowDownRight className="w-3 h-3" />
+                                      : <ArrowUpRight className="w-3 h-3" />
+                                    }
+                                    {formatChange(m.change_pct)}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
-                {selectedRec.currency && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-500 mb-1">Currency</p>
-                    <p className="font-medium text-gray-800">{selectedRec.currency}</p>
-                  </div>
-                )}
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-500 mb-1">Generated</p>
-                  <p className="font-medium text-gray-800">
-                    {new Date(selectedRec.generated_at).toLocaleDateString(undefined, {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
+
+                {/* Additional Details */}
+                <div className="flex items-center gap-4 text-xs text-gray-400 pt-2 border-t border-gray-100">
+                  <span className="flex items-center gap-1" title={new Date(selectedRec.generated_at).toLocaleString()}>
+                    <Clock className="w-3 h-3" />
+                    Generated {relativeTime(selectedRec.generated_at)}
+                  </span>
+                  {selectedRec.currency && <span>Currency: {selectedRec.currency}</span>}
+                  <button
+                    onClick={() => { setSelectedRec(null); navigate('/insights'); }}
+                    className="flex items-center gap-1 text-blue-500 hover:text-blue-700 transition-colors ml-auto"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    View source insight
+                  </button>
                 </div>
               </div>
 
               {/* Modal Actions */}
-              <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
-                {!selectedRec.is_accepted ? (
+              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50/50 rounded-b-xl">
+                <div className="flex items-center gap-3">
+                  {!selectedRec.is_accepted ? (
+                    <button
+                      onClick={() => handleAcceptFromModal(selectedRec.recommendation_id)}
+                      disabled={actionInProgress === selectedRec.recommendation_id}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 text-sm font-medium"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      {actionInProgress === selectedRec.recommendation_id ? 'Accepting...' : 'Accept Recommendation'}
+                    </button>
+                  ) : (
+                    <span className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium">
+                      <CheckCircle className="w-4 h-4" />
+                      Accepted &mdash; action proposal will be generated
+                    </span>
+                  )}
                   <button
-                    onClick={() => handleAcceptFromModal(selectedRec.recommendation_id)}
+                    onClick={() => handleDismissFromModal(selectedRec.recommendation_id)}
                     disabled={actionInProgress === selectedRec.recommendation_id}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    className="px-4 py-2 text-gray-500 hover:text-gray-700 transition-colors text-sm disabled:opacity-50"
                   >
-                    <CheckCircle className="w-4 h-4" />
-                    {actionInProgress === selectedRec.recommendation_id ? 'Applying...' : 'Apply Recommendation'}
+                    Dismiss
                   </button>
-                ) : (
-                  <span className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium">
-                    <CheckCircle className="w-4 h-4" />
-                    Applied
-                  </span>
-                )}
-                <button
-                  onClick={() => handleDismissFromModal(selectedRec.recommendation_id)}
-                  disabled={actionInProgress === selectedRec.recommendation_id}
-                  className="px-4 py-2 text-gray-500 hover:text-gray-700 transition-colors text-sm disabled:opacity-50"
-                >
-                  Dismiss
-                </button>
-                <button
-                  onClick={() => setSelectedRec(null)}
-                  className="ml-auto px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors text-sm"
-                >
-                  Close
-                </button>
+                  <button
+                    onClick={() => setSelectedRec(null)}
+                    className="ml-auto px-4 py-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>
