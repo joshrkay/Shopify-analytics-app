@@ -138,133 +138,75 @@ GRANT EXECUTE ON FUNCTION canonical.get_current_tenant_id() TO analytics_query_r
 
 -- =============================================================================
 -- Enable RLS on All Target Tables
+-- Guarded: these tables are created by dbt and may not exist yet.
+-- When tables don't exist, RLS setup is safely skipped.
+-- Re-run this migration after dbt creates the tables, or apply RLS
+-- as a post-dbt hook.
 -- =============================================================================
 
--- canonical.orders
-ALTER TABLE canonical.orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE canonical.orders FORCE ROW LEVEL SECURITY;
+-- Helper: apply RLS + policies to a single table if it exists
+-- Params: schema_name, table_name, policy_prefix
+DO $$
+DECLARE
+    _tables TEXT[][] := ARRAY[
+        ARRAY['canonical', 'orders',                'orders'],
+        ARRAY['analytics', 'marketing_spend',       'marketing_spend'],
+        ARRAY['attribution', 'last_click',          'last_click'],
+        ARRAY['marts', 'mart_marketing_metrics',    'mart_marketing_metrics'],
+        ARRAY['marts', 'fct_marketing_metrics',     'fct_marketing_metrics']
+    ];
+    _schema TEXT;
+    _table  TEXT;
+    _prefix TEXT;
+    _fqn    TEXT;
+    _applied INT := 0;
+    _skipped INT := 0;
+BEGIN
+    FOR i IN 1..array_length(_tables, 1) LOOP
+        _schema := _tables[i][1];
+        _table  := _tables[i][2];
+        _prefix := _tables[i][3];
+        _fqn    := _schema || '.' || _table;
 
--- analytics.marketing_spend
-ALTER TABLE analytics.marketing_spend ENABLE ROW LEVEL SECURITY;
-ALTER TABLE analytics.marketing_spend FORCE ROW LEVEL SECURITY;
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = _schema AND table_name = _table
+        ) THEN
+            RAISE NOTICE 'analytics_rls: %.% does not exist yet (created by dbt) — skipping RLS', _schema, _table;
+            _skipped := _skipped + 1;
+            CONTINUE;
+        END IF;
 
--- attribution.last_click
-ALTER TABLE attribution.last_click ENABLE ROW LEVEL SECURITY;
-ALTER TABLE attribution.last_click FORCE ROW LEVEL SECURITY;
+        -- Enable RLS
+        EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', _schema, _table);
+        EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', _schema, _table);
 
--- marts.mart_marketing_metrics
-ALTER TABLE marts.mart_marketing_metrics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE marts.mart_marketing_metrics FORCE ROW LEVEL SECURITY;
+        -- Drop existing policies (idempotent)
+        EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', _prefix || '_tenant_isolation', _schema, _table);
+        EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', _prefix || '_admin_bypass', _schema, _table);
 
--- marts.fct_marketing_metrics
-ALTER TABLE marts.fct_marketing_metrics ENABLE ROW LEVEL SECURITY;
-ALTER TABLE marts.fct_marketing_metrics FORCE ROW LEVEL SECURITY;
+        -- Query role: can only see own tenant's data
+        EXECUTE format(
+            'CREATE POLICY %I ON %I.%I FOR ALL TO analytics_query_role USING (tenant_id = canonical.get_current_tenant_id())',
+            _prefix || '_tenant_isolation', _schema, _table
+        );
 
--- =============================================================================
--- RLS Policies: canonical.orders
--- =============================================================================
+        -- Admin role: full access for dbt pipeline (bypasses RLS)
+        EXECUTE format(
+            'CREATE POLICY %I ON %I.%I FOR ALL TO analytics_admin_role USING (true) WITH CHECK (true)',
+            _prefix || '_admin_bypass', _schema, _table
+        );
 
--- Drop existing policies (idempotent)
-DROP POLICY IF EXISTS orders_tenant_isolation ON canonical.orders;
-DROP POLICY IF EXISTS orders_admin_bypass ON canonical.orders;
+        RAISE NOTICE 'analytics_rls: %.% — RLS enabled, policies created', _schema, _table;
+        _applied := _applied + 1;
+    END LOOP;
 
--- Query role: Can only see own tenant's data
-CREATE POLICY orders_tenant_isolation
-    ON canonical.orders
-    FOR ALL
-    TO analytics_query_role
-    USING (tenant_id = canonical.get_current_tenant_id());
-
--- Admin role: Full access for dbt pipeline (bypasses RLS)
-CREATE POLICY orders_admin_bypass
-    ON canonical.orders
-    FOR ALL
-    TO analytics_admin_role
-    USING (true)
-    WITH CHECK (true);
-
--- =============================================================================
--- RLS Policies: analytics.marketing_spend
--- =============================================================================
-
-DROP POLICY IF EXISTS marketing_spend_tenant_isolation ON analytics.marketing_spend;
-DROP POLICY IF EXISTS marketing_spend_admin_bypass ON analytics.marketing_spend;
-
-CREATE POLICY marketing_spend_tenant_isolation
-    ON analytics.marketing_spend
-    FOR ALL
-    TO analytics_query_role
-    USING (tenant_id = canonical.get_current_tenant_id());
-
-CREATE POLICY marketing_spend_admin_bypass
-    ON analytics.marketing_spend
-    FOR ALL
-    TO analytics_admin_role
-    USING (true)
-    WITH CHECK (true);
+    RAISE NOTICE 'analytics_rls: % tables configured, % skipped (not yet created by dbt)', _applied, _skipped;
+END
+$$;
 
 -- =============================================================================
--- RLS Policies: attribution.last_click
--- =============================================================================
-
-DROP POLICY IF EXISTS last_click_tenant_isolation ON attribution.last_click;
-DROP POLICY IF EXISTS last_click_admin_bypass ON attribution.last_click;
-
-CREATE POLICY last_click_tenant_isolation
-    ON attribution.last_click
-    FOR ALL
-    TO analytics_query_role
-    USING (tenant_id = canonical.get_current_tenant_id());
-
-CREATE POLICY last_click_admin_bypass
-    ON attribution.last_click
-    FOR ALL
-    TO analytics_admin_role
-    USING (true)
-    WITH CHECK (true);
-
--- =============================================================================
--- RLS Policies: marts.mart_marketing_metrics
--- =============================================================================
-
-DROP POLICY IF EXISTS mart_marketing_metrics_tenant_isolation ON marts.mart_marketing_metrics;
-DROP POLICY IF EXISTS mart_marketing_metrics_admin_bypass ON marts.mart_marketing_metrics;
-
-CREATE POLICY mart_marketing_metrics_tenant_isolation
-    ON marts.mart_marketing_metrics
-    FOR ALL
-    TO analytics_query_role
-    USING (tenant_id = canonical.get_current_tenant_id());
-
-CREATE POLICY mart_marketing_metrics_admin_bypass
-    ON marts.mart_marketing_metrics
-    FOR ALL
-    TO analytics_admin_role
-    USING (true)
-    WITH CHECK (true);
-
--- =============================================================================
--- RLS Policies: marts.fct_marketing_metrics
--- =============================================================================
-
-DROP POLICY IF EXISTS fct_marketing_metrics_tenant_isolation ON marts.fct_marketing_metrics;
-DROP POLICY IF EXISTS fct_marketing_metrics_admin_bypass ON marts.fct_marketing_metrics;
-
-CREATE POLICY fct_marketing_metrics_tenant_isolation
-    ON marts.fct_marketing_metrics
-    FOR ALL
-    TO analytics_query_role
-    USING (tenant_id = canonical.get_current_tenant_id());
-
-CREATE POLICY fct_marketing_metrics_admin_bypass
-    ON marts.fct_marketing_metrics
-    FOR ALL
-    TO analytics_admin_role
-    USING (true)
-    WITH CHECK (true);
-
--- =============================================================================
--- Verification Queries (Run these to validate RLS is working)
+-- Verification Queries (informational — safe even when tables are missing)
 -- =============================================================================
 
 -- Check that RLS is enabled on all target tables
@@ -293,5 +235,4 @@ ORDER BY schemaname, tablename, policyname;
 -- RLS Configuration Complete
 -- =============================================================================
 
-SELECT 'Analytics-layer Row-Level Security policies configured successfully' AS status;
-SELECT 'IMPORTANT: Application must SET app.tenant_id before querying' AS usage_note;
+SELECT 'Analytics-layer Row-Level Security migration completed (some tables may be deferred until dbt runs)' AS status;
