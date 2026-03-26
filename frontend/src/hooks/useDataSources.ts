@@ -74,7 +74,7 @@ export function useDataSources(): UseDataSourcesResult {
   // 30s polling interval
   useEffect(() => {
     const interval = setInterval(() => {
-      refetchRef.current().catch(() => {});
+      refetchRef.current().catch((err: unknown) => console.error('Data source poll failed:', err));
     }, 30_000);
     return () => clearInterval(interval);
   }, []);
@@ -174,7 +174,7 @@ export function useSyncProgress(connectionId: string, enabled: boolean): UseSync
         clearInterval(interval);
         return;
       }
-      refetchRef.current().catch(() => {});
+      refetchRef.current().catch((err: unknown) => console.error('Sync status poll failed:', err));
     }, 3_000);
 
     return () => clearInterval(interval);

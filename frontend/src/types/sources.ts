@@ -10,11 +10,18 @@ export type SourcePlatform =
   | 'google_ads'
   | 'tiktok_ads'
   | 'snapchat_ads'
+  | 'pinterest_ads'
+  | 'twitter_ads'
   | 'klaviyo'
   | 'shopify_email'
   | 'attentive'
   | 'postscript'
-  | 'smsbump';
+  | 'smsbump'
+  | 'linkedin_ads'
+  | 'google_analytics'
+  | 'microsoft_ads'
+  | 'hubspot'
+  | 'mailchimp';
 
 export type SourceAuthType = 'oauth' | 'api_key';
 
@@ -47,4 +54,11 @@ export const PLATFORM_DISPLAY_NAMES: Record<string, string> = {
   attentive: 'Attentive',
   postscript: 'Postscript',
   smsbump: 'SMSBump',
+  pinterest_ads: 'Pinterest Ads',
+  twitter_ads: 'Twitter/X Ads',
+  linkedin_ads: 'LinkedIn Ads',
+  google_analytics: 'Google Analytics 4',
+  microsoft_ads: 'Microsoft Ads',
+  hubspot: 'HubSpot',
+  mailchimp: 'Mailchimp',
 };

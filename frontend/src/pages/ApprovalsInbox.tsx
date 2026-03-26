@@ -38,6 +38,8 @@ import {
   rejectProposal,
   getProposalAuditTrail,
 } from '../services/actionProposalsApi';
+import { useAgency } from '../contexts/AgencyContext';
+import { UserRole } from '../types/agency';
 
 const PAGE_SIZE = 10;
 
@@ -68,6 +70,11 @@ const riskOptions = [
 ];
 
 export function ApprovalsInbox() {
+  const { userRoles } = useAgency();
+  const canApproveOrReject = userRoles.some(
+    (role) => role === UserRole.MERCHANT_ADMIN || role === UserRole.AGENCY_ADMIN
+  );
+
   // State
   const [proposals, setProposals] = useState<ActionProposal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -358,7 +365,7 @@ export function ApprovalsInbox() {
                         onReject={handleReject}
                         onViewAudit={handleViewAudit}
                         isLoading={actionLoadingIds.has(proposal.proposal_id)}
-                        canApprove={true}
+                        canApprove={canApproveOrReject}
                       />
                     ))}
                   </BlockStack>

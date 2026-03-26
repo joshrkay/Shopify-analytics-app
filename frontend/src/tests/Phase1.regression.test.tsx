@@ -11,7 +11,7 @@
  * R3  DashboardBuilder page still renders              Complex feature preserved
  * R4  InsightsFeed page still renders                  Core feature preserved
  * R5  ApprovalsInbox page still renders                Core feature preserved
- * R6  SyncHealth page still renders                    Core feature preserved
+ * R6  SyncStatus page still renders                    Core feature preserved
  * R7  TemplateGallery page still renders               Core feature preserved
  * R8  WhatsNew page still renders                      Core feature preserved
  * R9  AdminPlans page still renders                    Admin feature preserved
@@ -20,9 +20,9 @@
  * R12 FeatureGate still shows/hides gated content      Feature flags preserved
  * R13 AgencyContext provides tenant info               Multi-tenant preserved
  * R14 API services still importable                    No import/export breakage
- * R15 Hooks still importable                           No hook dependency breakage
+ * R15 Root layout still importable                     Shell preserved
  * R16 Token refresh hook returns expected shape        Auth flow preserved
- * R17 Clerk authentication gates protected routes      Auth gating preserved
+ * R17 Signed-out landing page renders marketing copy   Pre-auth UX preserved
  */
 
 import React from 'react';
@@ -33,7 +33,6 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { FeatureGate } from '../components/FeatureGate';
-import { SidebarProvider } from '../components/layout/RootLayout';
 
 // ---------------------------------------------------------------------------
 // Module mocks — broad mocks covering dependencies of all pages
@@ -57,7 +56,8 @@ vi.mock('@clerk/clerk-react', () => ({
   useClerk: () => ({ signOut: mockSignOut }),
   SignedIn: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SignedOut: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  RedirectToSignIn: () => <div data-testid="redirect-to-sign-in">Redirecting...</div>,
+  SignIn: () => <div data-testid="clerk-sign-in">SignIn</div>,
+  SignUp: () => <div data-testid="clerk-sign-up">SignUp</div>,
 }));
 
 const mockUseEntitlements = vi.fn();
@@ -406,7 +406,7 @@ function renderPage(
   return render(
     <AppProvider i18n={mockTranslations as any}>
       <MemoryRouter initialEntries={initialEntries}>
-        <SidebarProvider>{ui}</SidebarProvider>
+        {ui}
       </MemoryRouter>
     </AppProvider>,
   );
@@ -494,15 +494,14 @@ describe('Phase 1.7 — Regression: Page Rendering', () => {
     });
   });
 
-  // R6: SyncHealth page still renders
-  it('R6: SyncHealth page still renders health indicators', async () => {
-    const SyncHealth = (await import('../pages/SyncHealth')).default;
+  // R6: SyncStatus page still renders
+  it('R6: SyncStatus page still renders health indicators', async () => {
+    const { SyncStatus } = await import('../pages/SyncStatus');
 
-    renderPage(<SyncHealth />, { initialEntries: ['/sync-health'] });
+    renderPage(<SyncStatus />, { initialEntries: ['/sync'] });
 
     await waitFor(() => {
-      // SyncHealth shows its title or health data
-      expect(screen.getByText('Sync Health')).toBeInTheDocument();
+      expect(screen.getByText('Sync Status')).toBeInTheDocument();
     });
   });
 
@@ -706,8 +705,8 @@ describe('Phase 1.7 — Regression: API Services & Hooks', () => {
     const { useEntitlements } = await import('../hooks/useEntitlements');
     expect(typeof useEntitlements).toBe('function');
 
-    const { useSidebar } = await import('../components/layout/RootLayout');
-    expect(typeof useSidebar).toBe('function');
+    const { Root } = await import('../components/layout/Root');
+    expect(typeof Root).toBe('function');
   });
 });
 
@@ -727,21 +726,21 @@ describe('Phase 1.7 — Regression: Authentication', () => {
     expect(typeof hookModule.useClerkToken).toBe('function');
   });
 
-  // R17: Clerk authentication gates protected routes
-  it('R17: SignedOut renders redirect-to-sign-in', async () => {
-    const { SignedOut, RedirectToSignIn } = await import('@clerk/clerk-react');
+  // R17: Signed-out marketing landing is available
+  it('R17: Landing page renders hero copy from design', async () => {
+    const { Landing } = await import('../pages/Landing');
 
     render(
       <AppProvider i18n={mockTranslations as any}>
         <MemoryRouter>
-          <SignedOut>
-            <RedirectToSignIn />
-          </SignedOut>
+          <Landing />
         </MemoryRouter>
       </AppProvider>,
     );
 
-    expect(screen.getByTestId('redirect-to-sign-in')).toBeInTheDocument();
-    expect(screen.getByText('Redirecting...')).toBeInTheDocument();
+    expect(screen.getByText(/Welcome back! Your data awaits/i)).toBeInTheDocument();
+    expect(screen.getByText(/Automatic Data Sync/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Continue with Google/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Sign In & View Data/i })).toBeInTheDocument();
   });
 });

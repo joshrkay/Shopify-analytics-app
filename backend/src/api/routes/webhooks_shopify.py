@@ -26,6 +26,8 @@ router = APIRouter(prefix="/api/webhooks/shopify", tags=["webhooks"])
 # Webhook topics we handle
 WEBHOOK_TOPIC_SUBSCRIPTION_UPDATE = "app_subscriptions/update"
 WEBHOOK_TOPIC_APP_UNINSTALLED = "app/uninstalled"
+WEBHOOK_TOPIC_ORDERS_CREATE = "orders/create"
+WEBHOOK_TOPIC_ORDERS_UPDATED = "orders/updated"
 
 
 class WebhookResponse(BaseModel):
@@ -484,3 +486,219 @@ async def handle_customers_data_request(request: Request):
     return WebhookResponse(
         message="Data request acknowledged - no individual customer data stored in this app"
     )
+
+
+def _extract_utm_from_note_attributes(note_attributes: list) -> dict:
+    """Extract UTM parameters from Shopify order note_attributes array.
+
+    Shopify stores UTM params as:
+    [{"name": "utm_source", "value": "google"}, ...]
+    """
+    utm_fields = {}
+    if not note_attributes:
+        return utm_fields
+    for attr in note_attributes:
+        name = (attr.get("name") or "").lower()
+        value = attr.get("value")
+        if name in ("utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"):
+            utm_fields[name] = value
+    return utm_fields
+
+
+@router.post("/orders-create", response_model=WebhookResponse)
+async def handle_orders_create(
+    request: Request,
+    session: Session = Depends(get_db_session),
+    x_shopify_topic: Optional[str] = Header(None, alias="X-Shopify-Topic"),
+):
+    """
+    Handle orders/create webhook from Shopify.
+
+    Provides real-time order data (including UTM attribution params)
+    without waiting for the 60-minute Airbyte sync cycle.
+    """
+    data, shop_domain = await get_verified_webhook_body(request)
+
+    logger.info("Order create webhook received", extra={
+        "shop_domain": shop_domain,
+        "topic": x_shopify_topic,
+    })
+
+    try:
+        from src.models.store import ShopifyStore
+        from src.models.webhook_order_event import WebhookOrderEvent
+
+        # Look up store to get tenant_id
+        store = session.query(ShopifyStore).filter(
+            ShopifyStore.shop_domain == shop_domain
+        ).first()
+
+        if not store:
+            logger.warning("Store not found for order webhook", extra={
+                "shop_domain": shop_domain,
+            })
+            return WebhookResponse(message="Store not found")
+
+        # Extract UTM params from note_attributes
+        note_attributes = data.get("note_attributes", [])
+        utm = _extract_utm_from_note_attributes(note_attributes)
+
+        # Parse order_created_at
+        order_created_at = None
+        if data.get("created_at"):
+            order_created_at = datetime.fromisoformat(
+                data["created_at"].replace("Z", "+00:00")
+            )
+
+        event = WebhookOrderEvent(
+            tenant_id=store.tenant_id,
+            shop_domain=shop_domain,
+            shopify_order_id=str(data.get("id", "")),
+            order_name=data.get("name"),
+            order_number=str(data.get("order_number", "")),
+            total_price=data.get("total_price"),
+            subtotal_price=data.get("subtotal_price"),
+            currency=data.get("currency"),
+            financial_status=data.get("financial_status"),
+            fulfillment_status=data.get("fulfillment_status"),
+            utm_source=utm.get("utm_source"),
+            utm_medium=utm.get("utm_medium"),
+            utm_campaign=utm.get("utm_campaign"),
+            utm_term=utm.get("utm_term"),
+            utm_content=utm.get("utm_content"),
+            note_attributes_json=note_attributes,
+            raw_payload=data,
+            event_type="created",
+            order_created_at=order_created_at,
+            received_at=datetime.now(timezone.utc),
+        )
+
+        session.add(event)
+        session.commit()
+
+        logger.info("Order create event stored", extra={
+            "shop_domain": shop_domain,
+            "order_name": data.get("name"),
+            "has_utm": bool(utm),
+        })
+
+        return WebhookResponse(message="Order create processed")
+
+    except Exception as e:
+        logger.error("Error processing order create webhook", extra={
+            "shop_domain": shop_domain,
+            "error": str(e),
+        })
+        session.rollback()
+        return WebhookResponse(message=f"Error: {str(e)}")
+
+
+@router.post("/orders-updated", response_model=WebhookResponse)
+async def handle_orders_updated(
+    request: Request,
+    session: Session = Depends(get_db_session),
+    x_shopify_topic: Optional[str] = Header(None, alias="X-Shopify-Topic"),
+):
+    """
+    Handle orders/updated webhook from Shopify.
+
+    Updates existing order events with new financial/fulfillment status
+    (e.g., refunds, cancellations, fulfillment changes).
+    """
+    data, shop_domain = await get_verified_webhook_body(request)
+
+    logger.info("Order updated webhook received", extra={
+        "shop_domain": shop_domain,
+        "topic": x_shopify_topic,
+    })
+
+    try:
+        from src.models.store import ShopifyStore
+        from src.models.webhook_order_event import WebhookOrderEvent
+
+        store = session.query(ShopifyStore).filter(
+            ShopifyStore.shop_domain == shop_domain
+        ).first()
+
+        if not store:
+            logger.warning("Store not found for order update webhook", extra={
+                "shop_domain": shop_domain,
+            })
+            return WebhookResponse(message="Store not found")
+
+        shopify_order_id = str(data.get("id", ""))
+
+        # Extract UTM params from note_attributes
+        note_attributes = data.get("note_attributes", [])
+        utm = _extract_utm_from_note_attributes(note_attributes)
+
+        # Parse order_created_at
+        order_created_at = None
+        if data.get("created_at"):
+            order_created_at = datetime.fromisoformat(
+                data["created_at"].replace("Z", "+00:00")
+            )
+
+        # Upsert: update existing or insert new
+        existing = session.query(WebhookOrderEvent).filter(
+            WebhookOrderEvent.tenant_id == store.tenant_id,
+            WebhookOrderEvent.shopify_order_id == shopify_order_id,
+        ).first()
+
+        if existing:
+            existing.total_price = data.get("total_price")
+            existing.subtotal_price = data.get("subtotal_price")
+            existing.financial_status = data.get("financial_status")
+            existing.fulfillment_status = data.get("fulfillment_status")
+            existing.raw_payload = data
+            existing.event_type = "updated"
+            # Preserve original UTM params — don't overwrite if already set
+            if not existing.utm_source and utm.get("utm_source"):
+                existing.utm_source = utm.get("utm_source")
+                existing.utm_medium = utm.get("utm_medium")
+                existing.utm_campaign = utm.get("utm_campaign")
+                existing.utm_term = utm.get("utm_term")
+                existing.utm_content = utm.get("utm_content")
+        else:
+            event = WebhookOrderEvent(
+                tenant_id=store.tenant_id,
+                shop_domain=shop_domain,
+                shopify_order_id=shopify_order_id,
+                order_name=data.get("name"),
+                order_number=str(data.get("order_number", "")),
+                total_price=data.get("total_price"),
+                subtotal_price=data.get("subtotal_price"),
+                currency=data.get("currency"),
+                financial_status=data.get("financial_status"),
+                fulfillment_status=data.get("fulfillment_status"),
+                utm_source=utm.get("utm_source"),
+                utm_medium=utm.get("utm_medium"),
+                utm_campaign=utm.get("utm_campaign"),
+                utm_term=utm.get("utm_term"),
+                utm_content=utm.get("utm_content"),
+                note_attributes_json=note_attributes,
+                raw_payload=data,
+                event_type="updated",
+                order_created_at=order_created_at,
+                received_at=datetime.now(timezone.utc),
+            )
+            session.add(event)
+
+        session.commit()
+
+        logger.info("Order update event stored", extra={
+            "shop_domain": shop_domain,
+            "order_id": shopify_order_id,
+            "financial_status": data.get("financial_status"),
+            "is_update": existing is not None,
+        })
+
+        return WebhookResponse(message="Order update processed")
+
+    except Exception as e:
+        logger.error("Error processing order update webhook", extra={
+            "shop_domain": shop_domain,
+            "error": str(e),
+        })
+        session.rollback()
+        return WebhookResponse(message=f"Error: {str(e)}")

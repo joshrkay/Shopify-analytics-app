@@ -32,7 +32,10 @@
         "agency_features": false,
         "api_access": false,
         "priority_support": false,
-        "dedicated_support": false
+        "dedicated_support": false,
+        "warehouse_export": false,
+        "sheets_export": false,
+        "scheduled_exports": false
       },
       "limits": {
         "max_dashboards": 2,
@@ -75,7 +78,10 @@
         "agency_features": false,
         "api_access": "limited",
         "priority_support": false,
-        "dedicated_support": false
+        "dedicated_support": false,
+        "warehouse_export": false,
+        "sheets_export": "limited",
+        "scheduled_exports": false
       },
       "limits": {
         "max_dashboards": 10,
@@ -83,7 +89,7 @@
         "api_calls_per_month": 10000,
         "ai_insights_per_month": 50,
         "ai_actions_per_month": 0,
-        "data_retention_days": 90,
+        "data_retention_days": 180,
         "export_rows_per_request": 10000
       },
       "shopify_plan_id": null,
@@ -118,7 +124,10 @@
         "agency_features": false,
         "api_access": true,
         "priority_support": true,
-        "dedicated_support": false
+        "dedicated_support": false,
+        "warehouse_export": true,
+        "sheets_export": true,
+        "scheduled_exports": true
       },
       "limits": {
         "max_dashboards": 50,
@@ -126,7 +135,7 @@
         "api_calls_per_month": 100000,
         "ai_insights_per_month": 500,
         "ai_actions_per_month": 100,
-        "data_retention_days": 365,
+        "data_retention_days": 730,
         "export_rows_per_request": 100000
       },
       "shopify_plan_id": null,
@@ -162,7 +171,10 @@
         "agency_features": true,
         "api_access": true,
         "priority_support": true,
-        "dedicated_support": true
+        "dedicated_support": true,
+        "warehouse_export": true,
+        "sheets_export": true,
+        "scheduled_exports": true
       },
       "limits": {
         "max_dashboards": -1,
@@ -242,7 +254,10 @@
     "agency_features": "Agency dashboard and client management",
     "api_access": "REST API access",
     "priority_support": "Priority customer support",
-    "dedicated_support": "Dedicated account manager"
+    "dedicated_support": "Dedicated account manager",
+    "warehouse_export": "Export data to BigQuery, Snowflake, or Redshift",
+    "sheets_export": "Export data to Google Sheets",
+    "scheduled_exports": "Automated scheduled data exports"
   },
   "premium_jobs": {
     "sync": {

@@ -1,0 +1,108 @@
+version: 2
+
+sources:
+  - name: platform
+    schema: public
+    tables:
+      - name: pixel_events
+        description: "Raw customer journey events from Shopify Web Pixel"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+          - name: tenant_id
+            description: "Tenant identifier for multi-tenant isolation"
+            data_tests:
+              - not_null
+          - name: session_id
+            description: "Anonymous browser session ID"
+            data_tests:
+              - not_null
+          - name: event_type
+            description: "Event type (page_viewed, product_viewed, checkout_started, etc.)"
+            data_tests:
+              - not_null
+
+      - name: webhook_order_events
+        description: "Real-time order events from Shopify webhooks (orders/create, orders/updated)"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+            data_tests:
+              - not_null
+          - name: tenant_id
+            description: "Tenant identifier"
+            data_tests:
+              - not_null
+          - name: shopify_order_id
+            description: "Shopify order ID"
+          - name: order_name
+            description: "Shopify order display name (e.g., #1001)"
+          - name: shop_domain
+            description: "Store domain"
+          - name: event_type
+            description: "Webhook event type (orders_create, orders_updated)"
+          - name: total_price
+            description: "Total order price"
+          - name: financial_status
+            description: "Payment status"
+          - name: fulfillment_status
+            description: "Fulfillment status"
+          - name: raw_payload
+            description: "Full Shopify order JSON payload"
+          - name: created_at
+            description: "When the webhook event was received"
+
+      - name: pixel_registrations
+        description: "Tracks Web Pixel deployments per store"
+        columns:
+          - name: id
+            description: "Primary key (UUID)"
+            data_tests:
+              - not_null
+          - name: tenant_id
+            description: "Tenant identifier"
+            data_tests:
+              - not_null
+          - name: shop_domain
+            description: "Shopify store domain"
+          - name: shopify_pixel_gid
+            description: "Shopify GraphQL ID for the registered pixel"
+          - name: status
+            description: "Registration status (active, inactive, deleted)"
+
+models:
+  - name: stg_pixel_events
+    description: "Staged and deduplicated Web Pixel customer journey events"
+    columns:
+      - name: id
+        description: "Primary key"
+        data_tests:
+          - unique
+          - not_null
+      - name: tenant_id
+        description: "Tenant identifier"
+        data_tests:
+          - not_null
+      - name: session_id
+        description: "Anonymous browser session"
+        data_tests:
+          - not_null
+      - name: event_type
+        description: "Normalized event type"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values:
+                - page_viewed
+                - product_viewed
+                - collection_viewed
+                - search_submitted
+                - cart_viewed
+                - checkout_started
+                - checkout_completed
+                - payment_info_submitted
+              severity: warn
+      - name: event_timestamp
+        description: "When the event occurred in the browser"
+        data_tests:
+          - not_null

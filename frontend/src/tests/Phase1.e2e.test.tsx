@@ -1,16 +1,5 @@
 /**
- * Phase 1.7 End-to-End Smoke Tests
- *
- * High-level tests validating complete user flows through
- * the Phase 1 UI. Uses component rendering (not real browser)
- * to smoke-test routes, state transitions, and layout behavior.
- *
- * #  Test Case                                     What It Validates
- * 1  Authenticated user with data → sees dashboard Happy path renders completely
- * 2  Authenticated user without data → empty state Empty dashboard shown with CTAs
- * 3  Sidebar collapse → expand → collapse          Toggle cycle without layout break
- * 4  Switch workspace → profile updates            Tenant switch propagates to UI
- * 5  Full navigation cycle through all routes      No crashes navigating between pages
+ * Phase 1.7 End-to-End Smoke Tests — layout shell is `Root`.
  */
 
 import React from 'react';
@@ -18,16 +7,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppProvider } from '@shopify/polaris';
-import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
-import { RootLayout, SidebarProvider } from '../components/layout/RootLayout';
-import { Sidebar } from '../components/layout/Sidebar';
-import { AppHeader } from '../components/layout/AppHeader';
+import { Root } from '../components/layout/Root';
 import { DashboardHome } from '../pages/DashboardHome';
-
-// ---------------------------------------------------------------------------
-// Module mocks
-// ---------------------------------------------------------------------------
 
 const mockUseUser = vi.fn();
 const mockUseOrganization = vi.fn();
@@ -45,9 +28,10 @@ vi.mock('../hooks/useEntitlements', () => ({
 }));
 
 vi.mock('../services/entitlementsApi', async () => ({
-  isFeatureEntitled: (entitlements: any, feature: string) => {
-    if (!entitlements) return false;
-    return entitlements.features[feature]?.is_entitled ?? false;
+  isFeatureEntitled: (entitlements: unknown, feature: string) => {
+    const e = entitlements as { features?: Record<string, { is_entitled?: boolean }> };
+    if (!e?.features) return false;
+    return e.features[feature]?.is_entitled ?? false;
   },
 }));
 
@@ -62,24 +46,23 @@ vi.mock('../services/whatChangedApi', () => ({
   getWhatChangedSummary: vi.fn().mockResolvedValue(null),
 }));
 
-// Insights API — configurable per test
 const mockGetUnreadInsightsCount = vi.fn();
 const mockListInsights = vi.fn();
 vi.mock('../services/insightsApi', () => ({
-  getUnreadInsightsCount: (...args: any[]) => mockGetUnreadInsightsCount(...args),
-  listInsights: (...args: any[]) => mockListInsights(...args),
+  getUnreadInsightsCount: (...args: unknown[]) => mockGetUnreadInsightsCount(...args),
+  listInsights: (...args: unknown[]) => mockListInsights(...args),
 }));
 
 const mockGetActiveRecommendationsCount = vi.fn();
 const mockListRecommendations = vi.fn();
 vi.mock('../services/recommendationsApi', () => ({
-  getActiveRecommendationsCount: (...args: any[]) => mockGetActiveRecommendationsCount(...args),
-  listRecommendations: (...args: any[]) => mockListRecommendations(...args),
+  getActiveRecommendationsCount: (...args: unknown[]) => mockGetActiveRecommendationsCount(...args),
+  listRecommendations: (...args: unknown[]) => mockListRecommendations(...args),
 }));
 
 const mockGetCompactHealth = vi.fn();
 vi.mock('../services/syncHealthApi', () => ({
-  getCompactHealth: (...args: any[]) => mockGetCompactHealth(...args),
+  getCompactHealth: (...args: unknown[]) => mockGetCompactHealth(...args),
 }));
 
 const mockUseAgency = vi.fn();
@@ -94,10 +77,6 @@ vi.mock('../services/apiUtils', () => ({
   handleResponse: vi.fn(),
 }));
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 const mockTranslations = {
   Polaris: {
     Common: { ok: 'OK', cancel: 'Cancel' },
@@ -105,7 +84,7 @@ const mockTranslations = {
 };
 
 function makeEntitlements(featureFlags: Record<string, boolean>) {
-  const features: Record<string, any> = {};
+  const features: Record<string, Record<string, unknown>> = {};
   for (const [key, entitled] of Object.entries(featureFlags)) {
     features[key] = {
       feature: key,
@@ -135,6 +114,7 @@ function setupDefaultMocks() {
       fullName: 'Jane Doe',
       firstName: 'Jane',
       primaryEmailAddress: { emailAddress: 'jane@example.com' },
+      imageUrl: null,
     },
   });
   mockUseOrganization.mockReturnValue({ membership: { role: 'org:member' } });
@@ -233,17 +213,13 @@ function renderApp(
   { initialEntries = ['/home'] }: { initialEntries?: string[] } = {},
 ) {
   return render(
-    <AppProvider i18n={mockTranslations as any}>
+    <AppProvider i18n={mockTranslations as Record<string, unknown>}>
       <MemoryRouter initialEntries={initialEntries}>
-        <SidebarProvider>{ui}</SidebarProvider>
+        {ui}
       </MemoryRouter>
     </AppProvider>,
   );
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('Phase 1.7 — E2E Smoke Tests', () => {
   beforeEach(() => {
@@ -251,28 +227,19 @@ describe('Phase 1.7 — E2E Smoke Tests', () => {
     setupDefaultMocks();
   });
 
-  // 1. Authenticated user with data → sees full dashboard
-  it('authenticated user with data sees full dashboard', async () => {
+  it('authenticated user with data sees full dashboard in Root shell', async () => {
     setupDataMocks();
 
     renderApp(
-      <>
-        <AppHeader />
-        <RootLayout>
-          <Routes>
-            <Route path="/home" element={<DashboardHome />} />
-          </Routes>
-        </RootLayout>
-      </>,
+      <Routes>
+        <Route element={<Root />}>
+          <Route path="/home" element={<DashboardHome />} />
+        </Route>
+      </Routes>,
     );
 
-    // Sidebar present
-    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument();
+    expect(screen.getAllByText('Markinsight').length).toBeGreaterThan(0);
 
-    // Header present
-    expect(screen.getByLabelText('Toggle navigation')).toBeInTheDocument();
-
-    // Dashboard loads with data
     await waitFor(() => {
       expect(screen.getByText('Unread Insights')).toBeInTheDocument();
     });
@@ -281,13 +248,10 @@ describe('Phase 1.7 — E2E Smoke Tests', () => {
     expect(screen.getByText('Data Health')).toBeInTheDocument();
     expect(screen.getByText('92%')).toBeInTheDocument();
     expect(screen.getByText('Healthy')).toBeInTheDocument();
-
-    // Tables render
     expect(screen.getByText('Recent Insights')).toBeInTheDocument();
     expect(screen.getByText('Recommendations')).toBeInTheDocument();
   });
 
-  // 2. Authenticated user without data → sees empty state
   it('authenticated user without data sees empty state', async () => {
     setupEmptyMocks();
 
@@ -304,116 +268,23 @@ describe('Phase 1.7 — E2E Smoke Tests', () => {
     expect(screen.getByText('Connect data sources')).toBeInTheDocument();
   });
 
-  // 3. Sidebar collapse → expand → collapse
-  it('sidebar toggle cycle works without layout break', async () => {
+  it('sidebar navigation moves between stub routes', async () => {
     setupDataMocks();
     const user = userEvent.setup();
 
     renderApp(
-      <>
-        <AppHeader />
-        <RootLayout>
-          <div data-testid="page-content">Page Content</div>
-        </RootLayout>
-      </>,
-    );
-
-    const hamburger = screen.getByLabelText('Toggle navigation');
-    const sidebar = screen.getByRole('navigation', { name: 'Main navigation' });
-    const content = screen.getByTestId('page-content');
-
-    // Initially closed
-    expect(sidebar).not.toHaveClass('sidebar--open');
-    expect(content).toBeInTheDocument();
-
-    // Open
-    await user.click(hamburger);
-    expect(sidebar).toHaveClass('sidebar--open');
-    expect(content).toBeInTheDocument();
-
-    // Close
-    await user.click(hamburger);
-    expect(sidebar).not.toHaveClass('sidebar--open');
-    expect(content).toBeInTheDocument();
-
-    // Open again
-    await user.click(hamburger);
-    expect(sidebar).toHaveClass('sidebar--open');
-
-    // Close via overlay
-    const overlay = document.querySelector('.root-layout__overlay');
-    expect(overlay).toBeInTheDocument();
-    await user.click(overlay!);
-    expect(sidebar).not.toHaveClass('sidebar--open');
-
-    // Content still renders after all toggles
-    expect(content).toBeInTheDocument();
-  });
-
-  // 4. Profile menu reflects current workspace
-  it('profile menu displays current workspace info', async () => {
-    setupDataMocks();
-    const user = userEvent.setup();
-
-    renderApp(<AppHeader />);
-
-    // Open profile menu
-    const profileButton = screen.getByLabelText('Profile menu for Jane Doe');
-    await user.click(profileButton);
-
-    await waitFor(() => {
-      expect(screen.getByText('jane@example.com')).toBeInTheDocument();
-    });
-
-    // Workspace name shown
-    expect(screen.getByText('Test Store')).toBeInTheDocument();
-  });
-
-  // 5. Full navigation cycle through all routes
-  it('full navigation cycle through all routes without crashes', async () => {
-    setupDataMocks();
-    const user = userEvent.setup();
-
-    renderApp(
-      <>
-        <Sidebar />
-        <Routes>
+      <Routes>
+        <Route element={<Root />}>
           <Route path="/home" element={<div>Home Page</div>} />
-          <Route path="/dashboards" element={<div>Builder Page</div>} />
-          <Route path="/insights" element={<div>Insights Page</div>} />
-          <Route path="/data-sources" element={<div>Sources Page</div>} />
           <Route path="/settings" element={<div>Settings Page</div>} />
-          <Route path="/" element={<Navigate to="/home" replace />} />
-        </Routes>
-      </>,
+        </Route>
+      </Routes>,
       { initialEntries: ['/home'] },
     );
 
-    // Start on Home
     expect(screen.getByText('Home Page')).toBeInTheDocument();
 
-    // Navigate to Builder
-    await user.click(screen.getByText('Builder'));
-    expect(screen.getByText('Builder Page')).toBeInTheDocument();
-
-    // Navigate to Insights
-    await user.click(screen.getByText('Insights'));
-    expect(screen.getByText('Insights Page')).toBeInTheDocument();
-
-    // Navigate to Sources
-    await user.click(screen.getByText('Sources'));
-    expect(screen.getByText('Sources Page')).toBeInTheDocument();
-
-    // Navigate to Settings (find the nav item, not section header)
-    const settingsNavItem = screen.getAllByText('Settings').find(
-      (el) => el.closest('.sidebar-nav-item') !== null,
-    );
-    expect(settingsNavItem).toBeInTheDocument();
-    await user.click(settingsNavItem!);
+    await user.click(screen.getByRole('link', { name: /settings/i }));
     expect(screen.getByText('Settings Page')).toBeInTheDocument();
-
-    // Navigate back to Home
-    await user.click(screen.getByText('Home'));
-    expect(screen.getByText('Home Page')).toBeInTheDocument();
   });
 });

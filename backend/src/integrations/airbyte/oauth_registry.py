@@ -83,7 +83,7 @@ class PlatformOAuthConfig:
 _SHOPIFY_OAUTH_CONFIG = PlatformOAuthConfig(
     auth_url="https://{shop_domain}/admin/oauth/authorize",
     token_url="https://{shop_domain}/admin/oauth/access_token",
-    scope="read_orders,read_products,read_customers,read_marketing_events",
+    scope="read_orders,read_products,read_customers,read_marketing_events,read_analytics,write_pixels,read_customer_events",
     client_id_env="SHOPIFY_API_KEY",
     client_secret_env="SHOPIFY_API_SECRET",
     token_to_source_config={"access_token": "access_token"},
@@ -160,6 +160,62 @@ OAUTH_REGISTRY: Dict[str, PlatformOAuthConfig] = {
         scope="tweet.read users.read offline.access ads:read",
         client_id_env="TWITTER_CLIENT_ID",
         client_secret_env="TWITTER_CLIENT_SECRET",
+        token_to_source_config={
+            "access_token": "access_token",
+            "refresh_token": "refresh_token",
+        },
+    ),
+    "linkedin_ads": PlatformOAuthConfig(
+        auth_url="https://www.linkedin.com/oauth/v2/authorization",
+        token_url="https://www.linkedin.com/oauth/v2/accessToken",
+        scope="r_ads_reporting rw_ads r_organization_social",
+        client_id_env="LINKEDIN_CLIENT_ID",
+        client_secret_env="LINKEDIN_CLIENT_SECRET",
+        token_to_source_config={
+            "access_token": "access_token",
+            "refresh_token": "refresh_token",
+        },
+        extra_auth_params={"response_type": "code"},
+    ),
+    "google_analytics": PlatformOAuthConfig(
+        auth_url="https://accounts.google.com/o/oauth2/auth",
+        token_url="https://oauth2.googleapis.com/token",
+        scope="https://www.googleapis.com/auth/analytics.readonly",
+        client_id_env="GOOGLE_CLIENT_ID",
+        client_secret_env="GOOGLE_CLIENT_SECRET",
+        token_to_source_config={
+            "access_token": "access_token",
+            "refresh_token": "refresh_token",
+        },
+        extra_env_credentials={
+            "GOOGLE_CLIENT_ID": "client_id",
+            "GOOGLE_CLIENT_SECRET": "client_secret",
+        },
+        extra_auth_params={"access_type": "offline", "prompt": "consent"},
+    ),
+    "microsoft_ads": PlatformOAuthConfig(
+        auth_url="https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        token_url="https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        scope="https://ads.microsoft.com/msads.manage offline_access",
+        client_id_env="MICROSOFT_ADS_CLIENT_ID",
+        client_secret_env="MICROSOFT_ADS_CLIENT_SECRET",
+        token_to_source_config={
+            "access_token": "access_token",
+            "refresh_token": "refresh_token",
+        },
+        extra_env_credentials={
+            "MICROSOFT_ADS_CLIENT_ID": "client_id",
+            "MICROSOFT_ADS_CLIENT_SECRET": "client_secret",
+            "MICROSOFT_ADS_DEVELOPER_TOKEN": "developer_token",
+        },
+        extra_auth_params={"response_type": "code"},
+    ),
+    "hubspot": PlatformOAuthConfig(
+        auth_url="https://app.hubspot.com/oauth/authorize",
+        token_url="https://api.hubapi.com/oauth/v1/token",
+        scope="crm.objects.contacts.read crm.objects.deals.read content oauth",
+        client_id_env="HUBSPOT_CLIENT_ID",
+        client_secret_env="HUBSPOT_CLIENT_SECRET",
         token_to_source_config={
             "access_token": "access_token",
             "refresh_token": "refresh_token",
@@ -345,6 +401,9 @@ PLATFORMS_NEEDING_ACCOUNT_SELECTION: set = {
     "snapchat_ads",
     "pinterest_ads",
     "twitter_ads",
+    "linkedin_ads",
+    "google_analytics",
+    "microsoft_ads",
 }
 
 # Maps platform key → the Airbyte source config field that receives the selected
@@ -360,6 +419,9 @@ ACCOUNT_ID_CONFIG_FIELD: Dict[str, str] = {
     "snapchat_ads": "account_id",   # source-snapchat-marketing: account_id + organization_id
     "pinterest_ads": "ad_account_id",  # source-pinterest-ads: ad_account_id
     "twitter_ads": "account_id",    # source-twitter-ads: account_id
+    "linkedin_ads": "account_id",   # source-linkedin-ads: account_id
+    "google_analytics": "property_id",  # source-google-analytics-data-api: property_id
+    "microsoft_ads": "customer_id",  # source-bing-ads: customer_id
 }
 
 
@@ -389,6 +451,12 @@ async def discover_accounts(platform: str, tokens: Dict[str, Any]) -> list:
             return await _discover_pinterest_accounts(tokens)
         elif platform == "twitter_ads":
             return await _discover_twitter_accounts(tokens)
+        elif platform == "linkedin_ads":
+            return await _discover_linkedin_accounts(tokens)
+        elif platform == "google_analytics":
+            return await _discover_ga4_properties(tokens)
+        elif platform == "microsoft_ads":
+            return await _discover_microsoft_accounts(tokens)
         else:
             return []
     except HTTPException:
@@ -623,6 +691,104 @@ async def _discover_twitter_accounts(tokens: Dict[str, Any]) -> list:
 
     data = response.json()
     return [{"id": acct.get("id", ""), "name": acct.get("name", "")} for acct in data.get("data", [])]
+
+
+async def _discover_linkedin_accounts(tokens: Dict[str, Any]) -> list:
+    """Discover LinkedIn Ads accounts via LinkedIn Marketing API."""
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        return []
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.get(
+            "https://api.linkedin.com/v2/adAccountsV2",
+            params={"q": "search", "count": 100},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "Failed to discover LinkedIn ad accounts",
+            extra={"status_code": response.status_code, "response": response.text[:200]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to retrieve your LinkedIn ad accounts. Please try again.",
+        )
+
+    data = response.json()
+    return [
+        {"id": str(elem.get("id", "")), "name": elem.get("name", "")}
+        for elem in data.get("elements", [])
+    ]
+
+
+async def _discover_ga4_properties(tokens: Dict[str, Any]) -> list:
+    """Discover Google Analytics 4 properties via GA Admin API."""
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        return []
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.get(
+            "https://analyticsadmin.googleapis.com/v1beta/properties",
+            params={"filter": "parent:accounts/-", "pageSize": 200},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "Failed to discover GA4 properties",
+            extra={"status_code": response.status_code, "response": response.text[:200]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to retrieve your Google Analytics properties. Please try again.",
+        )
+
+    data = response.json()
+    accounts = []
+    for prop in data.get("properties", []):
+        # property name format: "properties/123456789"
+        prop_id = prop.get("name", "").split("/")[-1]
+        display_name = prop.get("displayName", f"Property {prop_id}")
+        accounts.append({"id": prop_id, "name": display_name})
+    return accounts
+
+
+async def _discover_microsoft_accounts(tokens: Dict[str, Any]) -> list:
+    """Discover Microsoft Ads customer accounts."""
+    access_token = tokens.get("access_token", "")
+    dev_token = os.getenv("MICROSOFT_ADS_DEVELOPER_TOKEN", "")
+    if not access_token:
+        return []
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        response = await http.post(
+            "https://bingads.microsoft.com/Customer/v13/CustomerManagementService.svc/GetAccountsInfo",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "DeveloperToken": dev_token,
+                "Content-Type": "application/json",
+            },
+            json={},
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "Failed to discover Microsoft Ads accounts",
+            extra={"status_code": response.status_code, "response": response.text[:200]},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to retrieve your Microsoft Ads accounts. Please try again.",
+        )
+
+    data = response.json()
+    return [
+        {"id": str(acct.get("Id", "")), "name": acct.get("Name", "")}
+        for acct in data.get("AccountsInfo", {}).get("AccountInfo", [])
+    ]
 
 
 async def refresh_access_token(

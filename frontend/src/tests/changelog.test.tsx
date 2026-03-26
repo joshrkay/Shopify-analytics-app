@@ -4,7 +4,6 @@
  * Story 9.7 - In-App Changelog & Release Notes
  *
  * Tests cover:
- * - AppHeader rendering and navigation
  * - ChangelogBadge display and interaction
  * - FeatureUpdateBanner rendering with updates
  */
@@ -16,7 +15,6 @@ import userEvent from '@testing-library/user-event';
 import { AppProvider } from '@shopify/polaris';
 import { BrowserRouter } from 'react-router-dom';
 
-import { AppHeader } from '../components/layout/AppHeader';
 import { ChangelogBadge } from '../components/changelog/ChangelogBadge';
 import { FeatureUpdateBanner } from '../components/changelog/FeatureUpdateBanner';
 
@@ -40,13 +38,7 @@ vi.mock('@clerk/clerk-react', () => ({
   ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-// Mock the sidebar context used by AppHeader
-vi.mock('../components/layout/RootLayout', () => ({
-  useSidebar: vi.fn().mockReturnValue({ isOpen: false, toggle: vi.fn(), close: vi.fn() }),
-  SidebarProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
-
-// Mock AgencyContext (used by ProfileMenu)
+// Mock AgencyContext (used by changelog consumers that also use agency)
 vi.mock('../contexts/AgencyContext', () => ({
   useAgency: vi.fn().mockReturnValue({
     activeTenantId: 'test-tenant',
@@ -57,7 +49,7 @@ vi.mock('../contexts/AgencyContext', () => ({
   }),
 }));
 
-// Mock insights API (used by NotificationBadge in AppHeader)
+// Mock insights API
 vi.mock('../services/insightsApi', () => ({
   getUnreadInsightsCount: vi.fn().mockResolvedValue(0),
 }));
@@ -76,7 +68,6 @@ vi.mock('../services/whatChangedApi', () => ({
 
 // Import mocked functions
 import { getUnreadCountNumber, getEntriesForFeature } from '../services/changelogApi';
-import { hasCriticalIssues } from '../services/whatChangedApi';
 
 // Helper to render with providers
 const renderWithProviders = (ui: React.ReactElement) => {
@@ -86,51 +77,6 @@ const renderWithProviders = (ui: React.ReactElement) => {
     </AppProvider>
   );
 };
-
-// =============================================================================
-// AppHeader Tests
-// =============================================================================
-
-describe('AppHeader', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    (getUnreadCountNumber as any).mockResolvedValue(0);
-    (hasCriticalIssues as any).mockResolvedValue(false);
-  });
-
-  it('renders the header container', () => {
-    renderWithProviders(<AppHeader />);
-
-    // The header should render with its components
-    expect(screen.getByText("What's New")).toBeInTheDocument();
-  });
-
-  it('renders ChangelogBadge with label', async () => {
-    (getUnreadCountNumber as any).mockResolvedValue(3);
-
-    renderWithProviders(<AppHeader />);
-
-    // Wait for async data to load
-    await waitFor(() => {
-      expect(screen.getByText("What's New")).toBeInTheDocument();
-    });
-  });
-
-  it('renders WhatChangedButton', async () => {
-    renderWithProviders(<AppHeader />);
-
-    await waitFor(() => {
-      expect(screen.getByText('What changed?')).toBeInTheDocument();
-    });
-  });
-
-  it('does not show ChangelogBadge on /whats-new page', () => {
-    // Note: This test would require mocking useLocation
-    // For now, we just verify the component renders
-    renderWithProviders(<AppHeader />);
-    expect(screen.getByText("What's New")).toBeInTheDocument();
-  });
-});
 
 // =============================================================================
 // ChangelogBadge Tests

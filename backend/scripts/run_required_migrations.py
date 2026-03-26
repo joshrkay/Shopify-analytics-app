@@ -24,6 +24,8 @@ MIGRATIONS = [
     "0056_agency_access.sql",
     "0057_access_revocation.sql",
     "0060_audit_logs.sql",
+    "audit_export_jobs.sql",
+    "0061_settings_api_keys.sql",
     "add_tenant_airbyte_workspace.sql",
     "create_tenant_airbyte_connections.sql",
     "add_configuration_column.sql",
@@ -47,10 +49,15 @@ MIGRATIONS = [
     "oauth_shop_domain_unique_constraint.sql",
     "add_dashboard_metric_bindings.sql",
     "add_report_templates.sql",
-    # "performance_indexes.sql",  # Depends on analytics/semantic schemas created by dbt — run after dbt
+    "performance_indexes.sql",  # Safe to run before dbt — uses IF EXISTS guards; creates indexes only when tables exist
     "raw_schema.sql",
     "ad_budgets_schema.sql",
     "alerts_schema.sql",
+    "analytics_rls.sql",
+    "webhook_order_events.sql",
+    "pixel_events.sql",
+    "pixel_registrations.sql",
+    "seed_plans_entitlements.sql",
 ]
 
 

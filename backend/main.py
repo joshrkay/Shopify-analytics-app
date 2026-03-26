@@ -10,6 +10,10 @@ import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -49,6 +53,9 @@ from src.api.routes import user_tenants
 from src.api.routes import dashboard_bindings
 from src.api.dq import routes as sync_health
 from src.api.routes import admin_diagnostics
+from src.api.routes import admin_super_admin
+from src.api.routes import audit as audit_story_87
+from src.api.routes import templates as templates_legacy
 from src.api.routes import agency_access
 from src.api.routes import auth_refresh_jwt
 from src.api.routes import auth_provision
@@ -69,12 +76,15 @@ from src.api.routes import budget_pacing
 from src.api.routes import alerts
 from src.api.routes import search
 from src.api.routes import notifications
+from src.api.routes import pixel_events
+from src.api.routes import pixel_admin
+from src.api.routes import settings
 from src.platform.db_readiness import REQUIRED_IDENTITY_TABLES, check_required_tables
 from src.database.session import get_db_session_sync
 
 # Configure structured logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -193,6 +203,22 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down MarkInsight API")
 
 
+# Initialize Sentry error tracking (no-op if SENTRY_DSN is not set)
+_sentry_dsn = os.getenv("SENTRY_DSN")
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        environment=os.getenv("ENV", "development"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        integrations=[
+            FastApiIntegration(),
+            StarletteIntegration(),
+        ],
+        # Don't send PII (emails, IPs) to Sentry
+        send_default_pii=False,
+    )
+    logging.getLogger(__name__).info("Sentry error tracking initialized")
+
 # Create FastAPI app
 app = FastAPI(
     title="MarkInsight API",
@@ -203,7 +229,13 @@ app = FastAPI(
 
 # CORS middleware (configure for your frontend domain)
 # Include Shopify Admin in CORS origins for embedding
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+_cors_raw = os.getenv("CORS_ORIGINS", "")
+if not _cors_raw and os.getenv("ENV") == "production":
+    raise RuntimeError(
+        "CORS_ORIGINS must be set in production. "
+        "Example: CORS_ORIGINS=https://app.markinsight.net"
+    )
+cors_origins = (_cors_raw or "http://localhost:3000").split(",")
 if "https://admin.shopify.com" not in cors_origins:
     cors_origins.append("https://admin.shopify.com")
 
@@ -334,6 +366,15 @@ app.include_router(dashboard_bindings.router)
 # Story 4.2 - Data Quality Root Cause Signals
 app.include_router(admin_diagnostics.router)
 
+# Super-admin grant/revoke + tenant listing (database-resolved super admin only)
+app.include_router(admin_super_admin.router)
+
+# Story 8.7 — tenant-scoped audit / safety APIs under /api/audit (distinct from /api/v1/audit-logs)
+app.include_router(audit_story_87.router)
+
+# Legacy template gallery under /api/templates (v1 templates use report_templates router)
+app.include_router(templates_legacy.router)
+
 # Include agency access routes (requires authentication)
 # Story 5.5.2 - Agency Access Request + Tenant Approval Workflow
 app.include_router(agency_access.router)
@@ -384,6 +425,15 @@ app.include_router(search.router)
 # Include notifications routes (requires authentication)
 # Story 9.1 - Notification Framework
 app.include_router(notifications.router)
+app.include_router(settings.router)
+
+# Pixel event ingestion (no auth — fires from customer browser)
+app.include_router(pixel_events.router)
+app.include_router(pixel_admin.router)
+# Data export and warehouse export routes
+from src.api.routes import data_export, warehouse_export
+app.include_router(data_export.router)
+app.include_router(warehouse_export.router)
 
 
 # ---------------------------------------------------------------------------

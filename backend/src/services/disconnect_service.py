@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -252,7 +253,7 @@ class DisconnectService:
 
             return cancelled
 
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             error_msg = f"Failed to cancel active jobs: {exc}"
             logger.error(error_msg, extra={"tenant_id": self.tenant_id})
             result.errors.append(error_msg)
@@ -375,7 +376,7 @@ class DisconnectService:
 
             return deleted
 
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             error_msg = f"Failed to soft-delete credentials: {exc}"
             logger.error(error_msg, extra={"tenant_id": self.tenant_id})
             result.errors.append(error_msg)
@@ -432,7 +433,7 @@ class DisconnectService:
 
             return True
 
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             error_msg = f"Failed to disable connection: {exc}"
             logger.error(error_msg, extra={"tenant_id": self.tenant_id})
             result.errors.append(error_msg)

@@ -26,6 +26,18 @@ export interface DataSourceDefinition {
   logoUrl?: string;
   category: 'ecommerce' | 'ads' | 'email' | 'sms';
   isEnabled: boolean;
+  /**
+   * Optional backend-declared capability flags for this source.
+   * When present, these should be preferred over static frontend assumptions.
+   */
+  capabilities?: {
+    connect?: boolean;
+    canConnect?: boolean;
+  };
+  /**
+   * Optional flattened capability alias returned by some backend versions.
+   */
+  canConnect?: boolean;
 }
 
 // =============================================================================

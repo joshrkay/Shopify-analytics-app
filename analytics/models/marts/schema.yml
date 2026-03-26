@@ -1,0 +1,271 @@
+version: 2
+
+models:
+  - name: mart_marketing_metrics
+    description: |
+      Pre-aggregated marketing metrics mart combining ROAS and CAC with
+      flexible date ranges and period-over-period comparisons.
+
+      Refs: fct_roas, fct_cac, dim_date_ranges
+
+      Grain: One row per tenant + platform + currency + campaign + period_type + date_range.
+
+      Supports all date range types (daily, weekly, monthly, last_N_days)
+      with current and prior period values plus absolute and percentage changes.
+
+    config:
+      tags: ['marts', 'marketing', 'metrics']
+
+    columns:
+      - name: date_range_id
+        description: Foreign key to dim_date_ranges
+        tests:
+          - not_null
+
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        tests:
+          - not_null
+
+      - name: platform
+        description: Ad platform identifier (meta_ads, google_ads, etc.)
+        tests:
+          - not_null
+
+      - name: currency
+        description: ISO 4217 currency code
+        tests:
+          - not_null
+
+      - name: campaign_id
+        description: Campaign identifier (nullable for platform-level aggregates)
+
+      - name: period_type
+        description: Time period granularity
+        tests:
+          - not_null
+
+      - name: period_start
+        description: Start date of the period
+        tests:
+          - not_null
+
+      - name: period_end
+        description: End date of the period
+        tests:
+          - not_null
+
+      - name: period_days
+        description: Number of days in the period
+
+      - name: comparison_type
+        description: Type of period comparison (e.g., prior_period)
+
+      - name: spend
+        description: Total advertising spend for the current period
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: orders
+        description: Number of orders in the current period
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: gross_revenue
+        description: Gross revenue in the current period
+        tests:
+          - not_null
+
+      - name: net_revenue
+        description: Net revenue in the current period
+        tests:
+          - not_null
+
+      - name: gross_roas
+        description: Gross ROAS (gross_revenue / spend), 0 when spend = 0
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: net_roas
+        description: Net ROAS (net_revenue / spend), 0 when spend = 0
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: new_customers
+        description: New customers acquired in the current period
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: net_new_customers
+        description: Net new customers (after churn) in the current period
+        tests:
+          - not_null
+
+      - name: cac
+        description: Customer acquisition cost (spend / new_customers), 0 when new_customers = 0
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: ncac
+        description: Net customer acquisition cost (spend / net_new_customers), 0 when net_new_customers = 0
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: customer_retention_rate_pct
+        description: Customer retention rate as percentage
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: dbt_updated_at
+        description: Timestamp when record was last updated by dbt
+        tests:
+          - not_null
+
+    tests:
+      # Composite uniqueness
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - date_range_id
+            - tenant_id
+            - platform
+            - currency
+            - campaign_id
+
+      # ROAS divide-by-zero handling
+      - dbt_utils.expression_is_true:
+          expression: "gross_roas = 0"
+          config:
+            where: "spend = 0"
+
+      # CAC divide-by-zero handling
+      - dbt_utils.expression_is_true:
+          expression: "cac = 0"
+          config:
+            where: "new_customers = 0"
+
+  - name: mart_revenue_metrics
+    description: |
+      Pre-aggregated revenue metrics mart with flexible date ranges
+      and period-over-period comparisons.
+
+      Refs: fct_revenue, dim_date_ranges
+
+      Grain: One row per tenant + currency + period_type + date_range.
+
+      Supports all date range types (daily, weekly, monthly, last_N_days)
+      with current and prior period values plus absolute and percentage changes.
+
+    config:
+      tags: ['marts', 'revenue', 'metrics']
+
+    columns:
+      - name: date_range_id
+        description: Foreign key to dim_date_ranges
+        tests:
+          - not_null
+
+      - name: tenant_id
+        description: Tenant identifier for data isolation
+        tests:
+          - not_null
+
+      - name: currency
+        description: ISO 4217 currency code
+        tests:
+          - not_null
+
+      - name: period_type
+        description: Time period granularity
+        tests:
+          - not_null
+
+      - name: period_start
+        description: Start date of the period
+        tests:
+          - not_null
+
+      - name: period_end
+        description: End date of the period
+        tests:
+          - not_null
+
+      - name: period_days
+        description: Number of days in the period
+
+      - name: comparison_type
+        description: Type of period comparison
+
+      - name: gross_revenue
+        description: Gross revenue in the current period
+        tests:
+          - not_null
+
+      - name: refund_amount
+        description: Total refund amount in the current period
+        tests:
+          - not_null
+
+      - name: cancellation_amount
+        description: Total cancellation amount in the current period
+        tests:
+          - not_null
+
+      - name: net_revenue
+        description: Net revenue (gross - refunds - cancellations)
+        tests:
+          - not_null
+
+      - name: order_count
+        description: Number of orders in the current period
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: avg_daily_gross_revenue
+        description: Average daily gross revenue
+
+      - name: avg_daily_net_revenue
+        description: Average daily net revenue
+
+      - name: aov
+        description: Average order value (net_revenue / order_count), 0 when order_count = 0
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: dbt_updated_at
+        description: Timestamp when record was last updated by dbt
+        tests:
+          - not_null
+
+    tests:
+      # Composite uniqueness
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - date_range_id
+            - tenant_id
+            - currency
+
+      # AOV divide-by-zero handling
+      - dbt_utils.expression_is_true:
+          expression: "aov = 0"
+          config:
+            where: "order_count = 0"
