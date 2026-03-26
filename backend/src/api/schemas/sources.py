@@ -31,6 +31,11 @@ SOURCE_TYPE_TO_PLATFORM: dict[str, str] = {
     "source-attentive": "attentive",
     "source-postscript": "postscript",
     "source-smsbump": "smsbump",
+    "source-linkedin-ads": "linkedin_ads",
+    "source-google-analytics-data-api": "google_analytics",
+    "source-bing-ads": "microsoft_ads",
+    "source-hubspot": "hubspot",
+    "source-mailchimp": "mailchimp",
 }
 
 PLATFORM_AUTH_TYPE: dict[str, str] = {
@@ -46,6 +51,11 @@ PLATFORM_AUTH_TYPE: dict[str, str] = {
     "attentive": "api_key",
     "postscript": "api_key",
     "smsbump": "api_key",
+    "linkedin_ads": "oauth",
+    "google_analytics": "oauth",
+    "microsoft_ads": "oauth",
+    "hubspot": "oauth",
+    "mailchimp": "api_key",
 }
 
 PLATFORM_DISPLAY_NAMES: dict[str, str] = {
@@ -61,6 +71,11 @@ PLATFORM_DISPLAY_NAMES: dict[str, str] = {
     "attentive": "Attentive",
     "postscript": "Postscript",
     "smsbump": "SMSBump",
+    "linkedin_ads": "LinkedIn Ads",
+    "google_analytics": "Google Analytics 4",
+    "microsoft_ads": "Microsoft Ads",
+    "hubspot": "HubSpot",
+    "mailchimp": "Mailchimp",
 }
 
 
@@ -105,6 +120,11 @@ PLATFORM_DESCRIPTIONS: dict[str, str] = {
     "attentive": "Connect your Attentive account for SMS marketing analytics",
     "postscript": "Connect your Postscript account for SMS campaign data",
     "smsbump": "Connect your SMSBump account for SMS marketing metrics",
+    "linkedin_ads": "Connect your LinkedIn Ads account for B2B advertising analytics",
+    "google_analytics": "Connect Google Analytics 4 for web traffic and conversion data",
+    "microsoft_ads": "Connect your Microsoft/Bing Ads account for search campaign data",
+    "hubspot": "Connect HubSpot for CRM and marketing automation analytics",
+    "mailchimp": "Connect your Mailchimp account for email marketing campaign data",
 }
 
 PLATFORM_CATEGORIES: dict[str, str] = {
@@ -120,6 +140,11 @@ PLATFORM_CATEGORIES: dict[str, str] = {
     "attentive": "sms",
     "postscript": "sms",
     "smsbump": "sms",
+    "linkedin_ads": "ads",
+    "google_analytics": "analytics",
+    "microsoft_ads": "ads",
+    "hubspot": "crm",
+    "mailchimp": "email",
 }
 
 

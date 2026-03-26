@@ -1,8 +1,24 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ClerkProvider, ClerkLoaded, ClerkLoading } from '@clerk/clerk-react';
+import * as Sentry from '@sentry/react';
 import App from './App';
 import './index.css';
+
+// Initialize Sentry error tracking (no-op if DSN is not set)
+const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    environment: import.meta.env.MODE,
+    integrations: [
+      Sentry.browserTracingIntegration(),
+    ],
+    tracesSampleRate: 0.1,
+    // Don't send PII to Sentry
+    sendDefaultPii: false,
+  });
+}
 
 // Clerk publishable key from environment
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -60,7 +76,12 @@ if (!PUBLISHABLE_KEY) {
 } else {
   createRoot(root).render(
     <StrictMode>
-      <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
+      <ClerkProvider
+        publishableKey={PUBLISHABLE_KEY}
+        afterSignOutUrl="/"
+        signInUrl="/sign-in"
+        signUpUrl="/sign-up"
+      >
         <ClerkLoading>
           <ClerkLoadingIndicator />
         </ClerkLoading>

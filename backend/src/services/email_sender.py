@@ -80,12 +80,18 @@ class SendGridEmailSender(EmailSender):
             from_name: Default sender name (or from NOTIFICATION_FROM_NAME env var)
         """
         self.api_key = api_key or os.getenv("SENDGRID_API_KEY")
-        self.from_email = from_email or os.getenv(
-            "NOTIFICATION_FROM_EMAIL", "notifications@example.com"
-        )
+        self.from_email = from_email or os.getenv("NOTIFICATION_FROM_EMAIL")
         self.from_name = from_name or os.getenv(
             "NOTIFICATION_FROM_NAME", "MarkInsight"
         )
+
+        if not self.from_email:
+            if os.getenv("ENV") == "production":
+                logger.error(
+                    "NOTIFICATION_FROM_EMAIL not set in production — "
+                    "emails will use fallback notifications@example.com"
+                )
+            self.from_email = "notifications@example.com"
 
         if not self.api_key:
             logger.warning("SendGrid API key not configured")

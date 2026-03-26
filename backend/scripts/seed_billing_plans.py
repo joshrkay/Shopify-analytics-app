@@ -1,11 +1,15 @@
 """
-Billing Plans Seed Script
-Creates 7 pricing tiers: Free + 3 tiers (Starter, Professional, Enterprise)
-with Monthly and Annual billing options for paid tiers.
+Billing Plans Seed Script (GL-3)
+
+Seeds the 4 canonical plans (Free, Growth, Pro, Enterprise) with all 17
+BillingFeature keys.  Feature enabled/disabled state and limits are derived
+from BILLING_TIER_FEATURES so the seed script can never drift from the
+authoritative static dict.
 
 Usage:
     python -m scripts.seed_billing_plans
-    python -m scripts.seed_billing_plans --dry-run (to preview without saving)
+    python -m scripts.seed_billing_plans --dry-run
+    python -m scripts.seed_billing_plans --delete
 
 Environment variables:
     DATABASE_URL: PostgreSQL connection string (required)
@@ -15,22 +19,141 @@ import os
 import sys
 import logging
 from pathlib import Path
-import uuid
 
 # Add backend directory to path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.models.plan import Plan, PlanFeature
 from src.db_base import Base
+from src.services.billing_entitlements import BillingFeature, BILLING_TIER_FEATURES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Canonical plan definitions — pricing lives here, features come from
+# BILLING_TIER_FEATURES so there is a single source of truth.
+# ---------------------------------------------------------------------------
+
+PLAN_METADATA = {
+    "free": {
+        "id": "plan_free",
+        "display_name": "Free",
+        "description": "Basic analytics for small stores",
+        "price_monthly_cents": 0,
+        "price_yearly_cents": 0,
+    },
+    "growth": {
+        "id": "plan_growth",
+        "display_name": "Growth",
+        "description": "For growing businesses with advanced analytics",
+        "price_monthly_cents": 2900,
+        "price_yearly_cents": 29000,
+    },
+    "pro": {
+        "id": "plan_pro",
+        "display_name": "Pro",
+        "description": "Professional tier with all features",
+        "price_monthly_cents": 7900,
+        "price_yearly_cents": 79000,
+    },
+    "enterprise": {
+        "id": "plan_enterprise",
+        "display_name": "Enterprise",
+        "description": "Custom solutions with dedicated support",
+        "price_monthly_cents": None,
+        "price_yearly_cents": None,
+    },
+}
+
+# All BillingFeature string keys (the 17 canonical feature keys)
+ALL_FEATURE_KEYS = sorted(
+    v for k, v in BillingFeature.__dict__.items()
+    if not k.startswith("_") and isinstance(v, str)
+)
+
+# Tier-specific limits stored in the JSONB `limits` column.
+# Only include limits that are meaningful for the feature+tier combination.
+TIER_LIMITS = {
+    "free": {
+        "ai_insights": {"max_dashboard_access": 3, "max_users": 2, "max_alert_rules": 3},
+        "ai_recommendations": {"max_dashboard_access": 3, "max_users": 2, "max_alert_rules": 3},
+    },
+    "growth": {
+        "agency_access": {"max_agency_stores": 5},
+        "multi_tenant": {"max_stores": 5},
+        "advanced_dashboards": {"max_dashboard_access": 10, "max_dashboard_shares": 5},
+        "data_export": {"format": "csv"},
+        "ai_insights": {"max_dashboard_access": 10, "max_users": 10, "max_alert_rules": 10},
+        "ai_actions": {"limited": True},
+        "alerts": {"max_alert_rules": 10},
+        "sheets_export": {"limited": True},
+    },
+    "pro": {
+        "agency_access": {"max_agency_stores": 10},
+        "multi_tenant": {"max_stores": 10},
+        "advanced_dashboards": {"max_dashboard_access": 50, "max_dashboard_shares": 20},
+        "ai_insights": {"max_dashboard_access": 50, "max_users": 20, "max_alert_rules": 50},
+        "alerts": {"max_alert_rules": 50},
+        "warehouse_export": {"max_warehouse_destinations": 1},
+    },
+    "enterprise": {
+        "agency_access": {"max_agency_stores": 999},
+        "multi_tenant": {"max_stores": 999},
+        "advanced_dashboards": {"max_dashboard_access": 999, "max_dashboard_shares": 999},
+        "ai_insights": {"max_dashboard_access": 999, "max_users": 999, "max_alert_rules": -1},
+        "alerts": {"max_alert_rules": -1},
+    },
+}
+
+# limit_value integers for features that have a single numeric cap
+TIER_LIMIT_VALUES = {
+    "growth": {"multi_tenant": 5},
+    "pro": {"multi_tenant": 10, "warehouse_export": 1},
+}
+
+
+def _build_billing_plans():
+    """Build the BILLING_PLANS list from PLAN_METADATA + BILLING_TIER_FEATURES."""
+    plans = []
+    for tier_name, meta in PLAN_METADATA.items():
+        tier_features = BILLING_TIER_FEATURES[tier_name]
+        features = []
+        for fkey in ALL_FEATURE_KEYS:
+            is_enabled = bool(tier_features.get(fkey, False))
+            limits = TIER_LIMITS.get(tier_name, {}).get(fkey)
+            limit_value = TIER_LIMIT_VALUES.get(tier_name, {}).get(fkey)
+            features.append({
+                "feature_key": fkey,
+                "is_enabled": is_enabled,
+                "limit_value": limit_value,
+                "limits": limits,
+            })
+        plans.append({
+            "id": meta["id"],
+            "name": tier_name,
+            "display_name": meta["display_name"],
+            "description": meta["description"],
+            "price_monthly_cents": meta["price_monthly_cents"],
+            "price_yearly_cents": meta["price_yearly_cents"],
+            "is_active": True,
+            "features": features,
+        })
+    return plans
+
+
+BILLING_PLANS = _build_billing_plans()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def get_database_url() -> str:
     """Get database URL from environment."""
@@ -40,159 +163,26 @@ def get_database_url() -> str:
             "DATABASE_URL environment variable is required. "
             "Example: postgresql://user:password@localhost:5432/dbname"
         )
-
-    # Handle Render's postgres:// URL format
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
-
     return database_url
-
-
-def generate_plan_id(name: str) -> str:
-    """Generate a unique plan ID."""
-    return f"plan_{name.lower().replace(' ', '_')}_{uuid.uuid4().hex[:8]}"
-
-
-def generate_feature_id() -> str:
-    """Generate a unique feature ID."""
-    return f"feat_{uuid.uuid4().hex[:12]}"
-
-
-BILLING_PLANS = [
-    {
-        "name": "free",
-        "display_name": "Free",
-        "description": "Perfect for getting started with analytics",
-        "price_monthly_cents": None,  # Free tier
-        "price_yearly_cents": None,
-        "is_active": True,
-        "features": [
-            {"feature_key": "basic_analytics", "is_enabled": True, "limit_value": 10},
-            {"feature_key": "custom_reports", "is_enabled": True, "limit_value": 3},
-            {"feature_key": "export_data", "is_enabled": True, "limit_value": 50},
-            {"feature_key": "api_access", "is_enabled": False},
-            {"feature_key": "team_members", "is_enabled": False, "limit_value": 1},
-            {"feature_key": "priority_support", "is_enabled": False},
-        ]
-    },
-    {
-        "name": "starter_monthly",
-        "display_name": "Starter - Monthly",
-        "description": "Growing businesses - Monthly billing",
-        "price_monthly_cents": 999,  # $9.99/month
-        "price_yearly_cents": None,
-        "is_active": True,
-        "features": [
-            {"feature_key": "basic_analytics", "is_enabled": True, "limit_value": None},  # Unlimited
-            {"feature_key": "custom_reports", "is_enabled": True, "limit_value": 25},
-            {"feature_key": "export_data", "is_enabled": True, "limit_value": 500},
-            {"feature_key": "api_access", "is_enabled": True, "limit_value": 1000},
-            {"feature_key": "team_members", "is_enabled": True, "limit_value": 3},
-            {"feature_key": "priority_support", "is_enabled": False},
-        ]
-    },
-    {
-        "name": "starter_annual",
-        "display_name": "Starter - Annual",
-        "description": "Growing businesses - Annual billing (save 17%)",
-        "price_monthly_cents": None,
-        "price_yearly_cents": 9990,  # $99.90/year ($8.32/month equivalent)
-        "is_active": True,
-        "features": [
-            {"feature_key": "basic_analytics", "is_enabled": True, "limit_value": None},  # Unlimited
-            {"feature_key": "custom_reports", "is_enabled": True, "limit_value": 25},
-            {"feature_key": "export_data", "is_enabled": True, "limit_value": 500},
-            {"feature_key": "api_access", "is_enabled": True, "limit_value": 1000},
-            {"feature_key": "team_members", "is_enabled": True, "limit_value": 3},
-            {"feature_key": "priority_support", "is_enabled": False},
-        ]
-    },
-    {
-        "name": "professional_monthly",
-        "display_name": "Professional - Monthly",
-        "description": "Professional teams - Monthly billing",
-        "price_monthly_cents": 2999,  # $29.99/month
-        "price_yearly_cents": None,
-        "is_active": True,
-        "features": [
-            {"feature_key": "basic_analytics", "is_enabled": True, "limit_value": None},
-            {"feature_key": "custom_reports", "is_enabled": True, "limit_value": None},
-            {"feature_key": "export_data", "is_enabled": True, "limit_value": None},
-            {"feature_key": "api_access", "is_enabled": True, "limit_value": 5000},
-            {"feature_key": "team_members", "is_enabled": True, "limit_value": 10},
-            {"feature_key": "priority_support", "is_enabled": True},
-        ]
-    },
-    {
-        "name": "professional_annual",
-        "display_name": "Professional - Annual",
-        "description": "Professional teams - Annual billing (save 17%)",
-        "price_monthly_cents": None,
-        "price_yearly_cents": 29990,  # $299.90/year ($24.99/month equivalent)
-        "is_active": True,
-        "features": [
-            {"feature_key": "basic_analytics", "is_enabled": True, "limit_value": None},
-            {"feature_key": "custom_reports", "is_enabled": True, "limit_value": None},
-            {"feature_key": "export_data", "is_enabled": True, "limit_value": None},
-            {"feature_key": "api_access", "is_enabled": True, "limit_value": 5000},
-            {"feature_key": "team_members", "is_enabled": True, "limit_value": 10},
-            {"feature_key": "priority_support", "is_enabled": True},
-        ]
-    },
-    {
-        "name": "enterprise_monthly",
-        "display_name": "Enterprise - Monthly",
-        "description": "Large organizations - Monthly billing",
-        "price_monthly_cents": 9999,  # $99.99/month
-        "price_yearly_cents": None,
-        "is_active": True,
-        "features": [
-            {"feature_key": "basic_analytics", "is_enabled": True, "limit_value": None},
-            {"feature_key": "custom_reports", "is_enabled": True, "limit_value": None},
-            {"feature_key": "export_data", "is_enabled": True, "limit_value": None},
-            {"feature_key": "api_access", "is_enabled": True, "limit_value": None},  # Unlimited
-            {"feature_key": "team_members", "is_enabled": True, "limit_value": None},  # Unlimited
-            {"feature_key": "priority_support", "is_enabled": True},
-            {"feature_key": "custom_branding", "is_enabled": True},
-            {"feature_key": "sso", "is_enabled": True},
-        ]
-    },
-    {
-        "name": "enterprise_annual",
-        "display_name": "Enterprise - Annual",
-        "description": "Large organizations - Annual billing (save 17%)",
-        "price_monthly_cents": None,
-        "price_yearly_cents": 99990,  # $999.90/year ($83.32/month equivalent)
-        "is_active": True,
-        "features": [
-            {"feature_key": "basic_analytics", "is_enabled": True, "limit_value": None},
-            {"feature_key": "custom_reports", "is_enabled": True, "limit_value": None},
-            {"feature_key": "export_data", "is_enabled": True, "limit_value": None},
-            {"feature_key": "api_access", "is_enabled": True, "limit_value": None},  # Unlimited
-            {"feature_key": "team_members", "is_enabled": True, "limit_value": None},  # Unlimited
-            {"feature_key": "priority_support", "is_enabled": True},
-            {"feature_key": "custom_branding", "is_enabled": True},
-            {"feature_key": "sso", "is_enabled": True},
-        ]
-    },
-]
 
 
 def format_price(cents: int | None) -> str:
     """Format price in cents to display string."""
     if cents is None:
         return "N/A"
+    if cents == 0:
+        return "FREE"
     return f"${cents / 100:.2f}"
 
 
-def seed_billing_plans(database_url: str, dry_run: bool = False) -> None:
-    """
-    Seed billing plans into the database.
+# ---------------------------------------------------------------------------
+# Core operations
+# ---------------------------------------------------------------------------
 
-    Args:
-        database_url: PostgreSQL connection string
-        dry_run: If True, preview changes without saving
-    """
+def seed_billing_plans(database_url: str, dry_run: bool = False) -> None:
+    """Seed billing plans into the database."""
     engine = create_engine(database_url, pool_pre_ping=True)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = SessionLocal()
@@ -202,110 +192,116 @@ def seed_billing_plans(database_url: str, dry_run: bool = False) -> None:
         logger.info("BILLING PLANS SEED SCRIPT")
         logger.info("=" * 60)
         logger.info(f"Mode: {'DRY RUN' if dry_run else 'EXECUTION'}")
-        logger.info(f"Total plans to create: {len(BILLING_PLANS)}")
+        logger.info(f"Total plans: {len(BILLING_PLANS)}")
+        logger.info(f"Feature keys per plan: {len(ALL_FEATURE_KEYS)}")
         logger.info("")
 
-        # Check existing plans
         existing_plans = session.query(Plan).all()
-        existing_names = {p.name for p in existing_plans}
-
-        plans_to_create = []
-        plans_already_exist = []
+        existing_by_name = {p.name: p for p in existing_plans}
 
         for plan_data in BILLING_PLANS:
-            if plan_data["name"] in existing_names:
-                plans_already_exist.append(plan_data["name"])
-            else:
-                plans_to_create.append(plan_data)
+            name = plan_data["name"]
+            existing = existing_by_name.get(name)
+            action = "UPDATE" if existing else "CREATE"
 
-        # Display summary
-        if plans_already_exist:
-            logger.info(f"Plans already exist ({len(plans_already_exist)}):")
-            for name in plans_already_exist:
-                logger.info(f"   - {name}")
-            logger.info("")
-
-        logger.info(f"Plans to create ({len(plans_to_create)}):")
-        for plan_data in plans_to_create:
             if plan_data["price_monthly_cents"]:
-                price_str = f"{format_price(plan_data['price_monthly_cents'])}/month"
+                price_str = f"${plan_data['price_monthly_cents'] / 100:.2f}/month"
             elif plan_data["price_yearly_cents"]:
-                price_str = f"{format_price(plan_data['price_yearly_cents'])}/year"
+                price_str = f"${plan_data['price_yearly_cents'] / 100:.2f}/year"
             else:
-                price_str = "FREE"
+                price_str = "FREE" if plan_data["price_monthly_cents"] == 0 else "Custom"
 
-            feature_count = len(plan_data["features"])
-            logger.info(f"   - {plan_data['display_name']}: {price_str} ({feature_count} features)")
+            enabled_count = sum(1 for f in plan_data["features"] if f["is_enabled"])
+            logger.info(
+                f"  [{action}] {plan_data['display_name']}: {price_str} "
+                f"({enabled_count}/{len(plan_data['features'])} features enabled)"
+            )
 
         logger.info("")
 
         if dry_run:
-            logger.info("DRY RUN - No changes will be made")
+            logger.info("DRY RUN — No changes will be made")
             logger.info("")
-
-            # Show detailed plan info
-            for plan_data in plans_to_create:
-                logger.info(f"Plan: {plan_data['display_name']}")
-                logger.info(f"  Name: {plan_data['name']}")
-                logger.info(f"  Description: {plan_data['description']}")
-                logger.info(f"  Monthly: {format_price(plan_data['price_monthly_cents'])}")
-                logger.info(f"  Yearly: {format_price(plan_data['price_yearly_cents'])}")
+            for plan_data in BILLING_PLANS:
+                logger.info(f"Plan: {plan_data['display_name']} ({plan_data['id']})")
+                logger.info(f"  Price: {format_price(plan_data['price_monthly_cents'])}/mo")
                 logger.info("  Features:")
-                for feature in plan_data["features"]:
-                    enabled = "enabled" if feature["is_enabled"] else "disabled"
-                    limit = feature.get("limit_value")
-                    limit_str = f" (limit: {limit})" if limit is not None else " (unlimited)" if feature["is_enabled"] else ""
-                    logger.info(f"    - {feature['feature_key']}: {enabled}{limit_str}")
+                for f in plan_data["features"]:
+                    status = "ENABLED" if f["is_enabled"] else "disabled"
+                    extra = ""
+                    if f["limit_value"] is not None:
+                        extra += f" limit_value={f['limit_value']}"
+                    if f["limits"]:
+                        extra += f" limits={f['limits']}"
+                    logger.info(f"    {f['feature_key']}: {status}{extra}")
                 logger.info("")
-
             return
 
-        # Create plans
-        created_count = 0
-        for plan_data in plans_to_create:
+        # Upsert plans and features
+        created = 0
+        updated = 0
+        for plan_data in BILLING_PLANS:
             try:
-                # Generate unique plan ID
-                plan_id = generate_plan_id(plan_data["name"])
-
-                # Create plan
-                plan = Plan(
-                    id=plan_id,
-                    name=plan_data["name"],
-                    display_name=plan_data["display_name"],
-                    description=plan_data["description"],
-                    price_monthly_cents=plan_data["price_monthly_cents"],
-                    price_yearly_cents=plan_data["price_yearly_cents"],
-                    is_active=plan_data["is_active"],
-                )
-                session.add(plan)
-                session.flush()  # Get the plan ID
-
-                # Create features
-                for feature_data in plan_data["features"]:
-                    feature = PlanFeature(
-                        id=generate_feature_id(),
-                        plan_id=plan.id,
-                        feature_key=feature_data["feature_key"],
-                        is_enabled=feature_data["is_enabled"],
-                        limit_value=feature_data.get("limit_value"),
+                existing = existing_by_name.get(plan_data["name"])
+                if existing:
+                    existing.display_name = plan_data["display_name"]
+                    existing.description = plan_data["description"]
+                    existing.price_monthly_cents = plan_data["price_monthly_cents"]
+                    existing.price_yearly_cents = plan_data["price_yearly_cents"]
+                    existing.is_active = plan_data["is_active"]
+                    plan_id = existing.id
+                    updated += 1
+                else:
+                    plan = Plan(
+                        id=plan_data["id"],
+                        name=plan_data["name"],
+                        display_name=plan_data["display_name"],
+                        description=plan_data["description"],
+                        price_monthly_cents=plan_data["price_monthly_cents"],
+                        price_yearly_cents=plan_data["price_yearly_cents"],
+                        is_active=plan_data["is_active"],
                     )
-                    session.add(feature)
+                    session.add(plan)
+                    session.flush()
+                    plan_id = plan.id
+                    created += 1
+
+                # Upsert features
+                existing_features = {
+                    pf.feature_key: pf
+                    for pf in session.query(PlanFeature).filter_by(plan_id=plan_id).all()
+                }
+                for feat in plan_data["features"]:
+                    pf = existing_features.get(feat["feature_key"])
+                    if pf:
+                        pf.is_enabled = feat["is_enabled"]
+                        pf.limit_value = feat["limit_value"]
+                        pf.limits = feat["limits"]
+                    else:
+                        session.add(PlanFeature(
+                            id=f"feat_{os.urandom(6).hex()}",
+                            plan_id=plan_id,
+                            feature_key=feat["feature_key"],
+                            is_enabled=feat["is_enabled"],
+                            limit_value=feat["limit_value"],
+                            limits=feat["limits"],
+                        ))
+
+                # Remove stale features not in ALL_FEATURE_KEYS
+                for fkey, pf in existing_features.items():
+                    if fkey not in ALL_FEATURE_KEYS:
+                        session.delete(pf)
 
                 session.commit()
-                created_count += 1
-                logger.info(f"Created: {plan_data['display_name']} (ID: {plan_id})")
-
             except SQLAlchemyError as e:
                 session.rollback()
-                logger.error(f"Failed to create {plan_data['name']}: {e}")
+                logger.error(f"Failed to upsert {plan_data['name']}: {e}")
 
-        logger.info("")
         logger.info("=" * 60)
         logger.info("SUMMARY")
         logger.info("=" * 60)
-        logger.info(f"Plans created: {created_count}")
-        logger.info(f"Plans already existed: {len(plans_already_exist)}")
-        logger.info(f"Total plans in database: {len(existing_names) + created_count}")
+        logger.info(f"Plans created: {created}")
+        logger.info(f"Plans updated: {updated}")
 
     except SQLAlchemyError as e:
         logger.error(f"Database error: {e}")
@@ -316,13 +312,7 @@ def seed_billing_plans(database_url: str, dry_run: bool = False) -> None:
 
 
 def delete_billing_plans(database_url: str, dry_run: bool = False) -> None:
-    """
-    Delete all billing plans created by this script.
-
-    Args:
-        database_url: PostgreSQL connection string
-        dry_run: If True, preview changes without saving
-    """
+    """Delete all canonical billing plans."""
     engine = create_engine(database_url, pool_pre_ping=True)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = SessionLocal()
@@ -348,15 +338,14 @@ def delete_billing_plans(database_url: str, dry_run: bool = False) -> None:
 
         if dry_run:
             logger.info("")
-            logger.info("DRY RUN - No changes will be made")
+            logger.info("DRY RUN — No changes will be made")
             return
 
         for plan in plans_to_delete:
             session.delete(plan)
 
         session.commit()
-        logger.info("")
-        logger.info(f"Deleted {len(plans_to_delete)} plans and their associated features.")
+        logger.info(f"Deleted {len(plans_to_delete)} plans and their features.")
 
     except SQLAlchemyError as e:
         logger.error(f"Database error: {e}")
@@ -375,26 +364,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m scripts.seed_billing_plans              # Create plans
+  python -m scripts.seed_billing_plans              # Create/update plans
   python -m scripts.seed_billing_plans --dry-run    # Preview without saving
   python -m scripts.seed_billing_plans --delete     # Delete seeded plans
         """
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview changes without saving to database"
-    )
-    parser.add_argument(
-        "--delete",
-        action="store_true",
-        help="Delete all plans created by this script"
-    )
-    parser.add_argument(
-        "--database-url",
-        type=str,
-        help="Database URL (overrides DATABASE_URL env var)"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Preview without saving")
+    parser.add_argument("--delete", action="store_true", help="Delete all seeded plans")
+    parser.add_argument("--database-url", type=str, help="Database URL (overrides env var)")
 
     args = parser.parse_args()
 

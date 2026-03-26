@@ -18,7 +18,7 @@ import { useFreshnessStatus } from '../../contexts/DataHealthContext';
 
 interface DataFreshnessBadgeProps {
   /**
-   * Optional click handler (e.g., navigate to SyncHealth page).
+   * Optional click handler (e.g., navigate to Sync Status page).
    */
   onClick?: () => void;
   /**

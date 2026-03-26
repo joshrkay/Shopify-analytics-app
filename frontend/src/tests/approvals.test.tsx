@@ -32,7 +32,7 @@ const renderWithPolaris = (ui: React.ReactElement) => {
 // Mock proposal data
 const createMockProposal = (overrides?: Partial<ActionProposal>): ActionProposal => ({
   proposal_id: 'prop-123',
-  action_type: 'adjust_budget',
+  action_type: 'reduce_budget',
   status: 'proposed',
   target: {
     platform: 'meta',
@@ -92,8 +92,8 @@ describe('ProposalCard', () => {
       renderWithPolaris(<ProposalCard proposal={proposal} />);
 
       expect(screen.getByText(/Summer Sale Campaign/)).toBeInTheDocument();
-      // Adjust Budget appears in badge and heading - use getAllByText
-      expect(screen.getAllByText(/Adjust Budget/).length).toBeGreaterThan(0);
+      // Reduce Budget appears in badge and heading - use getAllByText
+      expect(screen.getAllByText(/Reduce Budget/).length).toBeGreaterThan(0);
       // Meta Ads appears combined with entity type as "Meta Ads • campaign"
       expect(screen.getByText(/Meta Ads/)).toBeInTheDocument();
     });

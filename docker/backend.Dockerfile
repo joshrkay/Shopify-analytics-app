@@ -7,10 +7,9 @@ WORKDIR /app/frontend
 
 # Copy dependency files first for caching
 COPY frontend/package.json frontend/package-lock.json ./
-# Use npm install instead of npm ci because package.json may have
-# dependencies not yet reflected in the lock file (e.g. @clerk/clerk-react).
-# This updates the lock file in the container and installs everything.
-RUN npm install
+# Use npm ci for deterministic builds from the lockfile.
+# If this fails, run `npm install` locally and commit the updated package-lock.json.
+RUN npm ci
 
 # Copy frontend source and build
 COPY frontend/ ./
@@ -54,8 +53,16 @@ COPY --from=frontend-build /app/frontend/dist /app/backend/static
 # Ensure python can import /app/backend/src
 ENV PYTHONPATH=/app/backend
 
+# Create non-root user for production security
+RUN useradd -m -r -s /bin/false appuser && chown -R appuser:appuser /app
+USER appuser
+
 # Change to backend directory and run uvicorn
 WORKDIR /app/backend
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-10000}/health')" || exit 1
 
 # Render listens on $PORT
 CMD ["sh", "-c", "python scripts/run_required_migrations.py && uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]

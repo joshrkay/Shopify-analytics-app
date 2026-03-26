@@ -165,12 +165,23 @@ class TestAccessSurface:
     @pytest.fixture(autouse=True)
     def set_jwt_secret(self, monkeypatch):
         monkeypatch.setenv("JWT_SECRET", self.JWT_TEST_SECRET)
+        monkeypatch.setenv("AUTH_ALLOW_LOCAL_JWT_FALLBACK", "true")
+
+    @staticmethod
+    def _build_fallback_token(**kwargs):
+        from src.services.agency_token_service import AgencyTokenService, SwitchTokenClaims
+
+        class FailingAdapter:
+            def issue_switched_token(self, claims):
+                raise RuntimeError("issuer unavailable")
+
+        return AgencyTokenService(adapter=FailingAdapter()).issue_switched_token(
+            SwitchTokenClaims(**kwargs)
+        )
 
     def test_generate_jwt_includes_access_surface(self):
         """JWT generator includes access_surface in payload."""
-        from src.api.routes.agency import _generate_jwt_token
-
-        token = _generate_jwt_token(
+        token = self._build_fallback_token(
             user_id="test-user",
             tenant_id="test-tenant",
             roles=["AGENCY_ADMIN"],
@@ -188,9 +199,7 @@ class TestAccessSurface:
 
     def test_generate_jwt_default_access_surface(self):
         """JWT generator defaults to external_app for access_surface."""
-        from src.api.routes.agency import _generate_jwt_token
-
-        token = _generate_jwt_token(
+        token = self._build_fallback_token(
             user_id="test-user",
             tenant_id="test-tenant",
             roles=["AGENCY_ADMIN"],
@@ -206,11 +215,9 @@ class TestAccessSurface:
 
     def test_generate_jwt_includes_access_expiring_at(self):
         """JWT generator includes access_expiring_at when provided."""
-        from src.api.routes.agency import _generate_jwt_token
-
         expiring_at = datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        token = _generate_jwt_token(
+        token = self._build_fallback_token(
             user_id="test-user",
             tenant_id="test-tenant",
             roles=["AGENCY_ADMIN"],
@@ -227,9 +234,7 @@ class TestAccessSurface:
 
     def test_generate_jwt_no_access_expiring_at_when_none(self):
         """JWT generator omits access_expiring_at when not provided."""
-        from src.api.routes.agency import _generate_jwt_token
-
-        token = _generate_jwt_token(
+        token = self._build_fallback_token(
             user_id="test-user",
             tenant_id="test-tenant",
             roles=["AGENCY_ADMIN"],

@@ -518,7 +518,7 @@ class ShopifyTokenValidationResult:
     error_message: Optional[str] = None
 
 
-SHOPIFY_API_VERSION = "2024-01"
+SHOPIFY_API_VERSION = "2025-01"
 
 
 async def validate_shopify_token(

@@ -26,6 +26,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Request, HTTPException, status, Depends
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 from src.database.session import get_db_session
 from src.services.airbyte_service import (
     AirbyteService,
@@ -81,10 +82,19 @@ router = APIRouter(prefix="/api/sources", tags=["sources"])
 # OAuth URL builders per platform
 # =============================================================================
 
-OAUTH_REDIRECT_URI = os.environ.get(
-    "OAUTH_REDIRECT_URI",
-    "https://app.localhost/api/sources/oauth/callback",
+_oauth_redirect_default = (
+    "https://app.localhost/api/sources/oauth/callback"
+    if os.getenv("ENV") != "production"
+    else None
 )
+OAUTH_REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI") or _oauth_redirect_default
+if not OAUTH_REDIRECT_URI:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "OAUTH_REDIRECT_URI is not set in production. "
+        "OAuth flows will fail until it is configured in render.yaml or the environment."
+    )
+    OAUTH_REDIRECT_URI = "https://app.markinsight.net/api/sources/oauth/callback"
 
 # OAuth state TTL in seconds (10 minutes)
 OAUTH_STATE_TTL_SECONDS = 600
@@ -223,6 +233,12 @@ PLATFORM_TO_AIRBYTE_SOURCE_TYPE: dict[str, str] = {
     "attentive": "source-attentive",
     "postscript": "source-postscript",
     "smsbump": "source-smsbump",
+    # New connectors — Gap 1
+    "linkedin_ads": "source-linkedin-ads",
+    "google_analytics": "source-google-analytics-data-api",
+    "microsoft_ads": "source-bing-ads",
+    "hubspot": "source-hubspot",
+    "mailchimp": "source-mailchimp",
 }
 
 
@@ -315,6 +331,7 @@ async def initiate_oauth(
     platform: str,
     body: Optional[OAuthInitiateRequest] = None,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("sources_oauth_initiate", limit=5, window=60)),
 ):
     """
     Initiate OAuth authorization flow for a data source platform.
@@ -537,6 +554,7 @@ async def oauth_callback(
     request: Request,
     body: OAuthCallbackRequest,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("sources_oauth_callback", limit=10, window=60)),
 ):
     """
     Complete OAuth authorization flow.
@@ -655,6 +673,32 @@ async def oauth_callback(
             shop_domain=shop_domain,
             db_session=db_session,
         )
+
+        # For Shopify: register order webhooks and web pixel after connection
+        if platform in ("shopify", "shopify_email") and shop_domain and tokens.get("access_token"):
+            try:
+                from src.services.shopify_webhook_manager import register_webhooks
+                from src.services.shopify_pixel_manager import create_web_pixel
+
+                webhook_results = await register_webhooks(shop_domain, tokens["access_token"])
+                logger.info("Shopify webhooks registered after OAuth", extra={
+                    "shop_domain": shop_domain,
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "results": webhook_results,
+                })
+
+                pixel_result = await create_web_pixel(shop_domain, tokens["access_token"])
+                logger.info("Shopify web pixel created after OAuth", extra={
+                    "shop_domain": shop_domain,
+                    "tenant_id": tenant_ctx.tenant_id,
+                    "result": pixel_result,
+                })
+            except Exception as e:
+                # Non-fatal: log but don't fail the OAuth flow
+                logger.warning("Failed to register Shopify webhooks/pixel (non-fatal)", extra={
+                    "shop_domain": shop_domain,
+                    "error": str(e),
+                })
 
         return OAuthCallbackResponse(
             success=True,

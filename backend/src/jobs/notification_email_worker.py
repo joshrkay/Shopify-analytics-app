@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import uuid
 
+import httpx
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -48,6 +49,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 NOTIFICATION_EMAIL_BATCH_SIZE = int(os.getenv("NOTIFICATION_EMAIL_BATCH_SIZE", "50"))
+
+
+def validate_worker_environment() -> None:
+    """Validate required worker environment configuration."""
+    clerk_secret = os.getenv("CLERK_SECRET_KEY", "").strip()
+    if not clerk_secret:
+        raise RuntimeError("CLERK_SECRET_KEY is required for notification email worker")
 
 
 # Email templates by event type
@@ -135,6 +143,9 @@ class NotificationEmailWorker:
         """
         self.db = db_session
         self.email_sender = email_sender or get_email_sender()
+        self.clerk_secret_key = os.getenv("CLERK_SECRET_KEY", "").strip()
+        self.clerk_api_base_url = os.getenv("CLERK_API_BASE_URL", "https://api.clerk.com").rstrip("/")
+        self.missing_email_policy = os.getenv("NOTIFICATION_MISSING_EMAIL_POLICY", "fail").lower()
         self.run_id = str(uuid.uuid4())
         self.stats = {
             "processed": 0,
@@ -161,13 +172,65 @@ class NotificationEmailWorker:
 
     def _get_user_email(self, user_id: str) -> Optional[str]:
         """
-        Get user email address.
+        Get primary verified user email address from Clerk Users API.
 
-        In production, this would query the user service or Clerk.
-        For now, returns None (emails require user lookup integration).
+        Returns:
+            Primary verified email if available, else first verified email.
+            Returns None if user not found or no verified email exists.
         """
-        # Placeholder: email lookup requires Clerk user service integration
-        return None
+        if not self.clerk_secret_key:
+            logger.error("CLERK_SECRET_KEY missing; cannot resolve user email")
+            return None
+
+        user_url = f"{self.clerk_api_base_url}/v1/users/{user_id}"
+        headers = {"Authorization": f"Bearer {self.clerk_secret_key}"}
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(user_url, headers=headers)
+
+            if response.status_code == 404:
+                logger.warning(
+                    "Clerk user not found",
+                    extra={"user_id": user_id},
+                )
+                return None
+
+            response.raise_for_status()
+            clerk_user = response.json()
+
+            primary_email_id = clerk_user.get("primary_email_address_id")
+            email_addresses = clerk_user.get("email_addresses", [])
+
+            primary_verified_email = next(
+                (
+                    item.get("email_address")
+                    for item in email_addresses
+                    if item.get("id") == primary_email_id
+                    and item.get("verification", {}).get("status") == "verified"
+                    and item.get("email_address")
+                ),
+                None,
+            )
+            if primary_verified_email:
+                return primary_verified_email
+
+            return next(
+                (
+                    item.get("email_address")
+                    for item in email_addresses
+                    if item.get("verification", {}).get("status") == "verified"
+                    and item.get("email_address")
+                ),
+                None,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "Failed to fetch user from Clerk",
+                extra={"user_id": user_id, "error": str(exc)},
+            )
+            return None
 
     async def process_notification(self, notification: Notification) -> bool:
         """
@@ -192,22 +255,33 @@ class NotificationEmailWorker:
             self.stats["skipped"] += 1
             return False
 
-        # Get user email (placeholder - needs user service integration)
+        # Get user email from Clerk Users API
         user_email = self._get_user_email(notification.user_id)
 
         if not user_email:
-            # In production, this would be an error
-            # For now, mark as sent to avoid retries (placeholder behavior)
-            logger.info(
-                "User email not found, marking as sent (placeholder)",
+            if self.missing_email_policy == "skip":
+                logger.warning(
+                    "User email not found; skipping email delivery per policy",
+                    extra={
+                        "notification_id": notification.id,
+                        "user_id": notification.user_id,
+                        "policy": self.missing_email_policy,
+                    },
+                )
+                self.stats["skipped"] += 1
+                return False
+
+            logger.warning(
+                "User email not found; marking delivery as failed",
                 extra={
                     "notification_id": notification.id,
                     "user_id": notification.user_id,
+                    "policy": self.missing_email_policy,
                 },
             )
-            notification.mark_email_sent()
-            self.stats["skipped"] += 1
-            return True
+            notification.mark_email_failed("User email not found or not verified in Clerk")
+            self.stats["failed"] += 1
+            return False
 
         try:
             subject = EMAIL_SUBJECTS.get(
@@ -319,6 +393,7 @@ async def main():
     logger.info("Notification Email Worker starting")
 
     try:
+        validate_worker_environment()
         for session in get_db_session_sync():
             worker = NotificationEmailWorker(session)
             stats = await worker.run()

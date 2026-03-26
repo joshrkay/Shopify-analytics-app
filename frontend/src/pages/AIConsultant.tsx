@@ -17,9 +17,11 @@ import {
   DollarSign,
   Lightbulb,
   ArrowRight,
+  X,
 } from 'lucide-react';
 import { listRecommendations, acceptRecommendation, dismissRecommendation } from '../services/recommendationsApi';
 import type { Recommendation, RecommendationPriority } from '../types/recommendations';
+import { getRecommendationTypeLabel } from '../types/recommendations';
 
 type FilterOption = 'all' | RecommendationPriority;
 
@@ -72,6 +74,7 @@ export function AIConsultant() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterOption>('all');
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null);
 
   const loadRecommendations = useCallback(async () => {
     setLoading(true);
@@ -115,6 +118,16 @@ export function AIConsultant() {
     } finally {
       setActionInProgress(null);
     }
+  };
+
+  const handleAcceptFromModal = async (id: string) => {
+    await handleAccept(id);
+    setSelectedRec(null);
+  };
+
+  const handleDismissFromModal = async (id: string) => {
+    await handleDismiss(id);
+    setSelectedRec(null);
   };
 
   const filtered =
@@ -329,7 +342,10 @@ export function AIConsultant() {
                           Applied
                         </span>
                       )}
-                      <button className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm">
+                      <button
+                        onClick={() => setSelectedRec(rec)}
+                        className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm"
+                      >
                         View Details
                       </button>
                       <button
@@ -347,6 +363,174 @@ export function AIConsultant() {
           })}
         </div>
       )}
+
+      {/* Recommendation Detail Modal */}
+      {selectedRec && (() => {
+        const ModalIcon = getTypeIcon(selectedRec.recommendation_type);
+        const riskColorClass =
+          selectedRec.risk_level === 'high'
+            ? 'text-red-600 bg-red-50'
+            : selectedRec.risk_level === 'medium'
+            ? 'text-yellow-600 bg-yellow-50'
+            : 'text-green-600 bg-green-50';
+        const confidencePct = Math.round(selectedRec.confidence_score * 100);
+
+        return (
+          <div
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+            onClick={() => setSelectedRec(null)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setSelectedRec(null); }}
+          >
+            <div
+              className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto p-6 shadow-xl"
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <ModalIcon className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      {getRecommendationTypeLabel(selectedRec.recommendation_type)}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          selectedRec.priority === 'high'
+                            ? 'bg-red-100 text-red-800'
+                            : selectedRec.priority === 'medium'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {selectedRec.priority.toUpperCase()} PRIORITY
+                      </span>
+                      {selectedRec.is_accepted && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Applied
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedRec(null)}
+                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Recommendation Text */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-500 mb-2">Recommendation</h3>
+                <p className="text-gray-800">{selectedRec.recommendation_text}</p>
+              </div>
+
+              {/* Rationale */}
+              {selectedRec.rationale && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">Rationale</h3>
+                  <p className="text-gray-700 bg-gray-50 rounded-lg p-4">{selectedRec.rationale}</p>
+                </div>
+              )}
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-500 mb-1">Expected Impact</p>
+                  <p className="font-semibold text-green-600">{impactLabel(selectedRec.estimated_impact)}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-500 mb-1">Risk Level</p>
+                  <span className={`inline-block px-2 py-1 rounded text-sm font-medium ${riskColorClass}`}>
+                    {selectedRec.risk_level.charAt(0).toUpperCase() + selectedRec.risk_level.slice(1)}
+                  </span>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-500 mb-1">Confidence Score</p>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-blue-600">{confidencePct}%</span>
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-600 rounded-full"
+                        style={{ width: `${confidencePct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                {selectedRec.affected_entity && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-500 mb-1">Affected Entity</p>
+                    <p className="font-medium text-gray-800">
+                      {selectedRec.affected_entity}
+                      {selectedRec.affected_entity_type && (
+                        <span className="text-sm text-gray-500 ml-2">
+                          ({selectedRec.affected_entity_type})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
+                {selectedRec.currency && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-500 mb-1">Currency</p>
+                    <p className="font-medium text-gray-800">{selectedRec.currency}</p>
+                  </div>
+                )}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-sm text-gray-500 mb-1">Generated</p>
+                  <p className="font-medium text-gray-800">
+                    {new Date(selectedRec.generated_at).toLocaleDateString(undefined, {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+                {!selectedRec.is_accepted ? (
+                  <button
+                    onClick={() => handleAcceptFromModal(selectedRec.recommendation_id)}
+                    disabled={actionInProgress === selectedRec.recommendation_id}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    {actionInProgress === selectedRec.recommendation_id ? 'Applying...' : 'Apply Recommendation'}
+                  </button>
+                ) : (
+                  <span className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium">
+                    <CheckCircle className="w-4 h-4" />
+                    Applied
+                  </span>
+                )}
+                <button
+                  onClick={() => handleDismissFromModal(selectedRec.recommendation_id)}
+                  disabled={actionInProgress === selectedRec.recommendation_id}
+                  className="px-4 py-2 text-gray-500 hover:text-gray-700 transition-colors text-sm disabled:opacity-50"
+                >
+                  Dismiss
+                </button>
+                <button
+                  onClick={() => setSelectedRec(null)}
+                  className="ml-auto px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

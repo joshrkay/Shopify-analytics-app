@@ -90,7 +90,7 @@ class EmbedTokenStore:
                     "ttl_seconds": ttl,
                 },
             )
-        except Exception:
+        except redis.RedisError:
             logger.warning(
                 "Failed to store embed token JTI in Redis",
                 extra={"jti": jti, "user_id": user_id, "tenant_id": tenant_id},
@@ -106,7 +106,7 @@ class EmbedTokenStore:
         """
         try:
             return bool(self._redis.exists(f"embed:revoked:{jti}"))
-        except Exception:
+        except redis.RedisError:
             logger.warning(
                 "Failed to check JTI revocation in Redis",
                 extra={"jti": jti},
@@ -137,7 +137,7 @@ class EmbedTokenStore:
                 "Revoked embed token JTI",
                 extra={"jti": jti, "ttl_seconds": remaining_ttl},
             )
-        except Exception:
+        except redis.RedisError:
             logger.warning(
                 "Failed to revoke embed token JTI in Redis",
                 extra={"jti": jti},
@@ -174,7 +174,7 @@ class EmbedTokenStore:
                 },
             )
             return revoked_count
-        except Exception:
+        except redis.RedisError:
             logger.warning(
                 "Failed to revoke all tokens for user in Redis",
                 extra={"user_id": user_id, "tenant_id": tenant_id},
@@ -191,7 +191,7 @@ class EmbedTokenStore:
         try:
             user_key = f"embed:user_tokens:{user_id}:{tenant_id}"
             return self._redis.scard(user_key) or 0
-        except Exception:
+        except redis.RedisError:
             logger.warning(
                 "Failed to get active token count from Redis",
                 extra={"user_id": user_id, "tenant_id": tenant_id},

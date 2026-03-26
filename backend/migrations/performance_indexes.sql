@@ -20,41 +20,75 @@
 
 BEGIN;
 
+-- Ensure the analytics schema exists (may not yet exist if dbt hasn't run)
+CREATE SCHEMA IF NOT EXISTS analytics;
+
 -- ---------------------------------------------------------------------------
 -- 1. Composite Indexes on analytics.orders (canonical table for sem_orders_v1)
+--    Guarded: table is created by dbt and may not exist yet.
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX IF NOT EXISTS ix_orders_tenant_date
-    ON analytics.orders (tenant_id, date DESC);
-
-CREATE INDEX IF NOT EXISTS ix_orders_tenant_date_source_platform
-    ON analytics.orders (tenant_id, date DESC, source_platform);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'orders') THEN
+        CREATE INDEX IF NOT EXISTS ix_orders_tenant_date
+            ON analytics.orders (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_orders_tenant_date_source_platform
+            ON analytics.orders (tenant_id, date DESC, source_platform);
+        RAISE NOTICE 'performance_indexes: analytics.orders indexes created/verified';
+    ELSE
+        RAISE NOTICE 'performance_indexes: analytics.orders does not exist yet (created by dbt) — skipping indexes';
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: analytics.orders index creation skipped — %', SQLERRM;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 2. Composite Indexes on analytics.marketing_spend (canonical for sem_marketing_spend_v1)
+--    Guarded: table is created by dbt and may not exist yet.
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date
-    ON analytics.marketing_spend (tenant_id, date DESC);
-
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_channel
-    ON analytics.marketing_spend (tenant_id, channel);
-
-CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date_channel
-    ON analytics.marketing_spend (tenant_id, date DESC, channel);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'marketing_spend') THEN
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date
+            ON analytics.marketing_spend (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_channel
+            ON analytics.marketing_spend (tenant_id, channel);
+        CREATE INDEX IF NOT EXISTS ix_marketing_spend_tenant_date_channel
+            ON analytics.marketing_spend (tenant_id, date DESC, channel);
+        RAISE NOTICE 'performance_indexes: analytics.marketing_spend indexes created/verified';
+    ELSE
+        RAISE NOTICE 'performance_indexes: analytics.marketing_spend does not exist yet (created by dbt) — skipping indexes';
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: analytics.marketing_spend index creation skipped — %', SQLERRM;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 3. Composite Indexes on analytics.campaign_performance (canonical for sem_campaign_performance_v1)
+--    Guarded: table is created by dbt and may not exist yet.
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date
-    ON analytics.campaign_performance (tenant_id, date DESC);
-
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_channel
-    ON analytics.campaign_performance (tenant_id, channel);
-
-CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date_channel
-    ON analytics.campaign_performance (tenant_id, date DESC, channel);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'analytics' AND table_name = 'campaign_performance') THEN
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date
+            ON analytics.campaign_performance (tenant_id, date DESC);
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_channel
+            ON analytics.campaign_performance (tenant_id, channel);
+        CREATE INDEX IF NOT EXISTS ix_campaign_performance_tenant_date_channel
+            ON analytics.campaign_performance (tenant_id, date DESC, channel);
+        RAISE NOTICE 'performance_indexes: analytics.campaign_performance indexes created/verified';
+    ELSE
+        RAISE NOTICE 'performance_indexes: analytics.campaign_performance does not exist yet (created by dbt) — skipping indexes';
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: analytics.campaign_performance index creation skipped — %', SQLERRM;
+END
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 4. Analytics Reader Role and Schema Access
@@ -75,13 +109,29 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA analytics
     GRANT SELECT ON TABLES TO analytics_reader;
 
 -- Semantic schema (Superset-facing views: sem_*_v1, fact_*_current)
-GRANT USAGE ON SCHEMA semantic TO analytics_reader;
-GRANT SELECT ON ALL TABLES IN SCHEMA semantic TO analytics_reader;
-ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
-    GRANT SELECT ON TABLES TO analytics_reader;
+-- Guarded: schema is created by dbt and may not exist yet.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'semantic') THEN
+        GRANT USAGE ON SCHEMA semantic TO analytics_reader;
+        GRANT SELECT ON ALL TABLES IN SCHEMA semantic TO analytics_reader;
+        ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
+            GRANT SELECT ON TABLES TO analytics_reader;
+        RAISE NOTICE 'performance_indexes: semantic schema grants applied';
+    ELSE
+        RAISE NOTICE 'performance_indexes: semantic schema does not exist yet (created by dbt) — skipping grants';
+    END IF;
+END
+$$;
 
-ALTER ROLE analytics_reader SET statement_timeout = '20s';
-ALTER ROLE analytics_reader SET analytics.max_rows = '50000';
+DO $$
+BEGIN
+    ALTER ROLE analytics_reader SET statement_timeout = '20s';
+    ALTER ROLE analytics_reader SET analytics.max_rows = '50000';
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: ALTER ROLE analytics_reader skipped — %', SQLERRM;
+END
+$$;
 
 -- Superset service role: same schema access for metadata and query execution
 DO $$
@@ -89,10 +139,13 @@ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'superset_service') THEN
         GRANT USAGE ON SCHEMA analytics TO superset_service;
         GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO superset_service;
-        GRANT USAGE ON SCHEMA semantic TO superset_service;
-        GRANT SELECT ON ALL TABLES IN SCHEMA semantic TO superset_service;
-        ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
-            GRANT SELECT ON TABLES TO superset_service;
+        -- Only grant semantic schema access if it exists (created by dbt)
+        IF EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = 'semantic') THEN
+            GRANT USAGE ON SCHEMA semantic TO superset_service;
+            GRANT SELECT ON ALL TABLES IN SCHEMA semantic TO superset_service;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
+                GRANT SELECT ON TABLES TO superset_service;
+        END IF;
     END IF;
 END
 $$;
@@ -101,16 +154,22 @@ $$;
 -- 5. Max Result Size Guard (row_limit enforcement at DB level)
 -- ---------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION analytics.enforce_row_limit(
-    max_rows INTEGER DEFAULT 50000
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
+DO $$
 BEGIN
-    PERFORM set_config('analytics.max_rows', max_rows::TEXT, TRUE);
-END;
+    CREATE OR REPLACE FUNCTION analytics.enforce_row_limit(
+        max_rows INTEGER DEFAULT 50000
+    )
+    RETURNS VOID
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    AS $func$
+    BEGIN
+        PERFORM set_config('analytics.max_rows', max_rows::TEXT, TRUE);
+    END;
+    $func$;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'performance_indexes: enforce_row_limit function creation skipped — %', SQLERRM;
+END
 $$;
 
 -- ---------------------------------------------------------------------------

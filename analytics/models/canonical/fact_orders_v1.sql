@@ -4,7 +4,8 @@
         unique_key='id',
         schema='analytics',
         incremental_strategy='delete+insert',
-        on_schema_change='append_new_columns'
+        on_schema_change='append_new_columns',
+        enabled=false
     )
 }}
 

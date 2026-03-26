@@ -17,6 +17,11 @@ from dataclasses import dataclass, asdict
 from typing import Optional, Dict, List
 from threading import Lock
 
+try:
+    import redis
+except ImportError:
+    redis = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 # Cache configuration
@@ -113,6 +118,8 @@ class RedisClient:
         except ImportError:
             logger.warning("redis package not installed - caching disabled")
         except Exception as e:
+            # Keep broad: redis.from_url can raise ValueError for bad URLs,
+            # and ping() can raise redis.RedisError for connectivity issues.
             logger.warning(f"Redis connection failed: {e} - caching disabled")
 
     @property
@@ -126,7 +133,7 @@ class RedisClient:
             return None
         try:
             return self._redis.get(key)
-        except Exception as e:
+        except redis.RedisError as e:
             logger.warning(f"Redis GET failed: {e}")
             return None
 
@@ -137,7 +144,7 @@ class RedisClient:
         try:
             self._redis.setex(key, ttl_seconds, value)
             return True
-        except Exception as e:
+        except redis.RedisError as e:
             logger.warning(f"Redis SET failed: {e}")
             return False
 
@@ -147,7 +154,7 @@ class RedisClient:
             return 0
         try:
             return self._redis.delete(*keys)
-        except Exception as e:
+        except redis.RedisError as e:
             logger.warning(f"Redis DELETE failed: {e}")
             return 0
 
@@ -160,7 +167,7 @@ class RedisClient:
             if keys:
                 return self._redis.delete(*keys)
             return 0
-        except Exception as e:
+        except redis.RedisError as e:
             logger.warning(f"Redis DELETE pattern failed: {e}")
             return 0
 
@@ -170,7 +177,7 @@ class RedisClient:
             return 0
         try:
             return self._redis.publish(channel, message)
-        except Exception as e:
+        except redis.RedisError as e:
             logger.warning(f"Redis PUBLISH failed: {e}")
             return 0
 
@@ -297,7 +304,7 @@ class EntitlementCache:
                     cached = CachedEntitlement.from_json(data)
                     logger.debug(f"Cache hit (Redis) for tenant {tenant_id}")
                     return cached
-                except Exception as e:
+                except (json.JSONDecodeError, TypeError, ValueError) as e:
                     logger.warning(f"Failed to deserialize cached entitlement: {e}")
 
         # Fall back to in-memory with reduced TTL when Redis is down (EC8)
@@ -314,7 +321,7 @@ class EntitlementCache:
                 cached = CachedEntitlement.from_json(data)
                 logger.debug(f"Cache hit (memory) for tenant {tenant_id}")
                 return cached
-            except Exception as e:
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
                 logger.warning(f"Failed to deserialize memory cached entitlement: {e}")
 
         logger.debug(f"Cache miss for tenant {tenant_id}")
@@ -348,7 +355,7 @@ class EntitlementCache:
             logger.debug(f"Cached entitlement for tenant {tenant_id} (TTL: {ttl}s)")
             return True
 
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             logger.error(f"Failed to cache entitlement: {e}")
             return False
 
@@ -448,7 +455,7 @@ class EntitlementCache:
             if data:
                 try:
                     return json.loads(data)
-                except Exception:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     pass
 
         return {}
@@ -495,7 +502,7 @@ class EntitlementCache:
             )
             return True
 
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             logger.error(f"Failed to set feature flag override: {e}")
             return False
 
