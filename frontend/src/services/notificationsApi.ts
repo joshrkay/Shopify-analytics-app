@@ -148,3 +148,68 @@ export async function updatePerformanceAlert(
 export async function testNotification(_channel: string): Promise<{ success: boolean }> {
   return { success: false };
 }
+
+// ─── Notification Center API ─────────────────────────────────────────────────
+
+export interface NotificationItem {
+  id: string;
+  event_type: string;
+  importance: string;
+  title: string;
+  message: string;
+  action_url: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  status: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+interface NotificationListResponse {
+  notifications: NotificationItem[];
+  total: number;
+  unread_count: number;
+}
+
+interface UnreadCountResponse {
+  count: number;
+}
+
+export async function getNotifications(
+  limit = 20,
+  offset = 0,
+): Promise<NotificationListResponse> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(
+    `${API_BASE_URL}/api/notifications?limit=${limit}&offset=${offset}`,
+    { headers },
+  );
+  return handleResponse<NotificationListResponse>(response);
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(`${API_BASE_URL}/api/notifications/unread/count`, {
+    headers,
+  });
+  const data = await handleResponse<UnreadCountResponse>(response);
+  return data.count;
+}
+
+export async function markAsRead(notificationId: string): Promise<void> {
+  const headers = await createHeadersAsync();
+  await fetch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {
+    method: 'PATCH',
+    headers,
+  });
+}
+
+export async function markAllAsRead(): Promise<number> {
+  const headers = await createHeadersAsync();
+  const response = await fetch(`${API_BASE_URL}/api/notifications/read-all`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await handleResponse<{ marked_count: number }>(response);
+  return data.marked_count;
+}

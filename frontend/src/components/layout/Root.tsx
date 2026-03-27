@@ -18,6 +18,7 @@ import {
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { useEffect, useState } from 'react';
 import { MarkinsightIcon } from '../MarkinsightIcon';
+import { NotificationPanel } from '../notifications/NotificationPanel';
 
 const CHANNEL_EMOJI: Record<string, string> = {
   google: '🔵',
@@ -129,16 +130,19 @@ export function Root() {
           <MarkinsightIcon className="w-6 h-6 text-blue-600" />
           <h1 className="text-lg font-semibold text-gray-900">Markinsight</h1>
         </div>
-        <button
-          onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          {isMobileSidebarOpen ? (
-            <X className="w-6 h-6 text-gray-700" />
-          ) : (
-            <Menu className="w-6 h-6 text-gray-700" />
-          )}
-        </button>
+        <div className="flex items-center gap-1">
+          <NotificationPanel />
+          <button
+            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            {isMobileSidebarOpen ? (
+              <X className="w-6 h-6 text-gray-700" />
+            ) : (
+              <Menu className="w-6 h-6 text-gray-700" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Mobile overlay */}
@@ -229,6 +233,10 @@ export function Root() {
 
       {/* Main content */}
       <main className="lg:ml-64 pt-16 lg:pt-0">
+        {/* Desktop top bar with notifications */}
+        <div className="hidden lg:flex items-center justify-end px-6 py-3 border-b border-gray-200 bg-white">
+          <NotificationPanel />
+        </div>
         {showWelcomeBanner && (
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4">
             <div className="flex items-center justify-between">

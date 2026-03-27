@@ -39,6 +39,8 @@ from src.models.notification import (
     NotificationImportance,
     NotificationEventType,
 )
+from src.models.tenant import Tenant
+from src.models.store import ShopifyStore
 from src.services.email_sender import EmailMessage, EmailSender, get_email_sender
 
 
@@ -67,8 +69,45 @@ EMAIL_SUBJECTS = {
 }
 
 
-def _build_email_html(notification: Notification) -> str:
-    """Build HTML email body from notification."""
+def _resolve_tenant_branding(db_session, tenant_id: str) -> dict:
+    """Resolve tenant branding with fallbacks: custom config -> Shopify store name -> MarkInsight."""
+    branding = {}
+    try:
+        tenant = db_session.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if tenant and tenant.settings:
+            branding = tenant.settings.get("branding", {})
+
+        brand_name = branding.get("brand_name") or None
+
+        # Fallback to Shopify store name
+        if not brand_name and tenant:
+            store = (
+                db_session.query(ShopifyStore)
+                .filter(ShopifyStore.tenant_id == tenant.id)
+                .first()
+            )
+            if store and store.shop_name:
+                brand_name = store.shop_name
+    except Exception as exc:
+        logger.warning("Failed to resolve tenant branding", extra={"tenant_id": tenant_id, "error": str(exc)})
+        brand_name = None
+
+    return {
+        "brand_name": brand_name or "MarkInsight",
+        "logo_url": branding.get("logo_url") or None,
+        "accent_color": branding.get("accent_color") or "#4CAF50",
+        "email_footer_text": branding.get("email_footer_text") or None,
+    }
+
+
+def _build_email_html(notification: Notification, branding: dict | None = None) -> str:
+    """Build branded HTML email body from notification."""
+    brand = branding or {"brand_name": "MarkInsight", "accent_color": "#4CAF50"}
+    brand_name = brand.get("brand_name", "MarkInsight")
+    accent_color = brand.get("accent_color", "#4CAF50")
+    logo_url = brand.get("logo_url")
+    footer_text = brand.get("email_footer_text") or f"This is an automated notification from {brand_name}."
+
     action_link = ""
     if notification.action_url:
         base_url = os.getenv("APP_BASE_URL", "")
@@ -76,33 +115,33 @@ def _build_email_html(notification: Notification) -> str:
             logger.warning("APP_BASE_URL not set — email links will be broken")
             base_url = "https://app.example.com"
         full_url = f"{base_url}{notification.action_url}"
-        action_link = f'<p><a href="{full_url}" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">View Details</a></p>'
+        action_link = f'<p><a href="{full_url}" style="display: inline-block; padding: 10px 20px; background-color: {accent_color}; color: white; text-decoration: none; border-radius: 4px;">View Details</a></p>'
+
+    # Header: show logo if available, otherwise brand name text
+    if logo_url:
+        header_content = f'<img src="{logo_url}" alt="{brand_name}" style="max-height: 40px; max-width: 200px;" />'
+    else:
+        header_content = f'<h1 style="margin: 0; color: #212529; font-size: 20px;">{brand_name}</h1>'
 
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
-        <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #f8f9fa; padding: 20px; border-radius: 8px 8px 0 0; }}
-            .content {{ background-color: #ffffff; padding: 20px; border: 1px solid #e9ecef; border-top: none; border-radius: 0 0 8px 8px; }}
-            .footer {{ margin-top: 20px; padding-top: 20px; border-top: 1px solid #e9ecef; font-size: 12px; color: #6c757d; }}
-        </style>
     </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h2 style="margin: 0; color: #212529;">{notification.title}</h2>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="padding: 20px; border-bottom: 3px solid {accent_color}; border-radius: 8px 8px 0 0; background-color: #f8f9fa;">
+                {header_content}
             </div>
-            <div class="content">
-                <p>{notification.message}</p>
+            <div style="background-color: #ffffff; padding: 20px; border: 1px solid #e9ecef; border-top: none;">
+                <h2 style="margin: 0 0 12px 0; color: #212529; font-size: 18px;">{notification.title}</h2>
+                <p style="margin: 0 0 16px 0; color: #495057;">{notification.message}</p>
                 {action_link}
             </div>
-            <div class="footer">
-                <p>This is an automated notification from Shopify Analytics.</p>
-                <p>You can manage your notification preferences in settings.</p>
+            <div style="border: 1px solid #e9ecef; border-top: none; border-radius: 0 0 8px 8px; background-color: #f8f9fa; padding: 16px 20px;">
+                <p style="margin: 0 0 4px 0; font-size: 12px; color: #6c757d;">{footer_text}</p>
+                <p style="margin: 0; font-size: 12px; color: #6c757d;">You can manage your notification preferences in settings.</p>
             </div>
         </div>
     </body>
@@ -110,8 +149,12 @@ def _build_email_html(notification: Notification) -> str:
     """
 
 
-def _build_email_text(notification: Notification) -> str:
-    """Build plain text email body from notification."""
+def _build_email_text(notification: Notification, branding: dict | None = None) -> str:
+    """Build branded plain text email body from notification."""
+    brand = branding or {"brand_name": "MarkInsight"}
+    brand_name = brand.get("brand_name", "MarkInsight")
+    footer_text = brand.get("email_footer_text") or f"This is an automated notification from {brand_name}."
+
     text = f"{notification.title}\n\n{notification.message}"
     if notification.action_url:
         base_url = os.getenv("APP_BASE_URL", "")
@@ -119,6 +162,7 @@ def _build_email_text(notification: Notification) -> str:
             logger.warning("APP_BASE_URL not set — email links will be broken")
             base_url = "https://app.example.com"
         text += f"\n\nView details: {base_url}{notification.action_url}"
+    text += f"\n\n---\n{footer_text}"
     return text
 
 
@@ -284,17 +328,23 @@ class NotificationEmailWorker:
             return False
 
         try:
-            subject = EMAIL_SUBJECTS.get(
+            # Resolve tenant branding for this notification
+            branding = _resolve_tenant_branding(self.db, notification.tenant_id)
+            brand_name = branding.get("brand_name", "MarkInsight")
+
+            base_subject = EMAIL_SUBJECTS.get(
                 notification.event_type,
-                "Notification from Shopify Analytics"
+                "New Notification"
             )
+            subject = f"[{brand_name}] {base_subject}"
 
             message = EmailMessage(
                 to_email=user_email,
                 to_name=None,
                 subject=subject,
-                html_body=_build_email_html(notification),
-                text_body=_build_email_text(notification),
+                html_body=_build_email_html(notification, branding),
+                text_body=_build_email_text(notification, branding),
+                from_name=brand_name,
                 tags=[
                     f"notification:{notification.event_type.value}",
                     f"tenant:{notification.tenant_id}",

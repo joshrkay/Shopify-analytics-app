@@ -15,6 +15,7 @@ from src.models.tenant import Tenant
 from src.platform.rbac import check_permission_or_raise
 from src.platform.tenant_context import get_tenant_context
 from src.services.billing_entitlements import BillingEntitlementsService, BillingFeature
+from src.models.store import ShopifyStore
 from src.api.schemas.settings import (
     ApiKeyCreateRequest,
     ApiKeyCreateResponse,
@@ -22,6 +23,8 @@ from src.api.schemas.settings import (
     ApiKeySummary,
     AiInsightsSettings,
     AiInsightsSettingsResponse,
+    BrandingSettings,
+    BrandingSettingsResponse,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -161,3 +164,61 @@ async def update_ai_settings(
         entitled=True,
         entitlement_reason=None,
     )
+
+
+def _resolve_branding(tenant: Tenant | None, db_session) -> BrandingSettingsResponse:
+    """Resolve branding with fallbacks: custom config -> Shopify store name -> MarkInsight."""
+    branding = {}
+    if tenant and tenant.settings:
+        branding = tenant.settings.get("branding", {})
+
+    brand_name = branding.get("brand_name") or None
+
+    # Fallback to Shopify store name
+    if not brand_name and tenant:
+        store = (
+            db_session.query(ShopifyStore)
+            .filter(ShopifyStore.tenant_id == tenant.id)
+            .first()
+        )
+        if store and store.shop_name:
+            brand_name = store.shop_name
+
+    return BrandingSettingsResponse(
+        brand_name=brand_name or "MarkInsight",
+        logo_url=branding.get("logo_url") or None,
+        accent_color=branding.get("accent_color") or "#4CAF50",
+        email_footer_text=branding.get("email_footer_text") or None,
+    )
+
+
+@router.get("/branding", response_model=BrandingSettingsResponse)
+async def get_branding_settings(request: Request, db_session=Depends(get_db_session)):
+    """Get tenant branding configuration with smart fallbacks."""
+    tenant_ctx = get_tenant_context(request)
+
+    tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
+    return _resolve_branding(tenant, db_session)
+
+
+@router.put("/branding", response_model=BrandingSettingsResponse)
+async def update_branding_settings(
+    payload: BrandingSettings,
+    request: Request,
+    db_session=Depends(get_db_session),
+):
+    """Update tenant branding configuration."""
+    tenant_ctx = get_tenant_context(request)
+
+    tenant = db_session.query(Tenant).filter(Tenant.id == tenant_ctx.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    current_settings = tenant.settings or {}
+    current_settings["branding"] = {
+        k: v for k, v in payload.model_dump().items() if v is not None
+    }
+    tenant.settings = current_settings
+    db_session.commit()
+
+    return _resolve_branding(tenant, db_session)

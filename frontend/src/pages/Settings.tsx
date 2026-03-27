@@ -4,6 +4,7 @@ import {
   CreditCard,
   Database,
   Key,
+  Palette,
   RefreshCw,
   Sparkles,
   User,
@@ -18,6 +19,7 @@ import { DataSourcesSettingsTab } from '../components/settings/DataSourcesSettin
 import { SyncSettingsTab } from '../components/settings/SyncSettingsTab';
 import { TeamSettings } from '../components/settings/TeamSettings';
 import { NotificationsSettingsTab } from '../components/settings/NotificationsSettingsTab';
+import { BrandingSettingsTab } from '../components/settings/BrandingSettingsTab';
 import {
   createApiKey,
   fetchAiInsightsSettings,
@@ -48,6 +50,7 @@ const SETTINGS_TABS: SettingsTabDefinition[] = [
   { id: 'sources', label: 'Data Sources', icon: Database, requiredRole: 'viewer' },
   { id: 'sync', label: 'Sync Settings', icon: RefreshCw, requiredRole: 'admin' },
   { id: 'notifications', label: 'Notifications', icon: Bell, requiredRole: 'viewer' },
+  { id: 'branding', label: 'Branding', icon: Palette, requiredRole: 'admin' },
   { id: 'account', label: 'Account', icon: User, requiredRole: 'viewer' },
   { id: 'team', label: 'Team', icon: Users, requiredRole: 'admin' },
   { id: 'billing', label: 'Billing', icon: CreditCard, requiredRole: 'owner' },
@@ -485,6 +488,14 @@ function renderTabContent(tab: SettingsTab) {
     return (
       <section data-testid="settings-panel-notifications">
         <NotificationsSettingsTab />
+      </section>
+    );
+  }
+
+  if (tab === 'branding') {
+    return (
+      <section data-testid="settings-panel-branding">
+        <BrandingSettingsTab />
       </section>
     );
   }
