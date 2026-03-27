@@ -171,9 +171,9 @@ describe('Settings page shell and tab navigation', () => {
       expect(screen.queryByRole('button', { name: 'Billing' })).not.toBeInTheDocument();
     });
 
-    it('Owner sees all 8 tabs', async () => {
+    it('Owner sees all 9 tabs', async () => {
       renderSettings('/settings', 'owner');
-      expect(await screen.findAllByRole('button')).toHaveLength(8);
+      expect(await screen.findAllByRole('button')).toHaveLength(9);
     });
 
     it('Hidden tab URL param redirects to first visible tab', async () => {

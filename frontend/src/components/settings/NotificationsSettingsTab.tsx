@@ -33,52 +33,52 @@ interface EventMeta {
 const EVENT_META: Record<string, EventMeta> = {
   connector_failed: {
     label: 'Connector Failed',
-    description: 'A data source connector stops syncing or encounters an error.',
+    description: 'Sent when a data sync fails permanently after all retries are exhausted. Includes the error details and a link to fix the connection.',
     important: true,
   },
   sync_completed: {
     label: 'Sync Completed',
-    description: 'A scheduled data sync finishes successfully.',
+    description: 'Sent after a data source sync completes successfully, with the number of records synced and duration.',
     important: false,
   },
   action_requires_approval: {
     label: 'Action Requires Approval',
-    description: 'An AI-recommended action is waiting for your review.',
+    description: 'Sent when an AI action (e.g. pause campaign, adjust budget) is proposed and needs your approval before it can execute.',
     important: true,
   },
   action_executed: {
     label: 'Action Executed',
-    description: 'An approved action has been carried out.',
+    description: 'Sent after an approved AI action executes successfully, with before/after state changes.',
     important: false,
   },
   action_failed: {
     label: 'Action Failed',
-    description: 'An action could not be completed.',
+    description: 'Sent when an approved AI action fails during execution, with the error details.',
     important: true,
   },
   incident_declared: {
     label: 'Incident Declared',
-    description: 'A data health or platform incident has been opened.',
+    description: 'Sent when a data source becomes critically stale or a data quality issue is detected. (Coming soon)',
     important: true,
   },
   incident_resolved: {
     label: 'Incident Resolved',
-    description: 'An active incident has been closed.',
+    description: 'Sent when a previously flagged data health issue returns to normal. (Coming soon)',
     important: false,
   },
   alert_triggered: {
     label: 'Alert Triggered',
-    description: 'A metric threshold alert rule has fired.',
+    description: 'Sent when a metric (ROAS, spend, revenue, etc.) crosses a threshold you configured in Automated Alerts.',
     important: true,
   },
   insight_generated: {
     label: 'Insight Generated',
-    description: 'A new AI insight is available in your feed.',
+    description: 'Sent when the AI analysis run produces a new insight about your marketing performance.',
     important: false,
   },
   recommendation_created: {
     label: 'Recommendation Created',
-    description: 'A new AI recommendation is ready for review.',
+    description: 'Sent when the AI generates a new actionable recommendation based on recent insights.',
     important: false,
   },
 };

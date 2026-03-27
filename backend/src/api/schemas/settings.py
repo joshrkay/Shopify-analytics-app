@@ -39,6 +39,39 @@ class ApiKeyCreateResponse(BaseModel):
     plaintext_key: str
 
 
+class BrandingSettings(BaseModel):
+    brand_name: str | None = Field(default=None, max_length=255)
+    logo_url: str | None = Field(default=None, max_length=2048)
+    accent_color: str | None = Field(default=None, max_length=7)
+    email_footer_text: str | None = Field(default=None, max_length=500)
+
+    @field_validator("logo_url")
+    @classmethod
+    def validate_logo_url(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        if not value.startswith("https://"):
+            raise ValueError("Logo URL must use HTTPS")
+        return value
+
+    @field_validator("accent_color")
+    @classmethod
+    def validate_accent_color(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        import re
+        if not re.match(r'^#[0-9a-fA-F]{6}$', value):
+            raise ValueError("Accent color must be a valid hex color (e.g. #4CAF50)")
+        return value
+
+
+class BrandingSettingsResponse(BaseModel):
+    brand_name: str
+    logo_url: str | None = None
+    accent_color: str
+    email_footer_text: str | None = None
+
+
 class AiInsightsSettings(BaseModel):
     enabled: bool = True
     model: Literal["gpt-4.1-mini", "gpt-4.1", "gpt-5-mini"] = "gpt-4.1-mini"

@@ -284,5 +284,5 @@ export interface ApiKey {
 }
 
 // ─── Settings Tab Navigation ──────────────────────────────────────────────────
-export const SETTINGS_TABS = ['sources', 'sync', 'notifications', 'account', 'team', 'billing', 'api', 'ai'] as const;
+export const SETTINGS_TABS = ['sources', 'sync', 'notifications', 'branding', 'account', 'team', 'billing', 'api', 'ai'] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];

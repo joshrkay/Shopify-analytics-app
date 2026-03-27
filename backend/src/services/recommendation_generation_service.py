@@ -431,6 +431,33 @@ class RecommendationGenerationService:
         try:
             self.db.add(recommendation)
             self.db.flush()
+
+            # Notify tenant of new recommendation
+            try:
+                from src.services.notification_service import NotificationService
+                from src.models.notification import NotificationEventType
+
+                notification_svc = NotificationService(
+                    db_session=self.db, tenant_id=self.tenant_id
+                )
+                notification_svc.notify(
+                    event_type=NotificationEventType.RECOMMENDATION_CREATED,
+                    title=f"New recommendation: {detected.recommendation_type.value.replace('_', ' ').title()}",
+                    message=recommendation_text[:200],
+                    entity_type="recommendation",
+                    entity_id=recommendation.id,
+                    action_url="/ai-consultant",
+                    event_metadata={
+                        "recommendation_type": detected.recommendation_type.value,
+                        "priority": detected.priority.value,
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to create recommendation notification",
+                    extra={"error": str(e), "recommendation_id": recommendation.id},
+                )
+
             return recommendation
         except IntegrityError:
             # Duplicate constraint violation - recommendation already exists

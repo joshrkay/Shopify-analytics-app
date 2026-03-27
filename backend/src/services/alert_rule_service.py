@@ -166,6 +166,38 @@ class AlertRuleService:
                     )
                     self.db.add(execution)
 
+                    # Notify tenant of triggered alert
+                    try:
+                        from src.services.notification_service import NotificationService
+                        from src.models.notification import NotificationEventType
+
+                        op = rule.comparison_operator
+                        if isinstance(op, ComparisonOperator):
+                            op = op.value
+
+                        notification_svc = NotificationService(
+                            db_session=self.db, tenant_id=self.tenant_id
+                        )
+                        notification_svc.notify(
+                            event_type=NotificationEventType.ALERT_TRIGGERED,
+                            title=f"Alert: {rule.name}",
+                            message=f"{rule.metric_name} is {value:.2f} ({op} threshold {rule.threshold_value:.2f}).",
+                            entity_type="alert_rule",
+                            entity_id=rule.id,
+                            action_url="/alerts",
+                            event_metadata={
+                                "metric_name": rule.metric_name,
+                                "value": value,
+                                "threshold": rule.threshold_value,
+                                "severity": rule.severity.value if isinstance(rule.severity, AlertSeverity) else rule.severity,
+                            },
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to create alert triggered notification",
+                            extra={"error": str(e), "rule_id": rule.id},
+                        )
+
             except Exception as exc:
                 stats["errors"] += 1
                 logger.warning("Failed to evaluate rule %s: %s", rule.id, exc)
