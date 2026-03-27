@@ -66,6 +66,12 @@ EMAIL_SUBJECTS = {
     NotificationEventType.ACTION_REQUIRES_APPROVAL: "Action Requires Your Approval",
     NotificationEventType.INCIDENT_DECLARED: "Alert: Data Quality Incident Detected",
     NotificationEventType.ACTION_FAILED: "Action Execution Failed",
+    NotificationEventType.SYNC_COMPLETED: "Data Sync Completed Successfully",
+    NotificationEventType.ACTION_EXECUTED: "AI Action Executed Successfully",
+    NotificationEventType.ALERT_TRIGGERED: "Alert: Metric Threshold Exceeded",
+    NotificationEventType.INSIGHT_GENERATED: "New AI Insight Available",
+    NotificationEventType.RECOMMENDATION_CREATED: "New AI Recommendation",
+    NotificationEventType.INCIDENT_RESOLVED: "Incident Resolved",
 }
 
 

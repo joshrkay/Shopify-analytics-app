@@ -702,6 +702,33 @@ class InsightGenerationService:
         try:
             self.db.add(insight)
             self.db.flush()
+
+            # Notify tenant of new insight
+            try:
+                from src.services.notification_service import NotificationService
+                from src.models.notification import NotificationEventType
+
+                notification_svc = NotificationService(
+                    db_session=self.db, tenant_id=self.tenant_id
+                )
+                notification_svc.notify(
+                    event_type=NotificationEventType.INSIGHT_GENERATED,
+                    title=f"New insight: {detected.insight_type.value.replace('_', ' ').title()}",
+                    message=summary[:200],
+                    entity_type="insight",
+                    entity_id=insight.id,
+                    action_url="/ai-consultant",
+                    event_metadata={
+                        "insight_type": detected.insight_type.value,
+                        "severity": detected.severity.value,
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to create insight notification",
+                    extra={"error": str(e), "insight_id": insight.id},
+                )
+
             return insight
         except IntegrityError:
             # Duplicate constraint violation - insight already exists

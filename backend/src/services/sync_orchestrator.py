@@ -262,6 +262,32 @@ class SyncOrchestrator:
                         extra={"error": str(e), "connection_id": connection_id},
                     )
 
+                # Notify tenant of successful sync
+                try:
+                    from src.services.notification_service import NotificationService
+                    from src.models.notification import NotificationEventType
+
+                    notification_svc = NotificationService(
+                        db_session=self.db, tenant_id=self.tenant_id
+                    )
+                    notification_svc.notify(
+                        event_type=NotificationEventType.SYNC_COMPLETED,
+                        title=f"Sync completed: {connection.connection_name}",
+                        message=f"Synced {result.records_synced:,} records in {int(result.duration_seconds)}s.",
+                        entity_type="connection",
+                        entity_id=connection_id,
+                        action_url="/sync",
+                        event_metadata={
+                            "records_synced": result.records_synced,
+                            "duration_seconds": result.duration_seconds,
+                        },
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to create sync completed notification",
+                        extra={"error": str(e), "connection_id": connection_id},
+                    )
+
                 logger.info(
                     "Sync completed successfully",
                     extra={
