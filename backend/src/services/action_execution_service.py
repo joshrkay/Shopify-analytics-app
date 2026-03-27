@@ -289,22 +289,23 @@ class ActionExecutionService:
                     )
 
                 # Notify user of successful action execution
-                try:
-                    from src.services.notification_service import NotificationService
+                if action.approved_by:
+                    try:
+                        from src.services.notification_service import NotificationService
 
-                    notification_svc = NotificationService(
-                        db_session=self.db, tenant_id=self.tenant_id
-                    )
-                    notification_svc.notify_action_executed(
-                        action_id=action.id,
-                        action_type=action.action_type.value,
-                        user_id=action.approved_by,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to create action executed notification",
-                        extra={"error": str(e), "action_id": action.id},
-                    )
+                        notification_svc = NotificationService(
+                            db_session=self.db, tenant_id=self.tenant_id
+                        )
+                        notification_svc.notify_action_executed(
+                            action_id=action.id,
+                            action_type=action.action_type.value,
+                            user_id=action.approved_by,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to create action executed notification",
+                            extra={"error": str(e), "action_id": action.id},
+                        )
 
                 logger.info(
                     "Action executed successfully",
@@ -345,23 +346,24 @@ class ActionExecutionService:
                 ))
 
                 # Notify user of action failure
-                try:
-                    from src.services.notification_service import NotificationService
+                if action.approved_by:
+                    try:
+                        from src.services.notification_service import NotificationService
 
-                    notification_svc = NotificationService(
-                        db_session=self.db, tenant_id=self.tenant_id
-                    )
-                    notification_svc.notify_action_failed(
-                        action_id=action.id,
-                        action_type=action.action_type.value,
-                        error_message=result.message or "Unknown error",
-                        user_id=action.approved_by,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to create action failed notification",
-                        extra={"error": str(e), "action_id": action.id},
-                    )
+                        notification_svc = NotificationService(
+                            db_session=self.db, tenant_id=self.tenant_id
+                        )
+                        notification_svc.notify_action_failed(
+                            action_id=action.id,
+                            action_type=action.action_type.value,
+                            error_message=result.message or "Unknown error",
+                            user_id=action.approved_by,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to create action failed notification",
+                            extra={"error": str(e), "action_id": action.id},
+                        )
 
                 logger.warning(
                     "Action execution failed",
