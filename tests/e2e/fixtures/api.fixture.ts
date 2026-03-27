@@ -29,14 +29,18 @@ export class AuthenticatedApiClient {
     };
   }
 
-  async get(path: string): Promise<{ status: number; data: unknown }> {
-    const response = await this.request.get(`${API_BASE}${path}`, {
-      headers: this.headers(),
-    });
+  private async _handleResponse(response: { status(): number; headers(): Record<string, string>; json(): Promise<unknown>; text(): Promise<string> }): Promise<{ status: number; data: unknown }> {
     const data = response.headers()['content-type']?.includes('json')
       ? await response.json()
       : await response.text();
     return { status: response.status(), data };
+  }
+
+  async get(path: string): Promise<{ status: number; data: unknown }> {
+    const response = await this.request.get(`${API_BASE}${path}`, {
+      headers: this.headers(),
+    });
+    return this._handleResponse(response);
   }
 
   async post(path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
@@ -44,10 +48,7 @@ export class AuthenticatedApiClient {
       headers: this.headers(),
       data: body,
     });
-    const data = response.headers()['content-type']?.includes('json')
-      ? await response.json()
-      : await response.text();
-    return { status: response.status(), data };
+    return this._handleResponse(response);
   }
 
   async put(path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
@@ -55,10 +56,7 @@ export class AuthenticatedApiClient {
       headers: this.headers(),
       data: body,
     });
-    const data = response.headers()['content-type']?.includes('json')
-      ? await response.json()
-      : await response.text();
-    return { status: response.status(), data };
+    return this._handleResponse(response);
   }
 
   async patch(path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
@@ -66,20 +64,14 @@ export class AuthenticatedApiClient {
       headers: this.headers(),
       data: body,
     });
-    const data = response.headers()['content-type']?.includes('json')
-      ? await response.json()
-      : await response.text();
-    return { status: response.status(), data };
+    return this._handleResponse(response);
   }
 
   async delete(path: string): Promise<{ status: number; data: unknown }> {
     const response = await this.request.delete(`${API_BASE}${path}`, {
       headers: this.headers(),
     });
-    const data = response.headers()['content-type']?.includes('json')
-      ? await response.json()
-      : await response.text();
-    return { status: response.status(), data };
+    return this._handleResponse(response);
   }
 }
 

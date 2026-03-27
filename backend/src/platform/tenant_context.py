@@ -840,10 +840,10 @@ class TenantContextMiddleware:
                         },
                     )
                 else:
-                    # Fallback: decode without verification in E2E mode
-                    payload = jwt.decode(
-                        token,
-                        options={"verify_signature": False},
+                    raise HTTPException(
+                        status_code=500,
+                        detail="E2E mock auth is enabled, but public key was not found at path: "
+                               + str(e2e_public_key_path),
                     )
             else:
                 # Production path: Get signing key from JWKS (PyJWKClient handles fetching/caching)

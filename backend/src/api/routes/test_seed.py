@@ -10,6 +10,7 @@ SECURITY: Guarded by ENV=test check. Never available in production.
 
 import os
 import logging
+import uuid
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -173,7 +174,6 @@ async def seed_test_data(request: SeedRequest):
             from src.models.subscription import Subscription
             sub_ids = []
             for s in request.subscriptions:
-                import uuid
                 sub_id = str(uuid.uuid4())
                 subscription = Subscription(
                     id=sub_id,
@@ -190,7 +190,6 @@ async def seed_test_data(request: SeedRequest):
             from src.models.store import ShopifyStore
             store_ids = []
             for s in request.stores:
-                import uuid
                 store_id = str(uuid.uuid4())
                 store = ShopifyStore(
                     id=store_id,
@@ -208,7 +207,6 @@ async def seed_test_data(request: SeedRequest):
             from src.models.custom_dashboard import CustomDashboard
             dashboard_ids = []
             for d in request.dashboards:
-                import uuid
                 dash_id = str(uuid.uuid4())
                 dashboard = CustomDashboard(
                     id=dash_id,
@@ -225,7 +223,6 @@ async def seed_test_data(request: SeedRequest):
             from src.models.airbyte_connection import AirbyteConnection
             conn_ids = []
             for c in request.connections:
-                import uuid
                 conn_id = str(uuid.uuid4())
                 conn = AirbyteConnection(
                     id=conn_id,
@@ -242,7 +239,6 @@ async def seed_test_data(request: SeedRequest):
             from src.models.ai_insight import AIInsight
             insight_ids = []
             for i in request.insights:
-                import uuid
                 insight_id = str(uuid.uuid4())
                 insight = AIInsight(
                     id=insight_id,
@@ -327,9 +323,9 @@ async def teardown_test_data(request: TeardownRequest):
                     text(f"DELETE FROM {table} WHERE tenant_id = :tid"),
                     {"tid": tenant_id},
                 )
-            except Exception:
+            except Exception as e:
                 # Table may not exist or may not have tenant_id column
-                pass
+                logger.warning(f"Could not clean table '{table}' for tenant {tenant_id}: {e}")
 
         db.commit()
         logger.info("E2E test data torn down", extra={"tenant_id": tenant_id})
