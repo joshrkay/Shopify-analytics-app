@@ -59,6 +59,7 @@ MIGRATIONS = [
     "pixel_registrations.sql",
     "seed_plans_entitlements.sql",
     "seed_tenant_airbyte_connections.sql",
+    "seed_shopify_store_and_test_orders.sql",
     "cleanup_v1_raw_tables.sql",
 ]
 
