@@ -58,6 +58,7 @@ MIGRATIONS = [
     "pixel_events.sql",
     "pixel_registrations.sql",
     "seed_plans_entitlements.sql",
+    "seed_tenant_airbyte_connections.sql",
 ]
 
 

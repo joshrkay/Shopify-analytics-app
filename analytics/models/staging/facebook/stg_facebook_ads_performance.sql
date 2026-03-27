@@ -32,7 +32,7 @@
     SECURITY: Tenant isolation enforced via _tenant_airbyte_connections.
 #}
 
-with raw_meta_ads as (
+with meta_ads_extracted as (
     select
         _airbyte_raw_id       as airbyte_record_id,
         _airbyte_extracted_at as airbyte_emitted_at,
@@ -55,7 +55,7 @@ with raw_meta_ads as (
         objective,
         reach,                      -- bigint
         frequency,                  -- numeric
-        -- platform_channel: v2 doesn't have 'placement'; use objective as fallback
+        -- v2 has no 'placement' column; use objective as platform_channel fallback
         coalesce(objective, 'feed') as platform_channel_raw
     from {{ source('raw_facebook_ads', 'ad_insights') }}
     {% if is_incremental() %}
@@ -154,7 +154,7 @@ meta_ads_normalized as (
         airbyte_record_id,
         airbyte_emitted_at
 
-    from raw_meta_ads
+    from meta_ads_extracted
 ),
 
 -- Tenant mapping: join on ad_account_id for multi-tenant isolation

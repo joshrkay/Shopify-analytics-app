@@ -87,8 +87,8 @@ vars:
   # Override when migrating to per-source schemas:
   #   dbt run --vars '{raw_shopify_schema: raw_shopify, raw_facebook_ads_schema: raw_facebook_ads}'
   raw_shopify_schema: airbyte_raw
-  raw_facebook_ads_schema: airbyte_raw
-  raw_google_ads_schema: airbyte_raw
+  raw_facebook_ads_schema: airbyte_google_ads
+  raw_google_ads_schema: airbyte_google_ads
   raw_tiktok_ads_schema: airbyte_raw
   raw_snapchat_ads_schema: airbyte_raw
   raw_pinterest_ads_schema: airbyte_raw
