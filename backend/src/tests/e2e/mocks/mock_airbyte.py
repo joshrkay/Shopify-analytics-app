@@ -258,7 +258,16 @@ class MockAirbyteServer:
         connection_id: str,
         data: Dict[str, List[Dict]]
     ) -> None:
-        """Inject test data into raw Airbyte tables."""
+        """Inject test data into raw Airbyte tables.
+
+        NOTE: This uses V1-era table names (_airbyte_raw_shopify_orders) and
+        the JSONB _airbyte_data blob format. Production Airbyte Cloud uses
+        Destinations V2 with typed columns (no JSONB blob) and different table
+        names (airbyte_raw.orders, airbyte_google_ads.ads_insights). The dbt
+        staging models were migrated to V2 in PR #396. These test tables are
+        separate from the dbt pipeline and don't need to match the V2 schema
+        unless E2E tests begin testing the full dbt → API flow.
+        """
         async with self.db_session_factory() as session:
             for table_name, records in data.items():
                 for record in records:
