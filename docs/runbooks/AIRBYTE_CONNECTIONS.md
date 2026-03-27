@@ -139,3 +139,32 @@ WHERE status = 'active';
 ```
 
 If this table is empty, run the `seed_tenant_airbyte_connections.sql` migration.
+
+## Sync Modes for Time Series
+
+For time series reporting, connections MUST use incremental sync modes that preserve history:
+
+| Mode | Behavior | Time Series? |
+|---|---|---|
+| `incremental_deduped_history` | Appends new data, deduplicates by PK | Yes |
+| `incremental_append` | Appends all new data (may have duplicates) | Yes |
+| `full_refresh_overwrite` | Drops and recreates table each sync | **No** — destroys history |
+| `full_refresh_overwrite_deduped` | Drops and recreates with dedup | **No** — destroys history |
+
+**Google Ads was configured as `full_refresh_overwrite`** — this must be changed to `incremental_deduped_history` via the Airbyte Cloud UI (Connection → Replication → stream settings).
+
+Shopify and Facebook Marketing are already on `incremental_deduped_history`.
+
+## Post-Migration: Full dbt Rebuild
+
+After deploying V1→V2 migration changes, run a one-time full rebuild:
+
+```bash
+# On Render shell:
+cd /app && bash scripts/dbt_full_rebuild.sh
+
+# Locally:
+bash scripts/dbt_full_rebuild.sh
+```
+
+This clears stale incremental data from prior V1 runs and rebuilds all models from V2 tables. After the rebuild, the hourly cron (`markinsight-dbt-incremental`) handles ongoing incremental updates.
