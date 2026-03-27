@@ -59,6 +59,7 @@ MIGRATIONS = [
     "pixel_registrations.sql",
     "seed_plans_entitlements.sql",
     "seed_tenant_airbyte_connections.sql",
+    "cleanup_v1_raw_tables.sql",
 ]
 
 
