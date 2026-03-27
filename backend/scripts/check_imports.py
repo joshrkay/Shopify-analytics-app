@@ -79,11 +79,15 @@ def _import_to_candidates(module: str, name: str) -> list[Path]:
     """
     parts = module.replace(".", "/")
     return [
+        # name is a sub-module
         ROOT / f"{parts}/{name}.py",
         ROOT / f"{parts}/{name}/__init__.py",
-        # `name` might refer to the module itself (e.g. `from src.api import dq`)
+        # name might refer to the module itself (e.g. `from src.api import dq`)
         ROOT / f"{parts.rsplit('/', 1)[0]}/{name}.py"
         if "/" in parts else ROOT / f"{name}.py",
+        # name is a symbol (class/function/var) defined inside the module file
+        ROOT / f"{parts}.py",
+        ROOT / f"{parts}/__init__.py",
     ]
 
 

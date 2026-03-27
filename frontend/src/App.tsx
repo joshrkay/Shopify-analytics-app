@@ -16,7 +16,7 @@
 
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
-import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { AppProvider } from '@shopify/polaris';
 import enTranslations from '@shopify/polaris/locales/en.json';
 import '@shopify/polaris/build/esm/styles.css';
@@ -34,8 +34,9 @@ import type { EntitlementsResponse } from './services/entitlementsApi';
 import { DashboardBuilderProvider } from './contexts/DashboardBuilderContext';
 import { DateRangeProvider } from './contexts/DateRangeContext';
 
-// Default route — loaded eagerly (users always land here)
+// Default route — loaded eagerly (signed-in users land here)
 import { Dashboard } from './pages/Dashboard';
+import { Landing } from './pages/Landing';
 
 // Lazy-loaded pages — split into separate chunks
 const AdminPlans = lazy(() => import('./pages/AdminPlans'));
@@ -64,6 +65,9 @@ const BudgetPacing = lazy(() => import('./pages/BudgetPacing').then(m => ({ defa
 const Alerts = lazy(() => import('./pages/Alerts').then(m => ({ default: m.Alerts })));
 const AIConsultant = lazy(() => import('./pages/AIConsultant').then(m => ({ default: m.AIConsultant })));
 const SyncStatus = lazy(() => import('./pages/SyncStatus').then(m => ({ default: m.SyncStatus })));
+const TemplateGallery = lazy(() =>
+  import('./pages/TemplateGallery').then((m) => ({ default: m.TemplateGallery })),
+);
 
 const PageLoader = () => (
   <div className="flex items-center justify-center h-64">
@@ -228,7 +232,11 @@ function AppWithOrg() {
             <Route path="/billing/checkout" element={<BillingCheckout />} />
             <Route path="/billing/callback" element={<BillingCheckout />} />
             <Route path="/insights" element={<InsightsFeed />} />
-            <Route path="/approvals" element={<ApprovalsInbox />} />
+            <Route path="/approvals" element={
+              <FeatureGateRoute feature="ai_actions" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
+                <ApprovalsInbox />
+              </FeatureGateRoute>
+            } />
             <Route path="/attribution" element={<Attribution />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/channels/:platform" element={<ChannelAnalytics />} />
@@ -236,6 +244,7 @@ function AppWithOrg() {
             <Route path="/channel/:channelKey" element={<ChannelByKey />} />
             <Route path="/ai-consultant" element={<AIConsultant />} />
             <Route path="/sync" element={<SyncStatus />} />
+            <Route path="/sync-health" element={<Navigate to="/sync" replace />} />
             <Route path="/cohorts" element={
               <FeatureGateRoute feature="cohort_analysis" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
                 <CohortAnalysis />
@@ -284,6 +293,14 @@ function AppWithOrg() {
                   <DashboardBuilderProvider>
                     <WizardFlow />
                   </DashboardBuilderProvider>
+                </FeatureGateRoute>
+              }
+            />
+            <Route
+              path="/templates"
+              element={
+                <FeatureGateRoute feature="custom_reports" entitlements={entitlements} entitlementsLoading={entitlementsLoading} entitlementsError={entitlementsError} onRetry={refetchEntitlements}>
+                  <TemplateGallery />
                 </FeatureGateRoute>
               }
             />
@@ -349,7 +366,12 @@ function App() {
             <AuthenticatedApp />
           </SignedIn>
           <SignedOut>
-            <RedirectToSignIn />
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/sign-in/*" element={<SignIn routing="path" path="/sign-in" />} />
+              <Route path="/sign-up/*" element={<SignUp routing="path" path="/sign-up" />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </SignedOut>
         </BrowserRouter>
       </AppProvider>

@@ -39,6 +39,8 @@ models:
         +schema: staging
       sms:
         +schema: staging
+      pixel:
+        +schema: staging
       dimensions:
         +materialized: table
         +schema: staging

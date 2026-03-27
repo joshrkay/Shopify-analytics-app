@@ -228,6 +228,15 @@ export interface TemplateFilters {
   category?: TemplateCategory;
 }
 
+export interface CreateTemplateRequest {
+  name: string;
+  description?: string;
+  category: TemplateCategory;
+  config_json: Record<string, unknown>;
+  min_billing_tier?: string;
+  thumbnail_url?: string | null;
+}
+
 // =============================================================================
 // Dashboard Types (matches backend DashboardResponse)
 // =============================================================================

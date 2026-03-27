@@ -63,20 +63,18 @@ const POPULATED_RESPONSE = {
       order_id: 'ord-1',
       order_name: '#1001',
       order_number: 1001,
-      order_created_at: '2026-03-01T10:00:00Z',
-      revenue_gross: 99.99,
+      created_at: '2026-03-01T10:00:00Z',
+      revenue: 99.99,
       currency: 'USD',
       financial_status: 'paid',
       utm_source: 'google',
       utm_campaign: 'spring-sale',
       utm_medium: 'cpc',
       platform: 'google_ads',
-      attribution_status: 'attributed',
     },
   ],
   total: 1,
-  page: 0,
-  limit: 25,
+  has_more: false,
 };
 
 // ---------------------------------------------------------------------------

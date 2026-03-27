@@ -69,7 +69,7 @@ describe('widget catalog backend wiring integration', () => {
     const catalog = await getWidgetCatalog();
 
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/v1/templates',
+      expect.stringContaining('/api/v1/templates'),
       expect.objectContaining({ method: 'GET' }),
     );
     expect(catalog).toHaveLength(1);

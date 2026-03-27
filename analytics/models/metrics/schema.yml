@@ -578,3 +578,26 @@ models:
 
       - name: avg_net_first_order_value
         description: Average first order value (net customers only)
+
+  - name: fct_funnel
+    description: |
+      Daily conversion funnel metrics from Web Pixel customer sessions.
+
+      Tracks: sessions -> product views -> cart views -> checkout -> purchase.
+      Broken down by date, utm_source, and utm_medium.
+
+      SECURITY: All rows are tenant-isolated via tenant_id.
+    columns:
+      - name: id
+        description: Surrogate key
+        data_tests:
+          - not_null
+          - unique
+      - name: tenant_id
+        data_tests:
+          - not_null
+      - name: session_date
+        data_tests:
+          - not_null
+      - name: overall_conversion_rate
+        description: Percentage of sessions that resulted in a purchase

@@ -15,12 +15,17 @@ Story 8.5 - Action Execution (Scoped & Reversible)
 import pytest
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
-from src.api.routes.actions import router
+from src.api.routes.actions import (
+    router,
+    check_execute_permission,
+    check_view_permission,
+)
+from src.api.dependencies.entitlements import check_ai_actions_entitlement
 from src.models.ai_action import AIAction, ActionStatus, ActionType, ActionTargetEntityType
 from src.models.action_execution_log import ActionExecutionLog, ActionLogEventType
 from src.models.action_job import ActionJob, ActionJobStatus
@@ -94,8 +99,8 @@ def sample_job(tenant_id):
         tenant_id=tenant_id,
         status=ActionJobStatus.SUCCEEDED,
         action_ids=[str(uuid.uuid4())],
-        succeeded_count=1,
-        failed_count=0,
+        actions_succeeded=1,
+        actions_failed=0,
         created_at=datetime.now(timezone.utc),
     )
 
@@ -296,6 +301,39 @@ class TestActionPermissions:
 class TestExecuteAction:
     """Tests for POST /api/actions/{action_id}/execute endpoint."""
 
+    def test_returns_execution_job_id_when_action_executes(
+        self, client, mock_tenant_context, sample_action
+    ):
+        """Should serialize execution response with the action's job ID."""
+        sample_action.job_id = str(uuid.uuid4())
+
+        mock_db = Mock()
+        mock_query = Mock()
+        mock_query.filter.return_value.first.return_value = sample_action
+        mock_db.query.return_value = mock_query
+
+        mock_result = Mock()
+        mock_result.status = Mock(value="success")
+
+        client.app.dependency_overrides[check_ai_actions_entitlement] = lambda: mock_db
+        client.app.dependency_overrides[check_execute_permission] = lambda: None
+        with patch('src.api.routes.actions.get_tenant_context', return_value=mock_tenant_context):
+            with patch('src.api.routes.actions.BillingEntitlementsService') as mock_billing:
+                billing_result = Mock(is_entitled=True)
+                mock_billing.return_value.check_feature_entitlement.return_value = billing_result
+                with patch('src.api.routes.actions.can_execute_actions', return_value=True):
+                    with patch(
+                        'src.api.routes.actions.ActionExecutionService.execute_action',
+                        new=AsyncMock(return_value=mock_result),
+                    ):
+                        response = client.post(f"/api/actions/{sample_action.id}/execute")
+        client.app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["job_id"] == sample_action.job_id
+
     def test_returns_400_when_action_cannot_be_executed(
         self, client, mock_tenant_context, sample_action
     ):
@@ -418,19 +456,46 @@ class TestListJobs:
         mock_query.count.return_value = 1
         mock_db.query.return_value = mock_query
 
+        client.app.dependency_overrides[check_ai_actions_entitlement] = lambda: mock_db
+        client.app.dependency_overrides[check_view_permission] = lambda: None
         with patch('src.api.routes.actions.get_tenant_context', return_value=mock_tenant_context):
-            with patch('src.api.routes.actions.get_db_session', return_value=mock_db):
-                with patch('src.api.routes.actions.BillingEntitlementsService') as mock_billing:
-                    mock_result = Mock(is_entitled=True)
-                    mock_billing.return_value.check_feature_entitlement.return_value = mock_result
-                    with patch('src.api.routes.actions.can_view_actions', return_value=True):
-
-                        response = client.get("/api/actions/jobs")
+            with patch('src.api.routes.actions.BillingEntitlementsService') as mock_billing:
+                mock_result = Mock(is_entitled=True)
+                mock_billing.return_value.check_feature_entitlement.return_value = mock_result
+                with patch('src.api.routes.actions.can_view_actions', return_value=True):
+                    response = client.get("/api/actions/jobs")
+        client.app.dependency_overrides.clear()
 
         assert response.status_code == 200
         data = response.json()
         assert "jobs" in data
         assert "total" in data
+        assert data["jobs"][0]["succeeded_count"] == 1
+        assert data["jobs"][0]["failed_count"] == 0
+
+    def test_returns_single_job_with_serialized_counts(
+        self, client, mock_tenant_context, sample_job
+    ):
+        """Should serialize single job response with succeeded/failed counts."""
+        mock_db = Mock()
+        mock_query = Mock()
+        mock_query.filter.return_value.first.return_value = sample_job
+        mock_db.query.return_value = mock_query
+
+        client.app.dependency_overrides[check_ai_actions_entitlement] = lambda: mock_db
+        client.app.dependency_overrides[check_view_permission] = lambda: None
+        with patch('src.api.routes.actions.get_tenant_context', return_value=mock_tenant_context):
+            with patch('src.api.routes.actions.BillingEntitlementsService') as mock_billing:
+                mock_result = Mock(is_entitled=True)
+                mock_billing.return_value.check_feature_entitlement.return_value = mock_result
+                with patch('src.api.routes.actions.can_view_actions', return_value=True):
+                    response = client.get(f"/api/actions/jobs/{sample_job.job_id}")
+        client.app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["succeeded_count"] == 1
+        assert data["failed_count"] == 0
 
 
 # =============================================================================

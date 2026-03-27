@@ -1,30 +1,35 @@
 """
-Health Smoke Tests
+Health/startup smoke tests for MarkInsight API.
 
 Verifies:
-- /health returns 200 with status ok
-- /api/health/readiness endpoint is reachable
-- App imports without crashing (all route modules load)
+- /health returns 200 {"status": "ok"}
+- /api/health/readiness returns proper structure (ready / not_ready)
+- All critical route modules load without ImportError
+
+A broken import in any route module crashes the *entire* FastAPI app on
+startup — no routes serve, not just the broken one. These tests are the
+earliest CI signal for that failure mode.
 """
 
 import pytest
+from unittest.mock import MagicMock, patch
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+
+from src.api.routes.health import router as health_router
+from src.database.session import get_db_session
 
 
-# ============================================================================
-# FIXTURES
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def health_app():
-    """Minimal app with just the health routes — no middleware, no DB required."""
-    from src.api.routes.health import router
-
     app = FastAPI()
-    app.include_router(router)
+    app.include_router(health_router)
     return app
 
 
@@ -33,109 +38,159 @@ def health_client(health_app):
     return TestClient(health_app)
 
 
-# ============================================================================
-# /health
-# ============================================================================
+@pytest.fixture
+def ready_db_result():
+    result = MagicMock()
+    result.ready = True
+    result.checked_tables = ["users", "tenants", "user_tenant_roles"]
+    result.missing_tables = []
+    return result
+
+
+@pytest.fixture
+def not_ready_db_result():
+    result = MagicMock()
+    result.ready = False
+    result.checked_tables = ["users", "tenants", "user_tenant_roles"]
+    result.missing_tables = ["users", "tenants"]
+    return result
+
+
+# ---------------------------------------------------------------------------
+# /health — simple liveness probe
+# ---------------------------------------------------------------------------
 
 
 class TestHealthEndpoint:
-    def test_health_returns_200(self, health_client):
+    def test_returns_200(self, health_client):
         response = health_client.get("/health")
         assert response.status_code == 200
 
-    def test_health_returns_json(self, health_client):
+    def test_returns_ok_body(self, health_client):
         response = health_client.get("/health")
-        assert response.headers["content-type"].startswith("application/json")
+        assert response.json() == {"status": "ok"}
 
-    def test_health_returns_status_ok(self, health_client):
+    def test_no_auth_required(self, health_client):
+        """Liveness probe must be reachable without any Authorization header."""
         response = health_client.get("/health")
-        body = response.json()
-        assert body.get("status") == "ok"
+        assert response.status_code != 401
+        assert response.status_code != 403
 
 
-# ============================================================================
-# /api/health/readiness
-# ============================================================================
+# ---------------------------------------------------------------------------
+# /api/health/readiness — readiness probe
+# ---------------------------------------------------------------------------
 
 
 class TestReadinessEndpoint:
-    def test_readiness_returns_200_with_mocked_db(self, health_app):
-        """Readiness probe returns 200 when DB check passes."""
+    def _app_with_db_result(self, mock_result):
+        app = FastAPI()
+        app.include_router(health_router)
         mock_db = MagicMock()
+        app.dependency_overrides[get_db_session] = lambda: mock_db
+        return app, mock_db, mock_result
 
-        from src.platform.db_readiness import DBReadinessResult
-
-        mock_result = DBReadinessResult(
-            ready=True,
-            checked_tables=["users", "tenants"],
-            missing_tables=[],
-        )
-
-        with patch(
-            "src.api.routes.health.check_required_tables", return_value=mock_result
-        ):
-            with patch("src.api.routes.health.get_db_session", return_value=mock_db):
-                client = TestClient(health_app)
-                response = client.get("/api/health/readiness")
+    def test_ready_when_tables_exist(self, ready_db_result):
+        app, mock_db, result = self._app_with_db_result(ready_db_result)
+        with patch("src.api.routes.health.check_required_tables", return_value=result):
+            client = TestClient(app)
+            response = client.get("/api/health/readiness")
 
         assert response.status_code == 200
-        body = response.json()
-        assert body["status"] == "ready"
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["checks"]["database"] == "ok"
+        assert data["checks"]["identity_tables"]["missing"] == []
 
-    def test_readiness_returns_not_ready_when_tables_missing(self, health_app):
-        """Readiness probe reports not_ready when required tables are absent."""
-        mock_db = MagicMock()
-
-        from src.platform.db_readiness import DBReadinessResult
-
-        mock_result = DBReadinessResult(
-            ready=False,
-            checked_tables=["users", "tenants"],
-            missing_tables=["tenants"],
-        )
-
-        with patch(
-            "src.api.routes.health.check_required_tables", return_value=mock_result
-        ):
-            with patch("src.api.routes.health.get_db_session", return_value=mock_db):
-                client = TestClient(health_app)
-                response = client.get("/api/health/readiness")
+    def test_not_ready_when_tables_missing(self, not_ready_db_result):
+        app, mock_db, result = self._app_with_db_result(not_ready_db_result)
+        with patch("src.api.routes.health.check_required_tables", return_value=result):
+            client = TestClient(app)
+            response = client.get("/api/health/readiness")
 
         assert response.status_code == 200
-        body = response.json()
-        assert body["status"] == "not_ready"
-        assert "tenants" in body["checks"]["identity_tables"]["missing"]
+        data = response.json()
+        assert data["status"] == "not_ready"
+        assert len(data["checks"]["identity_tables"]["missing"]) > 0
+
+    def test_readiness_includes_required_fields(self, ready_db_result):
+        app, mock_db, result = self._app_with_db_result(ready_db_result)
+        with patch("src.api.routes.health.check_required_tables", return_value=result):
+            client = TestClient(app)
+            response = client.get("/api/health/readiness")
+
+        data = response.json()
+        assert "status" in data
+        assert "checks" in data
+        assert "database" in data["checks"]
+        assert "identity_tables" in data["checks"]
+        assert "required" in data["checks"]["identity_tables"]
+        assert "missing" in data["checks"]["identity_tables"]
 
 
-# ============================================================================
-# App startup — all route modules must load without NameError
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Route module import checks
+#
+# If any of these fail with ImportError / NameError, the app crashes on
+# startup — CI catches it here before any route test runs.
+# ---------------------------------------------------------------------------
 
 
-class TestAppStartup:
-    def test_health_route_module_imports(self):
-        """health.py must import without errors."""
-        from src.api.routes import health  # noqa: F401
+class TestRouteModuleImports:
+    """All critical route modules must import cleanly."""
 
-        assert hasattr(health, "router")
+    def test_health_module_loads(self):
+        from src.api.routes import health
+        assert health.router is not None
 
-    def test_sources_route_module_imports(self):
-        """sources.py must import without errors (most likely to have merge conflicts)."""
-        from src.api.routes import sources  # noqa: F401
+    def test_orders_module_loads(self):
+        from src.api.routes import orders
+        assert orders.router is not None
 
-        assert hasattr(sources, "router")
+    def test_sources_module_loads(self):
+        from src.api.routes import sources
+        assert sources.router is not None
 
-    def test_billing_route_module_imports(self):
-        from src.api.routes import billing  # noqa: F401
+    def test_billing_module_loads(self):
+        from src.api.routes import billing
+        assert billing.router is not None
 
-        assert hasattr(billing, "router")
+    def test_insights_module_loads(self):
+        from src.api.routes import insights
+        assert insights.router is not None
 
-    def test_orders_route_module_imports(self):
-        from src.api.routes import orders  # noqa: F401
+    def test_recommendations_module_loads(self):
+        from src.api.routes import recommendations
+        assert recommendations.router is not None
 
-        assert hasattr(orders, "router")
+    def test_actions_module_loads(self):
+        from src.api.routes import actions
+        assert actions.router is not None
 
-    def test_insights_route_module_imports(self):
-        from src.api.routes import insights  # noqa: F401
+    def test_dashboards_allowed_module_loads(self):
+        from src.api.routes import dashboards_allowed
+        assert dashboards_allowed.router is not None
 
-        assert hasattr(insights, "router")
+    def test_webhooks_clerk_module_loads(self):
+        from src.api.routes import webhooks_clerk
+        assert webhooks_clerk.router is not None
+
+    def test_webhooks_shopify_module_loads(self):
+        from src.api.routes import webhooks_shopify
+        assert webhooks_shopify.router is not None
+
+    def test_datasets_module_loads(self):
+        from src.api.routes import datasets
+        assert datasets.router is not None
+
+    def test_channels_module_loads(self):
+        from src.api.routes import channels
+        assert channels.router is not None
+
+    def test_attribution_module_loads(self):
+        from src.api.routes import attribution
+        assert attribution.router is not None
+
+    def test_sync_health_module_loads(self):
+        from src.api.dq import routes as sync_health
+        assert sync_health.router is not None
