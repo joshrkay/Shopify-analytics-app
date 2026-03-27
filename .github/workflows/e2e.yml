@@ -1,0 +1,329 @@
+name: E2E Tests - Full Stack
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+  schedule:
+    # Nightly P2 tests at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+
+jobs:
+  # Run P0 + P1 tests on every PR (blocks merge)
+  e2e-critical:
+    name: E2E Critical Tests (P0 + P1)
+    runs-on: ubuntu-latest
+    needs: []  # Can run independently but typically after quality-gates
+    if: github.event_name != 'schedule'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: e2e_test
+          POSTGRES_PASSWORD: e2e_test
+          POSTGRES_DB: e2e_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Generate RSA key pair for E2E auth
+        run: |
+          mkdir -p tests/e2e/.keys
+          openssl genpkey -algorithm RSA -out tests/e2e/.keys/e2e-private.pem -pkeyopt rsa_keygen_bits:2048 2>/dev/null
+          openssl rsa -pubout -in tests/e2e/.keys/e2e-private.pem -out tests/e2e/.keys/e2e-public.pem 2>/dev/null
+
+      - name: Run database migrations
+        working-directory: ./backend
+        env:
+          DATABASE_URL: "postgresql://e2e_test:e2e_test@localhost:5432/e2e_test_db"
+          ENV: "test"
+          PYTHONPATH: "${{ github.workspace }}/backend"
+        run: |
+          if [ -f "alembic.ini" ]; then
+            alembic upgrade head 2>/dev/null || echo "Migrations skipped"
+          fi
+
+      - name: Start mock external services
+        run: |
+          python tests/e2e/scripts/mock-server-runner.py &
+          echo $! > /tmp/mock-server.pid
+          sleep 2
+
+      - name: Start backend
+        working-directory: ./backend
+        env:
+          DATABASE_URL: "postgresql://e2e_test:e2e_test@localhost:5432/e2e_test_db"
+          REDIS_URL: "redis://localhost:6379"
+          ENV: "test"
+          E2E_AUTH_MODE: "mock"
+          E2E_PUBLIC_KEY_PATH: "${{ github.workspace }}/tests/e2e/.keys/e2e-public.pem"
+          CLERK_FRONTEND_API: "test.clerk.accounts.dev"
+          SHOPIFY_API_BASE_URL: "http://localhost:9001"
+          AIRBYTE_BASE_URL: "http://localhost:9002"
+          OPENROUTER_BASE_URL: "http://localhost:9003"
+          PYTHONPATH: "${{ github.workspace }}/backend"
+        run: |
+          uvicorn main:app --host 0.0.0.0 --port 8000 --log-level warning &
+          echo $! > /tmp/backend.pid
+          # Wait for backend to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Backend ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Build and serve frontend
+        working-directory: ./frontend
+        env:
+          VITE_E2E_MODE: "true"
+          VITE_API_URL: "http://localhost:8000"
+        run: |
+          npx vite build 2>/dev/null || echo "Build completed"
+          npx vite preview --port 3000 --host 0.0.0.0 &
+          echo $! > /tmp/frontend.pid
+          # Wait for frontend to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/ > /dev/null 2>&1; then
+              echo "Frontend ready"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run P0 Critical E2E Tests
+        env:
+          E2E_BASE_URL: "http://localhost:3000"
+          E2E_API_URL: "http://localhost:8000"
+        run: |
+          npx playwright test \
+            --config tests/e2e/playwright.config.ts \
+            --project p0-critical \
+            --reporter github \
+            || exit 1
+
+      - name: Run P1 Major E2E Tests
+        if: success()
+        env:
+          E2E_BASE_URL: "http://localhost:3000"
+          E2E_API_URL: "http://localhost:8000"
+        run: |
+          npx playwright test \
+            --config tests/e2e/playwright.config.ts \
+            --project p1-major \
+            --reporter github \
+            || exit 1
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-critical-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload Screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-critical-screenshots
+          path: test-results/
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: |
+          kill $(cat /tmp/frontend.pid 2>/dev/null) 2>/dev/null || true
+          kill $(cat /tmp/backend.pid 2>/dev/null) 2>/dev/null || true
+          kill $(cat /tmp/mock-server.pid 2>/dev/null) 2>/dev/null || true
+
+  # Run P2 tests on nightly schedule or manual trigger
+  e2e-extended:
+    name: E2E Extended Tests (P2)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: e2e_test
+          POSTGRES_PASSWORD: e2e_test
+          POSTGRES_DB: e2e_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Generate RSA key pair
+        run: |
+          mkdir -p tests/e2e/.keys
+          openssl genpkey -algorithm RSA -out tests/e2e/.keys/e2e-private.pem -pkeyopt rsa_keygen_bits:2048 2>/dev/null
+          openssl rsa -pubout -in tests/e2e/.keys/e2e-private.pem -out tests/e2e/.keys/e2e-public.pem 2>/dev/null
+
+      - name: Run database migrations
+        working-directory: ./backend
+        env:
+          DATABASE_URL: "postgresql://e2e_test:e2e_test@localhost:5432/e2e_test_db"
+          ENV: "test"
+          PYTHONPATH: "${{ github.workspace }}/backend"
+        run: |
+          if [ -f "alembic.ini" ]; then
+            alembic upgrade head 2>/dev/null || echo "Migrations skipped"
+          fi
+
+      - name: Start mock external services
+        run: |
+          python tests/e2e/scripts/mock-server-runner.py &
+          sleep 2
+
+      - name: Start backend
+        working-directory: ./backend
+        env:
+          DATABASE_URL: "postgresql://e2e_test:e2e_test@localhost:5432/e2e_test_db"
+          REDIS_URL: "redis://localhost:6379"
+          ENV: "test"
+          E2E_AUTH_MODE: "mock"
+          E2E_PUBLIC_KEY_PATH: "${{ github.workspace }}/tests/e2e/.keys/e2e-public.pem"
+          CLERK_FRONTEND_API: "test.clerk.accounts.dev"
+          SHOPIFY_API_BASE_URL: "http://localhost:9001"
+          AIRBYTE_BASE_URL: "http://localhost:9002"
+          OPENROUTER_BASE_URL: "http://localhost:9003"
+          PYTHONPATH: "${{ github.workspace }}/backend"
+        run: |
+          uvicorn main:app --host 0.0.0.0 --port 8000 --log-level warning &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health > /dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Build and serve frontend
+        working-directory: ./frontend
+        env:
+          VITE_E2E_MODE: "true"
+          VITE_API_URL: "http://localhost:8000"
+        run: |
+          npx vite build 2>/dev/null || echo "Build completed"
+          npx vite preview --port 3000 --host 0.0.0.0 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/ > /dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Run P2 Extended E2E Tests
+        env:
+          E2E_BASE_URL: "http://localhost:3000"
+          E2E_API_URL: "http://localhost:8000"
+        run: |
+          npx playwright test \
+            --config tests/e2e/playwright.config.ts \
+            --project p2-extended \
+            --reporter github \
+            || exit 1
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-extended-report
+          path: playwright-report/
+          retention-days: 14

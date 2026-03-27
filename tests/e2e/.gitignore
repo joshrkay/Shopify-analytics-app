@@ -1,0 +1,14 @@
+# Generated RSA keys for E2E JWT signing
+.keys/
+
+# Process PID files
+.backend.pid
+.frontend.pid
+.mock-server.pid
+
+# Playwright artifacts
+playwright-report/
+test-results/
+
+# Node modules (if tests have local deps)
+node_modules/
