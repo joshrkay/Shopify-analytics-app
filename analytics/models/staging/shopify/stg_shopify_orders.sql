@@ -8,43 +8,45 @@
 {#
     Staging model for Shopify orders with strict typing, standardization, and dedup.
 
-    This model:
-    - Extracts and normalizes raw Shopify order data from Airbyte
-    - Adds record_sk (stable surrogate key), source_system, source_primary_key
-    - Deduplicates by (tenant_id, order_id) keeping the latest Airbyte emission
-    - Applies defensive type casting with regex validation
-    - Excludes PII from downstream consumers via canonical layer
-    - Tenant isolation via shop_domain join to _tenant_airbyte_connections
+    Migrated from Airbyte v1 JSONB (_airbyte_data blob) to v2 typed columns.
+    Source: airbyte_raw.orders (v2)
+
+    v1 → v2 metadata column mapping:
+      _airbyte_ab_id       → _airbyte_raw_id
+      _airbyte_emitted_at  → _airbyte_extracted_at
+
+    Output contract is unchanged — same column names and types as the v1 version.
+    All downstream models (canonical, attribution, marts) continue to work without changes.
 
     SECURITY: Tenant isolation enforced via inner join on shop_domain.
 #}
 
-with orders_extracted as (
-    -- Airbyte Destinations V2: typed columns directly on the table.
-    -- Cast to text where downstream normalization expects text input.
+with raw_orders as (
     select
-        _airbyte_raw_id                                     as airbyte_record_id,
-        _airbyte_extracted_at                                as airbyte_emitted_at,
-        shop_url,
-        id::text                                             as order_id_raw,
-        name                                                 as order_name,
-        email                                                as customer_email,
-        created_at::text                                     as created_at_raw,
-        updated_at::text                                     as updated_at_raw,
-        cancelled_at::text                                   as cancelled_at_raw,
-        closed_at::text                                      as closed_at_raw,
+        _airbyte_raw_id       as airbyte_record_id,
+        _airbyte_extracted_at as airbyte_emitted_at,
+        -- v2: id is bigint (no gid:// prefix — plain numeric Shopify ID)
+        id::text              as order_id_raw,
+        name                  as order_name,
+        order_number,                               -- bigint
+        email                 as customer_email,
+        created_at,                                 -- timestamp with time zone
+        updated_at,
+        cancelled_at,
+        closed_at,
         financial_status,
         fulfillment_status,
-        total_price::text                                    as total_price_raw,
-        subtotal_price::text                                 as subtotal_price_raw,
-        total_tax::text                                      as total_tax_raw,
-        currency                                             as currency_code,
-        customer::text                                       as customer_json,
-        tags                                                 as tags_raw,
+        total_price,                                -- numeric
+        subtotal_price,
+        total_tax,
+        -- total_shipping_price_set is still JSONB in v2
+        total_shipping_price_set->'shop_money'->>'amount' as total_shipping_price_raw,
+        currency,
+        customer,                                   -- jsonb
+        tags,
         note,
-        order_number::text                                   as order_number_raw,
-        refunds                                              as refunds_json,
-        total_shipping_price_set->'shop_money'->>'amount'    as total_shipping_price_raw
+        refunds,                                    -- jsonb
+        shop_url
     from {{ source('raw_shopify', 'orders') }}
 ),
 
@@ -62,85 +64,55 @@ tenant_mapping as (
 
 orders_normalized as (
     select
-        -- Primary key: normalize order ID (remove gid:// prefix if present)
+        airbyte_record_id,
+        airbyte_emitted_at,
+
+        -- order_id: v2 id is a plain bigint — no gid:// prefix to strip
         case
             when order_id_raw is null or trim(order_id_raw) = '' then null
-            when order_id_raw like 'gid://shopify/Order/%'
-                then replace(order_id_raw, 'gid://shopify/Order/', '')
-            when order_id_raw like 'gid://shopify/Order%'
-                then regexp_replace(order_id_raw, '^gid://shopify/Order/?', '', 'g')
             else trim(order_id_raw)
         end as order_id,
 
         order_name,
 
+        -- order_number: already bigint in v2, just bounds-check
         case
-            when order_number_raw is null or trim(order_number_raw) = '' then null
-            when order_number_raw ~ '^[0-9]+$'
-                then order_number_raw::integer
+            when order_number is null then null
+            when order_number between 0 and 2147483647 then order_number::integer
             else null
         end as order_number,
 
         customer_email,
 
+        -- customer_id: extract from jsonb customer field (still jsonb in v2)
         case
-            when customer_json is null or trim(customer_json) = '' then null
-            when customer_json::text ~ '^\s*\{'
-                then (customer_json::json->>'id')
-            else null
+            when customer is null then null
+            else (customer->>'id')
         end as customer_id_raw,
 
-        -- Timestamps: normalize to UTC
-        case
-            when created_at_raw is null or trim(created_at_raw) = '' then null
-            when created_at_raw ~ '^\d{4}-\d{2}-\d{2}'
-                then (created_at_raw::timestamp with time zone) at time zone 'UTC'
-            else null
-        end as created_at,
+        -- Timestamps: already timestamp with time zone in v2 — normalize to UTC
+        (created_at at time zone 'UTC') as created_at,
+        (updated_at at time zone 'UTC') as updated_at,
+        (cancelled_at at time zone 'UTC') as cancelled_at,
+        (closed_at at time zone 'UTC') as closed_at,
 
+        -- Financial: already numeric in v2 — apply bounds checking only
         case
-            when updated_at_raw is null or trim(updated_at_raw) = '' then null
-            when updated_at_raw ~ '^\d{4}-\d{2}-\d{2}'
-                then (updated_at_raw::timestamp with time zone) at time zone 'UTC'
-            else null
-        end as updated_at,
-
-        case
-            when cancelled_at_raw is null or trim(cancelled_at_raw) = '' then null
-            when cancelled_at_raw ~ '^\d{4}-\d{2}-\d{2}'
-                then (cancelled_at_raw::timestamp with time zone) at time zone 'UTC'
-            else null
-        end as cancelled_at,
-
-        case
-            when closed_at_raw is null or trim(closed_at_raw) = '' then null
-            when closed_at_raw ~ '^\d{4}-\d{2}-\d{2}'
-                then (closed_at_raw::timestamp with time zone) at time zone 'UTC'
-            else null
-        end as closed_at,
-
-        -- Financial fields: defensive numeric casting
-        case
-            when total_price_raw is null or trim(total_price_raw) = '' then 0.0
-            when trim(total_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(total_price_raw)::numeric, -999999999.99), 999999999.99)
-            else 0.0
+            when total_price is null then 0.0
+            else least(greatest(total_price, -999999999.99), 999999999.99)
         end as total_price,
 
         case
-            when subtotal_price_raw is null or trim(subtotal_price_raw) = '' then 0.0
-            when trim(subtotal_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(subtotal_price_raw)::numeric, -999999999.99), 999999999.99)
-            else 0.0
+            when subtotal_price is null then 0.0
+            else least(greatest(subtotal_price, -999999999.99), 999999999.99)
         end as subtotal_price,
 
         case
-            when total_tax_raw is null or trim(total_tax_raw) = '' then 0.0
-            when trim(total_tax_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(total_tax_raw)::numeric, -999999999.99), 999999999.99)
-            else 0.0
+            when total_tax is null then 0.0
+            else least(greatest(total_tax, -999999999.99), 999999999.99)
         end as total_tax,
 
+        -- Shipping: extracted from JSONB (still a nested price_set object in v2)
         case
             when total_shipping_price_raw is null or trim(total_shipping_price_raw) = '' then 0.0
             when trim(total_shipping_price_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
@@ -148,23 +120,20 @@ orders_normalized as (
             else 0.0
         end as total_shipping_price,
 
-        -- Currency: standardize to uppercase, validate format
+        -- Currency: already varchar in v2 — standardize to uppercase
         case
-            when currency_code is null or trim(currency_code) = '' then 'USD'
-            when upper(trim(currency_code)) ~ '^[A-Z]{3}$'
-                then upper(trim(currency_code))
+            when currency is null or trim(currency) = '' then 'USD'
+            when upper(trim(currency)) ~ '^[A-Z]{3}$'
+                then upper(trim(currency))
             else 'USD'
         end as currency,
 
         coalesce(financial_status, 'unknown') as financial_status,
         coalesce(fulfillment_status, 'unfulfilled') as fulfillment_status,
 
-        tags_raw as tags,
+        tags,
         note,
-        refunds_json,
-
-        airbyte_record_id,
-        airbyte_emitted_at,
+        refunds as refunds_json,
 
         -- Normalized shop_domain for tenant mapping
         lower(
@@ -179,7 +148,7 @@ orders_normalized as (
             )
         ) as shop_domain
 
-    from orders_extracted
+    from raw_orders
 ),
 
 orders_with_tenant as (

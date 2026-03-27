@@ -506,6 +506,85 @@ jobs:
             _airbyte_data jsonb
           );
 
+          -- v2 typed tables (Airbyte Destinations V2)
+          create schema if not exists airbyte_google_ads;
+
+          create table if not exists airbyte_raw.orders (
+            _airbyte_raw_id text,
+            _airbyte_extracted_at timestamptz,
+            _airbyte_meta jsonb,
+            _airbyte_generation_id bigint,
+            id bigint,
+            name varchar,
+            order_number bigint,
+            email varchar,
+            created_at timestamptz,
+            updated_at timestamptz,
+            cancelled_at timestamptz,
+            closed_at timestamptz,
+            financial_status varchar,
+            fulfillment_status varchar,
+            total_price numeric,
+            subtotal_price numeric,
+            total_tax numeric,
+            total_shipping_price_set jsonb,
+            currency varchar,
+            customer jsonb,
+            tags varchar,
+            note varchar,
+            refunds jsonb,
+            shop_url varchar
+          );
+
+          create table if not exists airbyte_raw.customers (
+            _airbyte_raw_id text,
+            _airbyte_extracted_at timestamptz,
+            _airbyte_meta jsonb,
+            _airbyte_generation_id bigint,
+            id bigint,
+            email varchar,
+            first_name varchar,
+            last_name varchar,
+            phone varchar,
+            state varchar,
+            currency varchar,
+            tags varchar,
+            note varchar,
+            created_at timestamptz,
+            updated_at timestamptz,
+            accepts_marketing boolean,
+            verified_email boolean,
+            orders_count bigint,
+            total_spent numeric,
+            default_address jsonb,
+            shop_url varchar
+          );
+
+          create table if not exists airbyte_google_ads.ads_insights (
+            _airbyte_raw_id text,
+            _airbyte_extracted_at timestamptz,
+            _airbyte_meta jsonb,
+            _airbyte_generation_id bigint,
+            account_id varchar,
+            campaign_id varchar,
+            adset_id varchar,
+            ad_id varchar,
+            date_start date,
+            date_stop date,
+            spend numeric,
+            impressions bigint,
+            clicks bigint,
+            conversions jsonb,
+            action_values jsonb,
+            account_currency varchar,
+            campaign_name varchar,
+            adset_name varchar,
+            ad_name varchar,
+            objective varchar,
+            reach bigint,
+            frequency numeric
+          );
+
           -- Insert test shopify store with timezone
           insert into platform.shopify_stores
             (id, tenant_id, shop_domain, shop_name, timezone, status)
@@ -513,11 +592,12 @@ jobs:
             ('store-1', 'tenant-test-123', 'test-store.myshopify.com', 'Test Store', 'America/New_York', 'active');
 
           -- Insert test tenant connection with shop_domain configuration
+          -- Meta Ads connection includes account_id so the tenant join works in staging
           insert into platform.tenant_airbyte_connections
             (airbyte_connection_id, tenant_id, source_type, connection_name, status, is_enabled, configuration)
           values
             ('airbyte-conn-shopify-1', 'tenant-test-123', 'shopify', 'Test Store - Shopify', 'active', true, '{"shop_domain": "test-store.myshopify.com"}'::jsonb),
-            ('airbyte-conn-meta-1', 'tenant-test-123', 'source-facebook-marketing', 'Meta Ads', 'active', true, '{}'::jsonb),
+            ('airbyte-conn-meta-1', 'tenant-test-123', 'source-facebook-marketing', 'Meta Ads', 'active', true, '{"account_id": "123456"}'::jsonb),
             ('airbyte-conn-google-1', 'tenant-test-123', 'source-google-ads', 'Google Ads', 'active', true, '{}'::jsonb);
 
           -- Insert test Shopify orders with shop_url
@@ -534,13 +614,55 @@ jobs:
             ('customer-1', '2024-01-10 09:00:00+00', '{"id": "gid://shopify/Customer/111", "email": "customer1@example.com", "first_name": "John", "last_name": "Doe", "phone": "+1234567890", "created_at": "2024-01-10T09:00:00Z", "updated_at": "2024-01-15T10:00:00Z", "accepts_marketing": "true", "verified_email": "true", "orders_count": "5", "total_spent": "499.99", "currency": "USD", "state": "enabled", "default_address": {"country": "US", "city": "New York"}, "shop_url": "https://test-store.myshopify.com"}'::jsonb),
             ('customer-2', '2024-01-11 10:00:00+00', '{"id": "gid://shopify/Customer/222", "email": "customer2@example.com", "first_name": "Jane", "last_name": "Smith", "created_at": "2024-01-11T10:00:00Z", "updated_at": "2024-01-16T11:00:00Z", "accepts_marketing": "false", "verified_email": "1", "orders_count": "3", "total_spent": "299.50", "currency": "USD", "state": "enabled", "default_address": {"country": "CA", "city": "Toronto"}, "shop_url": "https://test-store.myshopify.com"}'::jsonb);
 
-          -- Insert test Meta Ads data
+          -- Insert test Meta Ads data (v1 legacy table)
           insert into airbyte_raw._airbyte_raw_meta_ads
             (_airbyte_ab_id, _airbyte_emitted_at, _airbyte_data)
           values
             ('meta-1', '2024-01-15 08:00:00+00', '{"account_id": "act_123456", "campaign_id": "120330000000000001", "adset_id": "120330000000000002", "ad_id": "120330000000000003", "date_start": "2024-01-15", "date_stop": "2024-01-15", "spend": "25.50", "impressions": "5000", "clicks": "150", "conversions": "5.0", "currency": "USD", "campaign_name": "Test Campaign", "adset_name": "Test Adset", "ad_name": "Test Ad", "objective": "CONVERSIONS"}'::jsonb);
 
-          -- Insert test Google Ads data
+          -- Insert v2 typed test data (Airbyte Destinations V2)
+          insert into airbyte_raw.orders
+            (_airbyte_raw_id, _airbyte_extracted_at, id, name, order_number, email,
+             created_at, updated_at, financial_status, fulfillment_status,
+             total_price, subtotal_price, total_tax, total_shipping_price_set,
+             currency, customer, tags, note, shop_url)
+          values
+            ('order-v2-1', '2024-01-15 10:00:00+00', 12345, '#1001', 1001, 'customer1@example.com',
+             '2024-01-15 10:00:00+00', '2024-01-15 10:05:00+00', 'paid', 'fulfilled',
+             99.99, 89.99, 10.00, '{"shop_money": {"amount": "5.00", "currency_code": "USD"}}'::jsonb,
+             'USD', '{"id": 111}'::jsonb, 'test,new-customer', 'Test order', 'https://test-store.myshopify.com'),
+            ('order-v2-2', '2024-01-16 11:00:00+00', 12346, '#1002', 1002, 'customer2@example.com',
+             '2024-01-16 11:00:00+00', '2024-01-16 11:10:00+00', 'paid', 'fulfilled',
+             149.50, 135.00, 14.50, '{"shop_money": {"amount": "0.00", "currency_code": "USD"}}'::jsonb,
+             'USD', '{"id": 222}'::jsonb, 'vip', null, 'https://test-store.myshopify.com');
+
+          insert into airbyte_raw.customers
+            (_airbyte_raw_id, _airbyte_extracted_at, id, email, first_name, last_name, phone,
+             created_at, updated_at, accepts_marketing, verified_email,
+             orders_count, total_spent, currency, state, default_address, shop_url)
+          values
+            ('customer-v2-1', '2024-01-10 09:00:00+00', 111, 'customer1@example.com', 'John', 'Doe', '+1234567890',
+             '2024-01-10 09:00:00+00', '2024-01-15 10:00:00+00', true, true,
+             5, 499.99, 'USD', 'enabled', '{"country_code": "US", "city": "New York"}'::jsonb, 'https://test-store.myshopify.com'),
+            ('customer-v2-2', '2024-01-11 10:00:00+00', 222, 'customer2@example.com', 'Jane', 'Smith', null,
+             '2024-01-11 10:00:00+00', '2024-01-16 11:00:00+00', false, true,
+             3, 299.50, 'USD', 'enabled', '{"country_code": "CA", "city": "Toronto"}'::jsonb, 'https://test-store.myshopify.com');
+
+          -- account_id '123456' matches config_account_id from the Meta Ads connection above
+          -- The staging model strips 'act_' prefix, so 'act_123456' normalizes to '123456'
+          insert into airbyte_google_ads.ads_insights
+            (_airbyte_raw_id, _airbyte_extracted_at, account_id, campaign_id, adset_id, ad_id,
+             date_start, date_stop, spend, impressions, clicks,
+             conversions, action_values, account_currency,
+             campaign_name, adset_name, ad_name, objective, reach, frequency)
+          values
+            ('meta-v2-1', '2024-01-15 08:00:00+00', 'act_123456', '120330000000000001', '120330000000000002', '120330000000000003',
+             '2024-01-15', '2024-01-15', 25.50, 5000, 150,
+             '[{"action_type": "purchase", "value": "5"}]'::jsonb,
+             '[{"action_type": "purchase", "value": "499.50"}]'::jsonb,
+             'USD', 'Test Campaign', 'Test Adset', 'Test Ad', 'CONVERSIONS', 4500, 1.11);
+
+          -- Insert test Google Ads data (v1 legacy table)
           insert into airbyte_raw._airbyte_raw_google_ads
             (_airbyte_ab_id, _airbyte_emitted_at, _airbyte_data)
           values

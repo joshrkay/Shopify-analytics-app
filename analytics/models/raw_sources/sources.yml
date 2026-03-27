@@ -15,6 +15,7 @@ sources:
         period: minute
     tables:
       - name: orders
+        identifier: orders
         description: Shopify orders (Airbyte V2 typed columns)
         loaded_at_field: _airbyte_extracted_at
         columns:
@@ -28,6 +29,7 @@ sources:
               - not_null
 
       - name: customers
+        identifier: customers
         description: Shopify customers (Airbyte V2 typed columns)
         loaded_at_field: _airbyte_extracted_at
         columns:

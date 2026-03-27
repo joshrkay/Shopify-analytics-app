@@ -10,43 +10,53 @@
 {#
     Staging model for Meta Ads (Facebook/Instagram) with strict typing and standardization.
 
-    This model:
-    - Extracts and normalizes raw Meta Ads data from Airbyte
-    - Adds record_sk (stable surrogate key), source_system, source_primary_key
-    - Deduplicates by natural key keeping the latest Airbyte emission
-    - Adds internal IDs for cross-platform joins (Option B ID normalization)
-    - Maps to canonical channel taxonomy
-    - Supports incremental processing with configurable lookback window
-    - Does NOT calculate business metrics (cpm, cpc, ctr, cpa, roas) - deferred to canonical layer
+    Migrated from Airbyte v1 JSONB (_airbyte_data blob) to v2 typed columns.
+    Source: airbyte_google_ads.ads_insights (v2)
+    Note: The Airbyte destination is configured to write to the 'airbyte_google_ads' schema
+    despite this being a Facebook Marketing connection. The schema name reflects how Airbyte
+    Cloud named the destination; sources.yml has been updated to match.
+
+    v1 → v2 key changes:
+      - _airbyte_ab_id       → _airbyte_raw_id
+      - _airbyte_emitted_at  → _airbyte_extracted_at
+      - _airbyte_data->>'...' → direct typed columns
+      - account_id: varchar (may still carry 'act_' prefix — stripped for tenant join)
+      - date_start/date_stop: now date type (not text)
+      - spend, impressions, clicks: already typed (numeric/bigint)
+      - conversions: now JSONB array of {action_type, value} objects (not a scalar)
+      - action_values: JSONB array of {action_type, value} for revenue
+      - currency: now 'account_currency' column (not 'currency')
+
+    Output contract is unchanged — same column names and types as the v1 version.
 
     SECURITY: Tenant isolation enforced via _tenant_airbyte_connections.
 #}
 
 with meta_ads_extracted as (
-    -- Airbyte Destinations V2: typed columns directly on the table.
-    -- Cast to text where downstream normalization expects text input.
     select
-        _airbyte_raw_id              as airbyte_record_id,
-        _airbyte_extracted_at        as airbyte_emitted_at,
-        account_id::text             as account_id_raw,
-        campaign_id::text            as campaign_id_raw,
-        adset_id::text               as adset_id_raw,
-        ad_id::text                  as ad_id_raw,
-        date_start::text             as date_start_raw,
-        date_stop::text              as date_stop_raw,
-        spend::text                  as spend_raw,
-        impressions::text            as impressions_raw,
-        clicks::text                 as clicks_raw,
-        conversions::text            as conversions_raw,
-        conversion_value::text       as conversion_value_raw,
-        currency                     as currency_code,
+        _airbyte_raw_id       as airbyte_record_id,
+        _airbyte_extracted_at as airbyte_emitted_at,
+        -- v2 typed columns — no JSONB extraction needed
+        account_id            as account_id_raw,
+        campaign_id,
+        adset_id,
+        ad_id,
+        date_start,                 -- date type in v2
+        date_stop,                  -- date type in v2
+        spend,                      -- numeric
+        impressions,                -- bigint
+        clicks,                     -- bigint
+        conversions,                -- jsonb array: [{action_type, value}, ...]
+        action_values,              -- jsonb array: [{action_type, value}, ...] for revenue
+        account_currency            as currency_code,
         campaign_name,
         adset_name,
         ad_name,
         objective,
-        reach::text                  as reach_raw,
-        frequency::text              as frequency_raw,
-        coalesce(placement, objective, 'feed') as platform_channel_raw
+        reach,                      -- bigint
+        frequency,                  -- numeric
+        -- v2 has no 'placement' column; use objective as platform_channel fallback
+        coalesce(objective, 'feed') as platform_channel_raw
     from {{ source('raw_facebook_ads', 'ad_insights') }}
     {% if is_incremental() %}
     where _airbyte_extracted_at >= current_timestamp - interval '{{ get_lookback_days("meta_ads") }} days'
@@ -55,86 +65,61 @@ with meta_ads_extracted as (
 
 meta_ads_normalized as (
     select
-        -- Primary identifiers: normalize IDs
-        -- Meta Ads API returns account_id with an 'act_' prefix (e.g. 'act_422959152328586').
-        -- tenant_airbyte_connections stores the bare numeric ID ('422959152328586').
-        -- Strip the prefix here so the tenant-mapping join succeeds.
+        -- Strip 'act_' prefix if present (v1 data had it; v2 may vary)
         case
             when account_id_raw is null or trim(account_id_raw) = '' then null
             else regexp_replace(trim(account_id_raw), '^act_', '')
         end as ad_account_id,
 
-        case
-            when campaign_id_raw is null or trim(campaign_id_raw) = '' then null
-            else trim(campaign_id_raw)
-        end as campaign_id,
+        campaign_id,
+        adset_id,
+        ad_id,
 
-        case
-            when adset_id_raw is null or trim(adset_id_raw) = '' then null
-            else trim(adset_id_raw)
-        end as adset_id,
+        -- Dates: already date type in v2 — no parsing needed
+        date_start as date,
+        date_stop,
 
+        -- Spend: already numeric in v2 — apply bounds checking only
         case
-            when ad_id_raw is null or trim(ad_id_raw) = '' then null
-            else trim(ad_id_raw)
-        end as ad_id,
-
-        -- Date fields: normalize to date type
-        case
-            when date_start_raw is null or trim(date_start_raw) = '' then null
-            when date_start_raw ~ '^\d{4}-\d{2}-\d{2}'
-                then date_start_raw::date
-            else null
-        end as date,
-
-        case
-            when date_stop_raw is null or trim(date_stop_raw) = '' then null
-            when date_stop_raw ~ '^\d{4}-\d{2}-\d{2}'
-                then date_stop_raw::date
-            else null
-        end as date_stop,
-
-        -- Spend: convert to numeric, handle nulls and invalid values
-        case
-            when spend_raw is null or trim(spend_raw) = '' then 0.0
-            when trim(spend_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(spend_raw)::numeric, -999999999.99), 999999999.99)
-            else 0.0
+            when spend is null then 0.0
+            else least(greatest(spend, -999999999.99), 999999999.99)
         end as spend,
 
-        -- Impressions: convert to integer
+        -- Impressions: already bigint in v2
         case
-            when impressions_raw is null or trim(impressions_raw) = '' then 0
-            when trim(impressions_raw) ~ '^-?[0-9]+$'
-                then least(greatest(trim(impressions_raw)::integer, 0), 2147483647)
-            else 0
+            when impressions is null then 0
+            else least(greatest(impressions::integer, 0), 2147483647)
         end as impressions,
 
-        -- Clicks: convert to integer
+        -- Clicks: already bigint in v2
         case
-            when clicks_raw is null or trim(clicks_raw) = '' then 0
-            when trim(clicks_raw) ~ '^-?[0-9]+$'
-                then least(greatest(trim(clicks_raw)::integer, 0), 2147483647)
-            else 0
+            when clicks is null then 0
+            else least(greatest(clicks::integer, 0), 2147483647)
         end as clicks,
 
-        -- Conversions: convert to numeric
-        case
-            when conversions_raw is null or trim(conversions_raw) = '' then 0.0
-            when trim(conversions_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(conversions_raw)::numeric, 0.0), 999999999.99)
-            else 0.0
-        end as conversions,
+        -- Conversions: v2 stores as JSONB array [{action_type, value}, ...]
+        -- Sum 'purchase' action type for ecommerce conversion count
+        coalesce(
+            (
+                select sum((elem->>'value')::numeric)
+                from jsonb_array_elements(conversions) as elem
+                where elem->>'action_type' = 'purchase'
+            ),
+            0.0
+        ) as conversions,
 
-        -- Conversion value: convert to numeric
-        case
-            when conversion_value_raw is null or trim(conversion_value_raw) = '' then 0.0
-            when trim(conversion_value_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(conversion_value_raw)::numeric, 0.0), 999999999.99)
-            else 0.0
-        end as conversion_value,
+        -- Conversion value: extract from action_values JSONB array
+        -- Sum 'purchase' action type for ecommerce revenue
+        coalesce(
+            (
+                select sum((elem->>'value')::numeric)
+                from jsonb_array_elements(action_values) as elem
+                where elem->>'action_type' = 'purchase'
+            ),
+            0.0
+        ) as conversion_value,
 
-        -- Currency: standardize to uppercase, validate format
+        -- Currency: from account_currency column in v2 (was nested in JSONB in v1)
         case
             when currency_code is null or trim(currency_code) = '' then 'USD'
             when upper(trim(currency_code)) ~ '^[A-Z]{3}$'
@@ -148,39 +133,31 @@ meta_ads_normalized as (
         ad_name,
         objective,
 
-        -- Platform channel (raw value from platform)
+        -- Platform channel
         coalesce(platform_channel_raw, 'feed') as platform_channel,
 
-        -- Reach: convert to integer
+        -- Reach: already bigint in v2
         case
-            when reach_raw is null or trim(reach_raw) = '' then null
-            when trim(reach_raw) ~ '^-?[0-9]+$'
-                then least(greatest(trim(reach_raw)::integer, 0), 2147483647)
-            else null
+            when reach is null then null
+            else least(greatest(reach::integer, 0), 2147483647)
         end as reach,
 
-        -- Frequency: convert to numeric
+        -- Frequency: already numeric in v2
         case
-            when frequency_raw is null or trim(frequency_raw) = '' then null
-            when trim(frequency_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(frequency_raw)::numeric, 0.0), 100.0)
-            else null
+            when frequency is null then null
+            else least(greatest(frequency, 0.0), 100.0)
         end as frequency,
 
-        -- Platform/source identifiers
         'meta_ads' as platform,
         'meta_ads' as source,
 
-        -- Metadata
         airbyte_record_id,
         airbyte_emitted_at
 
     from meta_ads_extracted
 ),
 
--- Tenant mapping: join on ad_account_id to ensure correct multi-tenant isolation.
--- Each Meta Ads connection stores account_id in configuration JSONB.
--- SECURITY: Without this join, all Meta Ads data would be assigned to one arbitrary tenant.
+-- Tenant mapping: join on ad_account_id for multi-tenant isolation
 meta_tenant_mapping as (
     select
         tenant_id,
