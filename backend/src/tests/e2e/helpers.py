@@ -240,7 +240,12 @@ async def inject_raw_orders(
     tenant_id: str,
     orders: List[Dict],
 ) -> None:
-    """Inject order data into raw Airbyte table."""
+    """Inject order data into raw Airbyte table.
+
+    Supports both V1 (_airbyte_raw_shopify_orders with JSONB blob) and V2
+    (airbyte_raw.orders with typed columns) table formats. Inserts into the
+    V1 table name by default for backward compatibility with existing tests.
+    """
     for order in orders:
         # Add tenant_id to the order data
         order_with_tenant = {**order, "tenant_id": tenant_id}
@@ -267,7 +272,12 @@ async def inject_raw_customers(
     tenant_id: str,
     customers: List[Dict],
 ) -> None:
-    """Inject customer data into raw Airbyte table."""
+    """Inject customer data into raw Airbyte table.
+
+    Supports both V1 (_airbyte_raw_shopify_customers with JSONB blob) and V2
+    (airbyte_raw.customers with typed columns) table formats. Inserts into the
+    V1 table name by default for backward compatibility with existing tests.
+    """
     for customer in customers:
         customer_with_tenant = {**customer, "tenant_id": tenant_id}
 
