@@ -755,7 +755,7 @@ jobs:
   pr-check:
     name: PR Merge Gate
     runs-on: ubuntu-latest
-    needs: [quality-gates, platform-tests, billing-regression-tests, dbt-validation, frontend-validation, dependency-audit]
+    needs: [quality-gates, deploy-safety-gates, platform-tests, billing-regression-tests, dbt-validation, frontend-validation, dependency-audit]
     if: github.event_name == 'pull_request'
     
     steps:
