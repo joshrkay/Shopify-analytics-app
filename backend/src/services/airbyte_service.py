@@ -16,7 +16,7 @@ from typing import Optional, List
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from src.repositories.airbyte_connections import (
@@ -27,6 +27,10 @@ from src.models.airbyte_connection import (
     TenantAirbyteConnection,
     ConnectionStatus,
     ConnectionType,
+)
+from src.models.connector_credential import (
+    ConnectorCredential,
+    CredentialStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +52,7 @@ class ConnectionInfo:
     last_sync_status: Optional[str]
     created_at: datetime
     sync_frequency_minutes: Optional[str] = None
+    airbyte_source_id: Optional[str] = None
 
 
 @dataclass
@@ -119,6 +124,7 @@ class AirbyteService:
             last_sync_status=connection.last_sync_status,
             created_at=connection.created_at,
             sync_frequency_minutes=connection.sync_frequency_minutes,
+            airbyte_source_id=connection.airbyte_source_id,
         )
 
     def _normalize_shop_domain(self, shop_domain: str) -> str:
@@ -728,3 +734,40 @@ class AirbyteService:
         """
         connection = self._repository.get_by_airbyte_id(airbyte_connection_id)
         return connection is not None
+
+    def find_credential_for_connection(
+        self,
+        connection_id: str,
+    ) -> "Optional[ConnectorCredential]":
+        """
+        Find the active ConnectorCredential for a given connection.
+
+        Looks up by matching tenant_id + source_type between
+        TenantAirbyteConnection and ConnectorCredential.
+
+        Args:
+            connection_id: Internal connection ID
+
+        Returns:
+            ConnectorCredential if found, None otherwise
+        """
+        connection = self._repository.get_by_id(connection_id)
+        if not connection or not connection.source_type:
+            return None
+
+        # Normalize source_type: Airbyte uses "source-google-ads", credentials use "google_ads"
+        source_type = connection.source_type
+        normalized = source_type.replace("source-", "").replace("-", "_")
+
+        stmt = (
+            select(ConnectorCredential)
+            .where(ConnectorCredential.tenant_id == self.tenant_id)
+            .where(
+                ConnectorCredential.source_type.in_([source_type, normalized])
+            )
+            .where(ConnectorCredential.status == CredentialStatus.ACTIVE)
+            .where(ConnectorCredential.soft_deleted_at.is_(None))
+            .order_by(ConnectorCredential.created_at.desc())
+            .limit(1)
+        )
+        return self.db.execute(stmt).scalar_one_or_none()

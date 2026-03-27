@@ -589,6 +589,52 @@ class AirbyteClient:
         data = await self._request("GET", f"/sources/{source_id}")
         return AirbyteSource.from_dict(data)
 
+    async def update_source(
+        self,
+        source_id: str,
+        configuration: Dict[str, Any],
+        name: Optional[str] = None,
+    ) -> AirbyteSource:
+        """
+        Update an existing source's configuration in Airbyte.
+
+        Uses PATCH semantics — only the fields provided in the configuration
+        dict are updated; existing fields (e.g. customer_id) are preserved.
+
+        Args:
+            source_id: Source UUID to update
+            configuration: Updated source configuration fields
+            name: Optional new name for the source
+
+        Returns:
+            Updated AirbyteSource object
+
+        Raises:
+            AirbyteNotFoundError: If source not found
+            AirbyteError: On other API errors
+        """
+        payload: Dict[str, Any] = {"configuration": configuration}
+        if name:
+            payload["name"] = name
+
+        data = await self._request(
+            "PATCH",
+            f"/sources/{source_id}",
+            json=payload,
+        )
+
+        source = AirbyteSource.from_dict(data)
+
+        logger.info(
+            "Airbyte source updated",
+            extra={
+                "source_id": source.source_id,
+                "source_type": source.source_type,
+            },
+        )
+
+        return source
+
     async def check_source_connection(self, source_id: str) -> Dict[str, Any]:
         """
         Test connectivity for an existing source.

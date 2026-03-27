@@ -13,9 +13,10 @@ Story 3.5 - Sync Orchestration & Retry Logic
 """
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -27,10 +28,14 @@ from src.integrations.airbyte.exceptions import (
     AirbyteSyncError,
 )
 from src.integrations.airbyte.models import AirbyteJobStatus
+from src.integrations.airbyte.oauth_registry import build_source_config
+from src.platform.secrets import decrypt_secret
 from src.services.airbyte_service import (
     AirbyteService,
+    ConnectionInfo,
 )
 from src.services.data_change_aggregator import DataChangeAggregator
+from src.services.token_manager import TokenManager, RefreshResult
 from src.jobs.job_entitlements import (
     JobEntitlementChecker,
     JobType,
@@ -222,6 +227,19 @@ class SyncOrchestrator:
                 f"status={connection.status}, enabled={connection.is_enabled}"
             )
 
+        # Refresh OAuth tokens if needed before attempting sync
+        try:
+            await self._ensure_fresh_credentials(connection_id, connection)
+        except Exception as e:
+            logger.warning(
+                "Pre-sync credential refresh failed, proceeding with sync",
+                extra={
+                    "tenant_id": self.tenant_id,
+                    "connection_id": connection_id,
+                    "error": str(e),
+                },
+            )
+
         last_error: Optional[str] = None
         last_job_id: Optional[str] = None
         attempt = 0
@@ -303,6 +321,22 @@ class SyncOrchestrator:
                     },
                 )
 
+                # If this looks like an auth failure, refresh before next retry
+                if attempt < self.max_retries and self._is_auth_failure(e):
+                    try:
+                        await self._ensure_fresh_credentials(
+                            connection_id, connection
+                        )
+                    except Exception as refresh_err:
+                        logger.warning(
+                            "Credential refresh on auth failure failed",
+                            extra={
+                                "tenant_id": self.tenant_id,
+                                "connection_id": connection_id,
+                                "error": str(refresh_err),
+                            },
+                        )
+
                 if attempt < self.max_retries:
                     delay = self._calculate_backoff_delay(attempt)
 
@@ -364,6 +398,108 @@ class SyncOrchestrator:
             max_retries=self.max_retries + 1,
             error_message=last_error,
             completed_at=datetime.now(timezone.utc),
+        )
+
+    def _is_auth_failure(self, error: Exception) -> bool:
+        """Check if an error indicates an authentication/credential issue."""
+        error_str = str(error).lower()
+        return any(
+            phrase in error_str
+            for phrase in [
+                "checking source connection failed",
+                "authentication",
+                "unauthorized",
+                "401",
+                "403",
+                "invalid_grant",
+                "token expired",
+                "invalid credentials",
+            ]
+        )
+
+    async def _ensure_fresh_credentials(
+        self,
+        connection_id: str,
+        connection: ConnectionInfo,
+    ) -> None:
+        """
+        Refresh OAuth tokens if expiring soon, and push updated config to Airbyte.
+
+        This is a best-effort operation. If no credential exists (legacy
+        connection) or refresh fails, the sync proceeds with existing tokens.
+        """
+        if not connection.airbyte_source_id:
+            return
+
+        credential = self._airbyte_service.find_credential_for_connection(
+            connection_id
+        )
+        if credential is None:
+            logger.debug(
+                "No credential found for connection, skipping refresh",
+                extra={
+                    "tenant_id": self.tenant_id,
+                    "connection_id": connection_id,
+                },
+            )
+            return
+
+        # Check if token is expiring within 10 minutes
+        metadata = credential.credential_metadata or {}
+        expires_at_str = metadata.get("token_expires_at")
+        if expires_at_str:
+            try:
+                expires_at = datetime.fromisoformat(expires_at_str)
+                if expires_at > datetime.now(timezone.utc) + timedelta(minutes=10):
+                    return  # Token still fresh
+            except (ValueError, TypeError):
+                pass  # Can't parse — proceed with refresh to be safe
+
+        # Attempt reactive refresh
+        token_manager = TokenManager(self.db, self.tenant_id)
+        outcome = await token_manager.reactive_refresh(credential.id)
+
+        if outcome.result != RefreshResult.SUCCESS:
+            logger.warning(
+                "Credential refresh did not succeed",
+                extra={
+                    "tenant_id": self.tenant_id,
+                    "connection_id": connection_id,
+                    "credential_id": credential.id,
+                    "refresh_result": outcome.result.value,
+                    "error": outcome.error,
+                },
+            )
+            return
+
+        # Decrypt refreshed tokens and push updated config to Airbyte
+        self.db.refresh(credential)
+        if credential.encrypted_payload is None:
+            return
+
+        plaintext = await decrypt_secret(credential.encrypted_payload)
+        refreshed_tokens = json.loads(plaintext)
+
+        # Normalize source_type for build_source_config
+        source_type = connection.source_type or ""
+        normalized_type = source_type.replace("source-", "").replace("-", "_")
+
+        updated_config = build_source_config(normalized_type, refreshed_tokens)
+
+        client = self._get_airbyte_client()
+        await client.update_source(
+            source_id=connection.airbyte_source_id,
+            configuration=updated_config,
+        )
+
+        logger.info(
+            "Refreshed credentials pushed to Airbyte source",
+            extra={
+                "tenant_id": self.tenant_id,
+                "connection_id": connection_id,
+                "credential_id": credential.id,
+                "source_type": source_type,
+            },
         )
 
     async def _execute_sync(
