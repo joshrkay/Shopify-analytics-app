@@ -5,11 +5,50 @@
     )
 }}
 
+{#
+    Staging model for Shopify customers with normalized fields and tenant isolation.
+
+    Migrated from Airbyte v1 JSONB (_airbyte_data blob) to v2 typed columns.
+    Source: airbyte_raw.customers (v2)
+
+    v1 → v2 metadata column mapping:
+      _airbyte_ab_id       → _airbyte_raw_id
+      _airbyte_emitted_at  → _airbyte_extracted_at
+
+    Key simplifications in v2:
+      - accepts_marketing, verified_email: already boolean (no string parsing needed)
+      - created_at, updated_at: already timestamp with time zone
+      - orders_count: already bigint
+      - total_spent: already numeric
+      - default_address: already jsonb
+
+    Output contract is unchanged — same column names and types as the v1 version.
+
+    SECURITY: Tenant isolation enforced via inner join on shop_domain.
+#}
+
 with raw_customers as (
     select
-        _airbyte_ab_id as airbyte_record_id,
-        _airbyte_emitted_at as airbyte_emitted_at,
-        _airbyte_data as customer_data
+        _airbyte_raw_id       as airbyte_record_id,
+        _airbyte_extracted_at as airbyte_emitted_at,
+        -- v2: id is bigint (plain numeric Shopify ID)
+        id::text              as customer_id_raw,
+        email,
+        first_name,
+        last_name,
+        phone,
+        state,
+        currency              as currency_code,
+        tags,
+        note,
+        created_at,                     -- timestamp with time zone
+        updated_at,
+        accepts_marketing,              -- boolean in v2
+        verified_email,                 -- boolean in v2
+        orders_count,                   -- bigint in v2
+        total_spent,                    -- numeric in v2
+        default_address,                -- jsonb in v2
+        shop_url
     from {{ source('raw_shopify', 'customers') }}
 ),
 
@@ -25,135 +64,67 @@ tenant_mapping as (
         and shop_domain != ''
 ),
 
-customers_extracted as (
-    select
-        raw.airbyte_record_id,
-        raw.airbyte_emitted_at,
-        -- Extract shop_url for tenant mapping (Airbyte includes this in customer data)
-        raw.customer_data->>'shop_url' as shop_url,
-        raw.customer_data->>'id' as customer_id_raw,
-        raw.customer_data->>'email' as email,
-        raw.customer_data->>'first_name' as first_name,
-        raw.customer_data->>'last_name' as last_name,
-        raw.customer_data->>'phone' as phone,
-        raw.customer_data->>'created_at' as created_at_raw,
-        raw.customer_data->>'updated_at' as updated_at_raw,
-        raw.customer_data->>'accepts_marketing' as accepts_marketing_raw,
-        raw.customer_data->>'orders_count' as orders_count_raw,
-        raw.customer_data->>'total_spent' as total_spent_raw,
-        raw.customer_data->>'currency' as currency_code,
-        raw.customer_data->>'state' as state,
-        raw.customer_data->>'tags' as tags_raw,
-        raw.customer_data->>'note' as note,
-        raw.customer_data->>'verified_email' as verified_email_raw,
-        raw.customer_data->>'default_address' as default_address_json
-    from raw_customers raw
-),
-
 customers_normalized as (
     select
-        -- Primary key: normalize customer ID (remove gid:// prefix if present)
-        -- Edge case: Handle null, empty, and various GID formats
+        airbyte_record_id,
+        airbyte_emitted_at,
+
+        -- customer_id: v2 id is bigint — no gid:// prefix to strip
         case
             when customer_id_raw is null or trim(customer_id_raw) = '' then null
-            when customer_id_raw like 'gid://shopify/Customer/%' 
-                then replace(customer_id_raw, 'gid://shopify/Customer/', '')
-            when customer_id_raw like 'gid://shopify/Customer%' 
-                then regexp_replace(customer_id_raw, '^gid://shopify/Customer/?', '', 'g')
             else trim(customer_id_raw)
         end as customer_id,
-        
+
         -- Customer information
         email,
         first_name,
         last_name,
         phone,
         coalesce(first_name || ' ' || last_name, first_name, last_name, email) as full_name,
-        
-        -- Timestamps: normalize to UTC
-        -- Edge case: Handle invalid timestamp formats gracefully
+
+        -- Timestamps: already timestamp with time zone in v2 — normalize to UTC
+        (created_at at time zone 'UTC') as created_at,
+        (updated_at at time zone 'UTC') as updated_at,
+
+        -- Booleans: already boolean in v2 — no string parsing needed
+        accepts_marketing,
+        verified_email,
+
+        -- Numeric fields: already typed in v2 — apply bounds checking only
         case
-            when created_at_raw is null or trim(created_at_raw) = '' then null
-            when created_at_raw ~ '^\d{4}-\d{2}-\d{2}' 
-                then (created_at_raw::timestamp with time zone) at time zone 'UTC'
-            else null
-        end as created_at,
-        
-        case
-            when updated_at_raw is null or trim(updated_at_raw) = '' then null
-            when updated_at_raw ~ '^\d{4}-\d{2}-\d{2}' 
-                then (updated_at_raw::timestamp with time zone) at time zone 'UTC'
-            else null
-        end as updated_at,
-        
-        -- Boolean fields: convert to boolean
-        -- Edge case: Handle case variations, numeric booleans, whitespace
-        case
-            when accepts_marketing_raw is null then null
-            when lower(trim(coalesce(accepts_marketing_raw, ''))) in ('true', '1', 'yes', 'y', 't') then true
-            when lower(trim(coalesce(accepts_marketing_raw, ''))) in ('false', '0', 'no', 'n', 'f', '') then false
-            else null
-        end as accepts_marketing,
-        
-        case
-            when verified_email_raw is null then null
-            when lower(trim(coalesce(verified_email_raw, ''))) in ('true', '1', 'yes', 'y', 't') then true
-            when lower(trim(coalesce(verified_email_raw, ''))) in ('false', '0', 'no', 'n', 'f', '') then false
-            else null
-        end as verified_email,
-        
-        -- Numeric fields: convert to numeric, handle nulls and invalid values
-        -- Edge case: Validate format, handle negative values, bounds checking
-        case
-            when orders_count_raw is null or trim(orders_count_raw) = '' then 0
-            when trim(orders_count_raw) ~ '^-?[0-9]+$' 
-                then least(greatest(trim(orders_count_raw)::integer, 0), 2147483647)
-            else 0
+            when orders_count is null then 0
+            else least(greatest(orders_count::integer, 0), 2147483647)
         end as orders_count,
-        
+
         case
-            when total_spent_raw is null or trim(total_spent_raw) = '' then 0.0
-            when trim(total_spent_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$' 
-                then least(greatest(trim(total_spent_raw)::numeric, -999999999.99), 999999999.99)
-            else 0.0
+            when total_spent is null then 0.0
+            else least(greatest(total_spent, -999999999.99), 999999999.99)
         end as total_spent,
-        
-        -- Currency: standardize to uppercase, validate format
-        -- Edge case: Handle null, empty, invalid currency codes
+
+        -- Currency: standardize to uppercase
         case
             when currency_code is null or trim(currency_code) = '' then 'USD'
-            when upper(trim(currency_code)) ~ '^[A-Z]{3}$' 
+            when upper(trim(currency_code)) ~ '^[A-Z]{3}$'
                 then upper(trim(currency_code))
             else 'USD'
         end as currency,
-        
-        -- Additional fields
+
         state,
-        tags_raw as tags,
+        tags,
         note,
-        
-        -- Address information (extracted from JSON)
-        -- Edge case: Validate JSON before extraction to prevent casting errors
+
+        -- Address extraction: default_address is already jsonb in v2
         case
-            when default_address_json is null or trim(default_address_json) = '' then null
-            when default_address_json::text ~ '^\s*\{' 
-                then (default_address_json::json->>'country')
-            else null
+            when default_address is null then null
+            else (default_address->>'country_code')
         end as country_code,
-        
+
         case
-            when default_address_json is null or trim(default_address_json) = '' then null
-            when default_address_json::text ~ '^\s*\{' 
-                then (default_address_json::json->>'city')
-            else null
+            when default_address is null then null
+            else (default_address->>'city')
         end as city,
-        
-        -- Metadata
-        airbyte_record_id,
-        airbyte_emitted_at,
 
         -- Normalized shop_domain for tenant mapping
-        -- Normalize: lowercase, strip protocol and trailing slash
         lower(
             trim(
                 trailing '/' from
@@ -166,11 +137,9 @@ customers_normalized as (
             )
         ) as shop_domain
 
-    from customers_extracted
+    from raw_customers
 ),
 
--- Join to tenant mapping on shop_domain for proper multi-tenant isolation
--- Each customer is mapped to its tenant via the shop_url field from Airbyte
 customers_with_tenant as (
     select
         cust.customer_id,

@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: raw_shopify
-    description: Raw Shopify data ingested via Airbyte
+    description: Raw Shopify data ingested via Airbyte (v2 typed columns)
     schema: "{{ var('raw_shopify_schema', 'airbyte_raw') }}"
     freshness:
       warn_after:
@@ -13,44 +13,47 @@ sources:
         period: minute
     tables:
       - name: orders
-        identifier: _airbyte_raw_shopify_orders
-        description: Raw Shopify orders data from Airbyte
-        loaded_at_field: _airbyte_emitted_at
+        identifier: orders
+        description: Raw Shopify orders data from Airbyte v2 (typed columns, no JSONB blob)
+        loaded_at_field: _airbyte_extracted_at
         columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
+          - name: _airbyte_raw_id
+            description: Airbyte record ID (v2)
             tests:
               - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_extracted_at
+            description: Timestamp when record was extracted by Airbyte (v2)
             tests:
               - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual order data
+          - name: id
+            description: Shopify order ID (bigint)
             tests:
               - not_null
 
       - name: customers
-        identifier: _airbyte_raw_shopify_customers
-        description: Raw Shopify customers data from Airbyte
-        loaded_at_field: _airbyte_emitted_at
+        identifier: customers
+        description: Raw Shopify customers data from Airbyte v2 (typed columns, no JSONB blob)
+        loaded_at_field: _airbyte_extracted_at
         columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
+          - name: _airbyte_raw_id
+            description: Airbyte record ID (v2)
             tests:
               - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_extracted_at
+            description: Timestamp when record was extracted by Airbyte (v2)
             tests:
               - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual customer data
+          - name: id
+            description: Shopify customer ID (bigint)
             tests:
               - not_null
 
   - name: raw_facebook_ads
-    description: Raw Meta (Facebook/Instagram) Ads data ingested via Airbyte
-    schema: "{{ var('raw_facebook_ads_schema', 'airbyte_raw') }}"
+    description: |
+      Raw Meta (Facebook/Instagram) Ads data ingested via Airbyte v2 (typed columns).
+      Note: Airbyte writes this to the 'airbyte_google_ads' schema despite the connection
+      being Facebook Marketing. Schema name reflects Airbyte Cloud destination configuration.
+    schema: "{{ var('raw_facebook_ads_schema', 'airbyte_google_ads') }}"
     freshness:
       warn_after:
         count: "{{ var('freshness_sla', {}).get('facebook_ads', {}).get(var('billing_tier', 'free'), {}).get('warn_after_minutes', 1440) }}"
@@ -60,20 +63,20 @@ sources:
         period: minute
     tables:
       - name: ad_insights
-        identifier: _airbyte_raw_meta_ads
-        description: Raw Meta Ads insights data from Airbyte
-        loaded_at_field: _airbyte_emitted_at
+        identifier: ads_insights
+        description: Raw Meta Ads insights data from Airbyte v2 (typed columns, no JSONB blob)
+        loaded_at_field: _airbyte_extracted_at
         columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
+          - name: _airbyte_raw_id
+            description: Airbyte record ID (v2)
             tests:
               - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
+          - name: _airbyte_extracted_at
+            description: Timestamp when record was extracted by Airbyte (v2)
             tests:
               - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual ad data
+          - name: account_id
+            description: Meta Ads account ID
             tests:
               - not_null
 
