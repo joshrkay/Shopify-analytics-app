@@ -23,40 +23,64 @@
     SECURITY: Tenant isolation enforced via _tenant_airbyte_connections.
 #}
 
-with raw_google_ads as (
+{#
+    Guard: Google Ads table may not exist yet (sync has not succeeded).
+    Check for table existence at compile time and emit an empty result set if missing.
+#}
+{% set gads_relation = adapter.get_relation(
+    database=target.database,
+    schema=var('raw_google_ads_schema', 'airbyte_google_ads'),
+    identifier='account_performance_report'
+) if execute else none %}
+
+{% if gads_relation is none %}
+-- Table does not exist yet (Google Ads sync has not succeeded).
+-- Return empty result set matching the expected output schema.
+select
+    null::text as record_sk, null::text as source_system, null::text as source_primary_key,
+    null::text as tenant_id, null::date as report_date, null::date as date,
+    null::text as source, null::text as ad_account_id, null::text as campaign_id,
+    null::text as ad_group_id, null::text as ad_id,
+    null::text as internal_account_id, null::text as internal_campaign_id,
+    null::text as platform_channel, null::text as canonical_channel,
+    0.0::numeric as spend, 0::integer as impressions, 0::integer as clicks,
+    0.0::numeric as conversions, 0.0::numeric as conversion_value,
+    'USD'::text as currency, null::text as campaign_name, null::text as ad_group_name,
+    null::text as ad_type, null::text as device, null::text as network,
+    null::text as platform, null::text as airbyte_record_id,
+    null::timestamptz as airbyte_emitted_at
+where 1 = 0
+
+{% else %}
+{# ---- Normal V2 extraction when table exists ---- #}
+with google_ads_extracted as (
+    -- Airbyte Destinations V2: typed columns directly on the table.
+    -- Cast to text where downstream normalization expects text input.
     select
-        _airbyte_ab_id as airbyte_record_id,
-        _airbyte_emitted_at as airbyte_emitted_at,
-        _airbyte_data as ad_data
+        _airbyte_raw_id              as airbyte_record_id,
+        _airbyte_extracted_at        as airbyte_emitted_at,
+        customer_id::text            as customer_id_raw,
+        campaign_id::text            as campaign_id_raw,
+        ad_group_id::text            as ad_group_id_raw,
+        ad_id::text                  as ad_id_raw,
+        date::text                   as date_raw,
+        cost_micros::text            as cost_micros_raw,
+        cost::text                   as cost_raw,
+        impressions::text            as impressions_raw,
+        clicks::text                 as clicks_raw,
+        conversions::text            as conversions_raw,
+        conversion_value::text       as conversion_value_raw,
+        currency_code,
+        campaign_name,
+        ad_group_name,
+        ad_type,
+        device,
+        network,
+        coalesce(network, campaign_type, 'search') as platform_channel_raw
     from {{ source('raw_google_ads', 'ad_stats') }}
     {% if is_incremental() %}
-    where _airbyte_emitted_at >= current_timestamp - interval '{{ get_lookback_days("google_ads") }} days'
+    where _airbyte_extracted_at >= current_timestamp - interval '{{ get_lookback_days("google_ads") }} days'
     {% endif %}
-),
-
-google_ads_extracted as (
-    select
-        raw.airbyte_record_id,
-        raw.airbyte_emitted_at,
-        raw.ad_data->>'customer_id' as customer_id_raw,
-        raw.ad_data->>'campaign_id' as campaign_id_raw,
-        raw.ad_data->>'ad_group_id' as ad_group_id_raw,
-        raw.ad_data->>'ad_id' as ad_id_raw,
-        raw.ad_data->>'date' as date_raw,
-        raw.ad_data->>'cost_micros' as cost_micros_raw,
-        raw.ad_data->>'cost' as cost_raw,
-        raw.ad_data->>'impressions' as impressions_raw,
-        raw.ad_data->>'clicks' as clicks_raw,
-        raw.ad_data->>'conversions' as conversions_raw,
-        raw.ad_data->>'conversion_value' as conversion_value_raw,
-        raw.ad_data->>'currency_code' as currency_code,
-        raw.ad_data->>'campaign_name' as campaign_name,
-        raw.ad_data->>'ad_group_name' as ad_group_name,
-        raw.ad_data->>'ad_type' as ad_type,
-        raw.ad_data->>'device' as device,
-        raw.ad_data->>'network' as network,
-        coalesce(raw.ad_data->>'network', raw.ad_data->>'campaign_type', 'search') as platform_channel_raw
-    from raw_google_ads raw
 ),
 
 google_ads_normalized as (
@@ -288,3 +312,5 @@ where _row_num = 1
     {% if is_incremental() %}
     and date >= current_date - {{ get_lookback_days('google_ads') }}
     {% endif %}
+
+{% endif %}{# end gads_relation guard #}
