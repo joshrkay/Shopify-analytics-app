@@ -37,16 +37,16 @@ with meta_ads_extracted as (
         spend::text                  as spend_raw,
         impressions::text            as impressions_raw,
         clicks::text                 as clicks_raw,
-        conversions::text            as conversions_raw,
-        conversion_value::text       as conversion_value_raw,
-        currency                     as currency_code,
+        conversions                  as conversions_json,
+        conversion_values            as conversion_values_json,
+        account_currency             as currency_code,
         campaign_name,
         adset_name,
         ad_name,
         objective,
         reach::text                  as reach_raw,
         frequency::text              as frequency_raw,
-        coalesce(placement, objective, 'feed') as platform_channel_raw
+        coalesce(objective, 'feed')  as platform_channel_raw
     from {{ source('raw_facebook_ads', 'ad_insights') }}
     {% if is_incremental() %}
     where _airbyte_extracted_at >= current_timestamp - interval '{{ get_lookback_days("meta_ads") }} days'
@@ -118,21 +118,22 @@ meta_ads_normalized as (
             else 0
         end as clicks,
 
-        -- Conversions: convert to numeric
-        case
-            when conversions_raw is null or trim(conversions_raw) = '' then 0.0
-            when trim(conversions_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(conversions_raw)::numeric, 0.0), 999999999.99)
-            else 0.0
-        end as conversions,
+        -- Conversions: V2 stores as jsonb array of action objects
+        -- Extract total purchase conversions from the actions array
+        coalesce(
+            (select sum((elem->>'value')::numeric)
+             from jsonb_array_elements(conversions_json) as elem
+             where elem->>'action_type' = 'offsite_conversion.fb_pixel_purchase'),
+            0.0
+        )::numeric as conversions,
 
-        -- Conversion value: convert to numeric
-        case
-            when conversion_value_raw is null or trim(conversion_value_raw) = '' then 0.0
-            when trim(conversion_value_raw) ~ '^-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
-                then least(greatest(trim(conversion_value_raw)::numeric, 0.0), 999999999.99)
-            else 0.0
-        end as conversion_value,
+        -- Conversion value: extract from conversion_values jsonb array
+        coalesce(
+            (select sum((elem->>'value')::numeric)
+             from jsonb_array_elements(conversion_values_json) as elem
+             where elem->>'action_type' = 'offsite_conversion.fb_pixel_purchase'),
+            0.0
+        )::numeric as conversion_value,
 
         -- Currency: standardize to uppercase, validate format
         case

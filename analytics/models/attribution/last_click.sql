@@ -22,10 +22,12 @@
 -- SECURITY: Tenant isolation is enforced - all rows must have tenant_id
 
 with raw_orders as (
+    -- Airbyte Destinations V2: typed columns directly
     select
-        _airbyte_ab_id as airbyte_record_id,
-        _airbyte_emitted_at as airbyte_emitted_at,
-        _airbyte_data as order_data
+        _airbyte_raw_id       as airbyte_record_id,
+        _airbyte_extracted_at as airbyte_emitted_at,
+        id::text              as order_id_v2,
+        note_attributes       as note_attributes_json
     from {{ source('raw_shopify', 'orders') }}
 ),
 
@@ -33,7 +35,7 @@ tenant_mapping as (
     select
         tenant_id
     from {{ ref('_tenant_airbyte_connections') }}
-    where source_type = 'shopify'
+    where source_type in ('shopify', 'source-shopify')
         and status = 'active'
         and is_enabled = true
     limit 1
@@ -43,8 +45,8 @@ tenant_mapping as (
 -- Shopify stores UTM parameters in note_attributes array: [{"name": "utm_source", "value": "google"}, ...]
 orders_with_utm as (
     select
-        raw.order_data->>'id' as order_id_raw,
-        raw.order_data->>'note_attributes' as note_attributes_json,
+        raw.order_id_v2 as order_id_raw,
+        raw.note_attributes_json::text as note_attributes_json,
         (select tenant_id from tenant_mapping limit 1) as tenant_id
     from raw_orders raw
 ),
@@ -52,15 +54,8 @@ orders_with_utm as (
 -- Parse UTM parameters from note_attributes JSON array
 utm_extracted as (
     select
-        -- Normalize order ID (remove gid:// prefix if present)
-        case
-            when order_id_raw is null or trim(order_id_raw) = '' then null
-            when order_id_raw like 'gid://shopify/Order/%' 
-                then replace(order_id_raw, 'gid://shopify/Order/', '')
-            when order_id_raw like 'gid://shopify/Order%' 
-                then regexp_replace(order_id_raw, '^gid://shopify/Order/?', '', 'g')
-            else trim(order_id_raw)
-        end as order_id,
+        -- V2: id is already bigint, cast to text for consistency
+        order_id_raw as order_id,
         
         -- Extract UTM parameters from note_attributes JSON array using macro
         {{ extract_utm_param('note_attributes_json', "'utm_source'") }} as utm_source,
