@@ -5,11 +5,29 @@
     )
 }}
 
-with raw_customers as (
+with customers_extracted as (
+    -- Airbyte Destinations V2: typed columns directly on the table.
+    -- Cast to text where downstream normalization expects text input.
     select
-        _airbyte_ab_id as airbyte_record_id,
-        _airbyte_emitted_at as airbyte_emitted_at,
-        _airbyte_data as customer_data
+        _airbyte_raw_id                  as airbyte_record_id,
+        _airbyte_extracted_at            as airbyte_emitted_at,
+        shop_url,
+        id::text                         as customer_id_raw,
+        email,
+        first_name,
+        last_name,
+        phone,
+        created_at::text                 as created_at_raw,
+        updated_at::text                 as updated_at_raw,
+        accepts_marketing::text          as accepts_marketing_raw,
+        orders_count::text               as orders_count_raw,
+        total_spent::text                as total_spent_raw,
+        currency                         as currency_code,
+        state,
+        tags                             as tags_raw,
+        note,
+        verified_email::text             as verified_email_raw,
+        default_address::text            as default_address_json
     from {{ source('raw_shopify', 'customers') }}
 ),
 
@@ -23,31 +41,6 @@ tenant_mapping as (
         and is_enabled = true
         and shop_domain is not null
         and shop_domain != ''
-),
-
-customers_extracted as (
-    select
-        raw.airbyte_record_id,
-        raw.airbyte_emitted_at,
-        -- Extract shop_url for tenant mapping (Airbyte includes this in customer data)
-        raw.customer_data->>'shop_url' as shop_url,
-        raw.customer_data->>'id' as customer_id_raw,
-        raw.customer_data->>'email' as email,
-        raw.customer_data->>'first_name' as first_name,
-        raw.customer_data->>'last_name' as last_name,
-        raw.customer_data->>'phone' as phone,
-        raw.customer_data->>'created_at' as created_at_raw,
-        raw.customer_data->>'updated_at' as updated_at_raw,
-        raw.customer_data->>'accepts_marketing' as accepts_marketing_raw,
-        raw.customer_data->>'orders_count' as orders_count_raw,
-        raw.customer_data->>'total_spent' as total_spent_raw,
-        raw.customer_data->>'currency' as currency_code,
-        raw.customer_data->>'state' as state,
-        raw.customer_data->>'tags' as tags_raw,
-        raw.customer_data->>'note' as note,
-        raw.customer_data->>'verified_email' as verified_email_raw,
-        raw.customer_data->>'default_address' as default_address_json
-    from raw_customers raw
 ),
 
 customers_normalized as (

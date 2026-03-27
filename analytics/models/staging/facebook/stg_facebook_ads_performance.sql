@@ -22,41 +22,35 @@
     SECURITY: Tenant isolation enforced via _tenant_airbyte_connections.
 #}
 
-with raw_meta_ads as (
+with meta_ads_extracted as (
+    -- Airbyte Destinations V2: typed columns directly on the table.
+    -- Cast to text where downstream normalization expects text input.
     select
-        _airbyte_ab_id as airbyte_record_id,
-        _airbyte_emitted_at as airbyte_emitted_at,
-        _airbyte_data as ad_data
+        _airbyte_raw_id              as airbyte_record_id,
+        _airbyte_extracted_at        as airbyte_emitted_at,
+        account_id::text             as account_id_raw,
+        campaign_id::text            as campaign_id_raw,
+        adset_id::text               as adset_id_raw,
+        ad_id::text                  as ad_id_raw,
+        date_start::text             as date_start_raw,
+        date_stop::text              as date_stop_raw,
+        spend::text                  as spend_raw,
+        impressions::text            as impressions_raw,
+        clicks::text                 as clicks_raw,
+        conversions::text            as conversions_raw,
+        conversion_value::text       as conversion_value_raw,
+        currency                     as currency_code,
+        campaign_name,
+        adset_name,
+        ad_name,
+        objective,
+        reach::text                  as reach_raw,
+        frequency::text              as frequency_raw,
+        coalesce(placement, objective, 'feed') as platform_channel_raw
     from {{ source('raw_facebook_ads', 'ad_insights') }}
     {% if is_incremental() %}
-    where _airbyte_emitted_at >= current_timestamp - interval '{{ get_lookback_days("meta_ads") }} days'
+    where _airbyte_extracted_at >= current_timestamp - interval '{{ get_lookback_days("meta_ads") }} days'
     {% endif %}
-),
-
-meta_ads_extracted as (
-    select
-        raw.airbyte_record_id,
-        raw.airbyte_emitted_at,
-        raw.ad_data->>'account_id' as account_id_raw,
-        raw.ad_data->>'campaign_id' as campaign_id_raw,
-        raw.ad_data->>'adset_id' as adset_id_raw,
-        raw.ad_data->>'ad_id' as ad_id_raw,
-        raw.ad_data->>'date_start' as date_start_raw,
-        raw.ad_data->>'date_stop' as date_stop_raw,
-        raw.ad_data->>'spend' as spend_raw,
-        raw.ad_data->>'impressions' as impressions_raw,
-        raw.ad_data->>'clicks' as clicks_raw,
-        raw.ad_data->>'conversions' as conversions_raw,
-        raw.ad_data->>'conversion_value' as conversion_value_raw,
-        raw.ad_data->>'currency' as currency_code,
-        raw.ad_data->>'campaign_name' as campaign_name,
-        raw.ad_data->>'adset_name' as adset_name,
-        raw.ad_data->>'ad_name' as ad_name,
-        raw.ad_data->>'objective' as objective,
-        raw.ad_data->>'reach' as reach_raw,
-        raw.ad_data->>'frequency' as frequency_raw,
-        coalesce(raw.ad_data->>'placement', raw.ad_data->>'objective', 'feed') as platform_channel_raw
-    from raw_meta_ads raw
 ),
 
 meta_ads_normalized as (

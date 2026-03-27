@@ -2,7 +2,9 @@ version: 2
 
 sources:
   - name: raw_shopify
-    description: Raw Shopify data ingested via Airbyte
+    description: >
+      Raw Shopify data ingested via Airbyte Destinations V2 (typed columns).
+      Tables contain typed columns directly — no _airbyte_data JSONB blob.
     schema: "{{ var('raw_shopify_schema', 'airbyte_raw') }}"
     freshness:
       warn_after:
@@ -13,44 +15,36 @@ sources:
         period: minute
     tables:
       - name: orders
-        identifier: _airbyte_raw_shopify_orders
-        description: Raw Shopify orders data from Airbyte
-        loaded_at_field: _airbyte_emitted_at
+        description: Shopify orders (Airbyte V2 typed columns)
+        loaded_at_field: _airbyte_extracted_at
         columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
+          - name: _airbyte_raw_id
+            description: Airbyte record ID (V2)
             tests:
               - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
-            tests:
-              - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual order data
+          - name: _airbyte_extracted_at
+            description: Timestamp when record was extracted by Airbyte (V2)
             tests:
               - not_null
 
       - name: customers
-        identifier: _airbyte_raw_shopify_customers
-        description: Raw Shopify customers data from Airbyte
-        loaded_at_field: _airbyte_emitted_at
+        description: Shopify customers (Airbyte V2 typed columns)
+        loaded_at_field: _airbyte_extracted_at
         columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
+          - name: _airbyte_raw_id
+            description: Airbyte record ID (V2)
             tests:
               - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
-            tests:
-              - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual customer data
+          - name: _airbyte_extracted_at
+            description: Timestamp when record was extracted by Airbyte (V2)
             tests:
               - not_null
 
   - name: raw_facebook_ads
-    description: Raw Meta (Facebook/Instagram) Ads data ingested via Airbyte
-    schema: "{{ var('raw_facebook_ads_schema', 'airbyte_raw') }}"
+    description: >
+      Raw Meta (Facebook/Instagram) Ads data via Airbyte Destinations V2.
+      Data lands in airbyte_google_ads schema (destination default namespace).
+    schema: "{{ var('raw_facebook_ads_schema', 'airbyte_google_ads') }}"
     freshness:
       warn_after:
         count: "{{ var('freshness_sla', {}).get('facebook_ads', {}).get(var('billing_tier', 'free'), {}).get('warn_after_minutes', 1440) }}"
@@ -60,26 +54,24 @@ sources:
         period: minute
     tables:
       - name: ad_insights
-        identifier: _airbyte_raw_meta_ads
-        description: Raw Meta Ads insights data from Airbyte
-        loaded_at_field: _airbyte_emitted_at
+        identifier: ads_insights
+        description: Meta Ads insights (Airbyte V2 typed columns)
+        loaded_at_field: _airbyte_extracted_at
         columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
+          - name: _airbyte_raw_id
+            description: Airbyte record ID (V2)
             tests:
               - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
-            tests:
-              - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual ad data
+          - name: _airbyte_extracted_at
+            description: Timestamp when record was extracted by Airbyte (V2)
             tests:
               - not_null
 
   - name: raw_google_ads
-    description: Raw Google Ads data ingested via Airbyte
-    schema: "{{ var('raw_google_ads_schema', 'airbyte_raw') }}"
+    description: >
+      Raw Google Ads data via Airbyte Destinations V2.
+      Data lands in airbyte_google_ads schema. Table created on first successful sync.
+    schema: "{{ var('raw_google_ads_schema', 'airbyte_google_ads') }}"
     freshness:
       warn_after:
         count: "{{ var('freshness_sla', {}).get('google_ads', {}).get(var('billing_tier', 'free'), {}).get('warn_after_minutes', 1440) }}"
@@ -89,22 +81,16 @@ sources:
         period: minute
     tables:
       - name: ad_stats
-        identifier: _airbyte_raw_google_ads
-        description: Raw Google Ads performance data from Airbyte
-        loaded_at_field: _airbyte_emitted_at
+        identifier: account_performance_report
+        description: >
+          Google Ads account performance report (Airbyte V2 typed columns).
+          Table created on first successful sync — staging model handles missing table gracefully.
+        loaded_at_field: _airbyte_extracted_at
         columns:
-          - name: _airbyte_ab_id
-            description: Airbyte record ID
-            tests:
-              - not_null
-          - name: _airbyte_emitted_at
-            description: Timestamp when record was emitted by Airbyte
-            tests:
-              - not_null
-          - name: _airbyte_data
-            description: JSONB column containing the actual ad data
-            tests:
-              - not_null
+          - name: _airbyte_raw_id
+            description: Airbyte record ID (V2)
+          - name: _airbyte_extracted_at
+            description: Timestamp when record was extracted by Airbyte (V2)
 
   - name: raw_tiktok_ads
     description: Raw TikTok Ads data ingested via Airbyte

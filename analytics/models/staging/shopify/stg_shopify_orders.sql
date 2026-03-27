@@ -19,11 +19,32 @@
     SECURITY: Tenant isolation enforced via inner join on shop_domain.
 #}
 
-with raw_orders as (
+with orders_extracted as (
+    -- Airbyte Destinations V2: typed columns directly on the table.
+    -- Cast to text where downstream normalization expects text input.
     select
-        _airbyte_ab_id as airbyte_record_id,
-        _airbyte_emitted_at as airbyte_emitted_at,
-        _airbyte_data as order_data
+        _airbyte_raw_id                                     as airbyte_record_id,
+        _airbyte_extracted_at                                as airbyte_emitted_at,
+        shop_url,
+        id::text                                             as order_id_raw,
+        name                                                 as order_name,
+        email                                                as customer_email,
+        created_at::text                                     as created_at_raw,
+        updated_at::text                                     as updated_at_raw,
+        cancelled_at::text                                   as cancelled_at_raw,
+        closed_at::text                                      as closed_at_raw,
+        financial_status,
+        fulfillment_status,
+        total_price::text                                    as total_price_raw,
+        subtotal_price::text                                 as subtotal_price_raw,
+        total_tax::text                                      as total_tax_raw,
+        currency                                             as currency_code,
+        customer::text                                       as customer_json,
+        tags                                                 as tags_raw,
+        note,
+        order_number::text                                   as order_number_raw,
+        refunds                                              as refunds_json,
+        total_shipping_price_set->'shop_money'->>'amount'    as total_shipping_price_raw
     from {{ source('raw_shopify', 'orders') }}
 ),
 
@@ -37,33 +58,6 @@ tenant_mapping as (
         and is_enabled = true
         and shop_domain is not null
         and shop_domain != ''
-),
-
-orders_extracted as (
-    select
-        raw.airbyte_record_id,
-        raw.airbyte_emitted_at,
-        raw.order_data->>'shop_url' as shop_url,
-        raw.order_data->>'id' as order_id_raw,
-        raw.order_data->>'name' as order_name,
-        raw.order_data->>'email' as customer_email,
-        raw.order_data->>'created_at' as created_at_raw,
-        raw.order_data->>'updated_at' as updated_at_raw,
-        raw.order_data->>'cancelled_at' as cancelled_at_raw,
-        raw.order_data->>'closed_at' as closed_at_raw,
-        raw.order_data->>'financial_status' as financial_status,
-        raw.order_data->>'fulfillment_status' as fulfillment_status,
-        raw.order_data->>'total_price' as total_price_raw,
-        raw.order_data->>'subtotal_price' as subtotal_price_raw,
-        raw.order_data->>'total_tax' as total_tax_raw,
-        raw.order_data->>'currency' as currency_code,
-        raw.order_data->>'customer' as customer_json,
-        raw.order_data->>'tags' as tags_raw,
-        raw.order_data->>'note' as note,
-        raw.order_data->>'order_number' as order_number_raw,
-        raw.order_data->'refunds' as refunds_json,
-        raw.order_data->'total_shipping_price_set'->'shop_money'->>'amount' as total_shipping_price_raw
-    from raw_orders raw
 ),
 
 orders_normalized as (
