@@ -824,6 +824,14 @@ class TenantContextMiddleware:
             # instead of fetching JWKS from Clerk. Activated by E2E_AUTH_MODE=mock.
             e2e_auth_mode = os.getenv("E2E_AUTH_MODE")
             if e2e_auth_mode == "mock":
+                # Safety: never allow mock auth in production
+                current_env = os.getenv("ENV", "").lower()
+                if current_env not in ("test", "development", ""):
+                    logger.error("E2E_AUTH_MODE=mock is not allowed in %s environment", current_env)
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Invalid auth configuration",
+                    )
                 e2e_public_key_path = os.getenv("E2E_PUBLIC_KEY_PATH")
                 if e2e_public_key_path and os.path.exists(e2e_public_key_path):
                     with open(e2e_public_key_path, "r") as f:

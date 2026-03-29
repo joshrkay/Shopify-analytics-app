@@ -95,14 +95,21 @@ jobs:
           PYTHONPATH: "${{ github.workspace }}/backend"
         run: |
           if [ -f "alembic.ini" ]; then
-            alembic upgrade head 2>/dev/null || echo "Migrations skipped"
+            alembic upgrade head || echo "::warning::Database migrations failed — tests may fail"
           fi
 
       - name: Start mock external services
         run: |
           python tests/e2e/scripts/mock-server-runner.py &
           echo $! > /tmp/mock-server.pid
-          sleep 2
+          # Wait for mock services to be ready
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:9001/health > /dev/null 2>&1; then
+              echo "Mock services ready"
+              break
+            fi
+            sleep 1
+          done
 
       - name: Start backend
         working-directory: ./backend
@@ -135,7 +142,7 @@ jobs:
           VITE_E2E_MODE: "true"
           VITE_API_URL: "http://localhost:8000"
         run: |
-          npx vite build 2>/dev/null || echo "Build completed"
+          npx vite build
           npx vite preview --port 3000 --host 0.0.0.0 &
           echo $! > /tmp/frontend.pid
           # Wait for frontend to be ready
@@ -268,13 +275,21 @@ jobs:
           PYTHONPATH: "${{ github.workspace }}/backend"
         run: |
           if [ -f "alembic.ini" ]; then
-            alembic upgrade head 2>/dev/null || echo "Migrations skipped"
+            alembic upgrade head || echo "::warning::Database migrations failed — tests may fail"
           fi
 
       - name: Start mock external services
         run: |
           python tests/e2e/scripts/mock-server-runner.py &
-          sleep 2
+          echo $! > /tmp/mock-server.pid
+          # Wait for mock services to be ready
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:9001/health > /dev/null 2>&1; then
+              echo "Mock services ready"
+              break
+            fi
+            sleep 1
+          done
 
       - name: Start backend
         working-directory: ./backend
@@ -302,7 +317,7 @@ jobs:
           VITE_E2E_MODE: "true"
           VITE_API_URL: "http://localhost:8000"
         run: |
-          npx vite build 2>/dev/null || echo "Build completed"
+          npx vite build
           npx vite preview --port 3000 --host 0.0.0.0 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:3000/ > /dev/null 2>&1 && break

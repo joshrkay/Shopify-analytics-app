@@ -35,8 +35,24 @@ async function globalSetup(config: FullConfig) {
     await seedBaseline();
     console.log('   Baseline data seeded.');
   } catch (error) {
-    console.warn('   Warning: Seed failed (may already exist):', error);
-    // Non-fatal — data may already be seeded from a previous run
+    // Check if baseline data already exists from a previous run
+    const apiBase = process.env.E2E_API_URL || 'http://localhost:8000';
+    try {
+      const check = await fetch(`${apiBase}/api/test/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'plans', tenant_id: 'e2e-tenant-pro-001' }),
+      });
+      if (check.ok) {
+        console.warn('   Seed failed but baseline data already exists — continuing.');
+      } else {
+        console.error('   Seed failed and no baseline data exists — aborting.');
+        throw error;
+      }
+    } catch {
+      console.error('   Seed failed and cannot verify baseline data — aborting.');
+      throw error;
+    }
   }
 
   console.log('\n=== E2E Setup Complete ===\n');

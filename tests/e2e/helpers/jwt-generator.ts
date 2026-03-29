@@ -41,8 +41,8 @@ export function getKeyPair(): { privateKey: string; publicKey: string } {
   });
 
   fs.mkdirSync(KEY_DIR, { recursive: true });
-  fs.writeFileSync(PRIVATE_KEY_PATH, privateKey);
-  fs.writeFileSync(PUBLIC_KEY_PATH, publicKey);
+  fs.writeFileSync(PRIVATE_KEY_PATH, privateKey, { mode: 0o600 });
+  fs.writeFileSync(PUBLIC_KEY_PATH, publicKey, { mode: 0o644 });
 
   _privateKey = privateKey;
   _publicKey = publicKey;

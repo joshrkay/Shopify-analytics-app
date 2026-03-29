@@ -9,6 +9,7 @@ SECURITY: Guarded by ENV=test check. Never available in production.
 """
 
 import os
+import re
 import logging
 import uuid
 from typing import Optional
@@ -16,6 +17,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +139,7 @@ async def seed_test_data(request: SeedRequest):
     try:
         # Seed plans
         if request.plans:
-            from src.models.plan import Plan
+            from src.models.plan import Plan, PlanFeature
             plan_ids = []
             for p in request.plans:
                 existing = db.query(Plan).filter(Plan.id == p.id).first()
@@ -150,6 +152,15 @@ async def seed_test_data(request: SeedRequest):
                         is_active=True,
                     )
                     db.add(plan)
+                    # Seed plan features
+                    for feature_name in (p.features or []):
+                        feature = PlanFeature(
+                            id=str(uuid.uuid4()),
+                            plan_id=p.id,
+                            feature_key=feature_name.lower(),
+                            is_enabled=True,
+                        )
+                        db.add(feature)
                     plan_ids.append(p.id)
             created_ids["plans"] = plan_ids
 
@@ -251,7 +262,14 @@ async def seed_test_data(request: SeedRequest):
                 insight_ids.append(insight_id)
             created_ids["insights"] = insight_ids
 
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as ie:
+            # Race condition: another worker already seeded the same data
+            db.rollback()
+            logger.warning("Seed IntegrityError (likely concurrent seed): %s", ie)
+            return {"status": "ok", "created_ids": {}, "note": "Data already exists (concurrent seed)"}
+
         logger.info("E2E test data seeded", extra={"created_ids": created_ids})
 
         return {"status": "ok", "created_ids": created_ids}
@@ -385,8 +403,8 @@ async def query_test_data(request: QueryRequest):
 
         if request.filters:
             for key, value in request.filters.items():
-                # Only allow alphanumeric column names
-                if not key.isalnum():
+                # Only allow safe column names (alphanumeric + underscores)
+                if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', key):
                     continue
                 query += f" AND {key} = :filter_{key}"
                 params[f"filter_{key}"] = value
