@@ -26,6 +26,10 @@ vi.mock('@clerk/clerk-react', () => ({
   SignUp: () => <div data-testid="sign-up" />,
 }));
 
+vi.mock('../../services/searchApi', () => ({
+  globalSearch: vi.fn().mockResolvedValue({ results: [] }),
+}));
+
 function renderShell(initialEntries = ['/']) {
   mockUseUser.mockReturnValue({
     user: {
@@ -60,6 +64,12 @@ describe('Phase 0 — Root layout shell', () => {
     expect(screen.getByText('Overview')).toBeInTheDocument();
     expect(screen.getByText('Attribution')).toBeInTheDocument();
     expect(screen.getByText('Google Ads')).toBeInTheDocument();
+  });
+
+  it('exposes global search (sidebar + mobile trigger)', () => {
+    renderShell(['/']);
+    expect(screen.getAllByText('Search').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole('button', { name: /open search/i })).toBeInTheDocument();
   });
 
 });

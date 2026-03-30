@@ -111,4 +111,11 @@ describe('navigation route coverage', () => {
       );
     }
   });
+
+  it('signed-out routes render custom Landing at / (Figma pre-auth shell)', () => {
+    const appContent = readSrc('App.tsx');
+    expect(appContent).toContain('<SignedOut>');
+    expect(appContent).toMatch(/path="\/" element=\{<Landing/);
+    expect(appContent).not.toContain('<RedirectToSignIn');
+  });
 });

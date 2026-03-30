@@ -66,12 +66,13 @@ root.innerHTML = '';
 
 if (!PUBLISHABLE_KEY) {
   // Show a visible error instead of a silent white screen.
-  // This fires when the env var was missing at Vite build time.
+  // Vite inlines import.meta.env at dev/build time; the var must live under frontend/.env*
   root.innerHTML =
-    '<div style="padding:40px;text-align:center;font-family:system-ui,sans-serif">' +
+    '<div style="padding:40px;max-width:520px;margin:0 auto;text-align:center;font-family:system-ui,sans-serif">' +
     '<h1 style="color:#d32f2f">Configuration Error</h1>' +
-    '<p>Missing <code>VITE_CLERK_PUBLISHABLE_KEY</code> environment variable.</p>' +
-    '<p style="color:#666">This variable must be set at build time. Redeploy after setting it in your hosting dashboard.</p>' +
+    '<p>Missing <code>VITE_CLERK_PUBLISHABLE_KEY</code>.</p>' +
+    '<p style="color:#666">Local dev: copy <code>frontend/.env.example</code> to <code>frontend/.env</code>, set the key from the Clerk dashboard, then restart <code>npm run dev</code>.</p>' +
+    '<p style="color:#666">Production: set <code>VITE_CLERK_PUBLISHABLE_KEY</code> in your host&rsquo;s env and rebuild.</p>' +
     '</div>';
 } else {
   createRoot(root).render(

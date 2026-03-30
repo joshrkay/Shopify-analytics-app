@@ -537,6 +537,49 @@ export function mapChartTypeToWidgetCategoryUnsafe(type: string | null | undefin
 
 export type BuilderStep = 'select' | 'customize' | 'preview';
 
+/** Alias for semantic clarity in wizard-specific code */
+export type WizardStep = BuilderStep;
+
+/**
+ * Widget Definition — static template/blueprint for a pre-configured report type.
+ * Used in the widget gallery (wizard step 1) to represent available report templates.
+ */
+export interface WidgetDefinition {
+  id: string;                          // Unique template ID (e.g., "roas-overview")
+  name: string;                        // Display name (e.g., "ROAS Overview")
+  description: string;                 // Short description for gallery card
+  category: WidgetCategory;            // Business category for gallery filtering
+  defaultChartType: ChartType;         // Default chart type
+  defaultSize: WidgetSize;             // Default grid size
+  iconName: string;                    // Lucide icon name for gallery card
+  defaultConfig?: Partial<ChartConfig>; // Pre-filled chart config (optional)
+  defaultDataset?: string;             // Default dataset_name
+}
+
+/**
+ * Widget Selection — user's temporary selection during wizard creation.
+ * Created when the user clicks a WidgetDefinition in the gallery.
+ * Not persisted to the backend until publishWizardDashboard() is called.
+ */
+export interface WidgetSelection {
+  selectionId: string;           // Temporary client-side UUID
+  definitionId: string;          // Reference to WidgetDefinition.id
+  name: string;                  // Can be customized by user
+  size: WidgetSize;              // Can be changed in customize step
+  position?: GridPosition;       // Assigned in customize step
+}
+
+/**
+ * Maps WidgetSize to grid dimensions (w × h columns/rows).
+ * Used when converting a WidgetSelection to a Report with a GridPosition.
+ */
+export const WIDGET_SIZE_TO_GRID: Record<WidgetSize, { w: number; h: number }> = {
+  small: { w: 3, h: 2 },    // Quarter width
+  medium: { w: 6, h: 3 },   // Half width
+  large: { w: 9, h: 4 },    // Three-quarters width
+  full: { w: 12, h: 4 },    // Full width
+};
+
 /**
  * Widget Catalog Item
  *
