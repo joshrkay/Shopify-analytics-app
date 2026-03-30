@@ -12,14 +12,14 @@
  * Story 4.3 - Merchant Data Health Trust Layer
  */
 
-import { Badge, Spinner, InlineStack, Text, Tooltip, Icon } from '@shopify/polaris';
-import { CheckCircleIcon, ClockIcon, AlertCircleIcon } from '@shopify/polaris-icons';
+import { CheckCircle, Clock, AlertCircle, Loader2 } from 'lucide-react';
 import type { MerchantHealthState } from '../../utils/data_health_copy';
 import {
   getMerchantHealthLabel,
   getMerchantHealthTooltip,
   getMerchantHealthBadgeTone,
 } from '../../utils/data_health_copy';
+import { cn } from '../ui/utils';
 
 interface DataHealthBadgeProps {
   /** Current merchant health state. Null while loading. */
@@ -34,6 +34,28 @@ interface DataHealthBadgeProps {
   compact?: boolean;
 }
 
+function badgeToneClasses(tone: 'success' | 'attention' | 'critical'): string {
+  switch (tone) {
+    case 'success':
+      return 'border border-emerald-200 bg-emerald-50 text-emerald-800';
+    case 'attention':
+      return 'border border-amber-200 bg-amber-50 text-amber-800';
+    case 'critical':
+      return 'border border-red-200 bg-red-50 text-red-800';
+  }
+}
+
+function iconToneClass(tone: 'success' | 'attention' | 'critical'): string {
+  switch (tone) {
+    case 'success':
+      return 'text-emerald-600';
+    case 'attention':
+      return 'text-amber-600';
+    case 'critical':
+      return 'text-red-600';
+  }
+}
+
 export function DataHealthBadge({
   healthState,
   loading = false,
@@ -42,62 +64,62 @@ export function DataHealthBadge({
   compact = false,
 }: DataHealthBadgeProps) {
   if (loading || healthState === null) {
-    return <Spinner size="small" accessibilityLabel="Loading data health" />;
+    return (
+      <span className="inline-flex items-center" role="status" aria-label="Loading data health">
+        <span className="sr-only">Loading data health</span>
+        <Loader2 className="h-4 w-4 animate-spin text-gray-500" aria-hidden />
+      </span>
+    );
   }
 
   const tone = getMerchantHealthBadgeTone(healthState);
   const label = getMerchantHealthLabel(healthState);
   const tooltipContent = getMerchantHealthTooltip(healthState);
 
-  const getIcon = () => {
-    switch (healthState) {
-      case 'healthy':
-        return CheckCircleIcon;
-      case 'delayed':
-        return ClockIcon;
-      case 'unavailable':
-        return AlertCircleIcon;
-    }
-  };
+  const IconComponent =
+    healthState === 'healthy'
+      ? CheckCircle
+      : healthState === 'delayed'
+        ? Clock
+        : AlertCircle;
 
   const badgeContent = (
-    <InlineStack gap="100" blockAlign="center">
-      {showLabel && (
-        <Text as="span" variant="bodySm">
-          Data
-        </Text>
-      )}
+    <span className="inline-flex items-center gap-1">
+      {showLabel && <span className="text-sm text-gray-700">Data</span>}
       {compact ? (
-        <Icon
-          source={getIcon()}
-          tone={tone === 'attention' ? 'warning' : tone}
-        />
+        <IconComponent className={cn('h-4 w-4', iconToneClass(tone))} aria-hidden />
       ) : (
-        <Badge tone={tone}>{label}</Badge>
+        <span
+          className={cn(
+            'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+            badgeToneClasses(tone),
+          )}
+        >
+          {label}
+        </span>
       )}
-    </InlineStack>
+    </span>
   );
 
   if (onClick) {
     return (
-      <Tooltip content={tooltipContent}>
-        <button
-          onClick={onClick}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-          }}
-          aria-label={tooltipContent}
-        >
-          {badgeContent}
-        </button>
-      </Tooltip>
+      <button
+        type="button"
+        onClick={onClick}
+        title={tooltipContent}
+        className="inline-flex border-0 bg-transparent p-0 cursor-pointer"
+        aria-label={tooltipContent}
+      >
+        {badgeContent}
+      </button>
     );
   }
 
-  return <Tooltip content={tooltipContent}>{badgeContent}</Tooltip>;
+  return (
+    <span title={tooltipContent} className="inline-flex">
+      {badgeContent}
+    </span>
+  );
 }
 
 export default DataHealthBadge;

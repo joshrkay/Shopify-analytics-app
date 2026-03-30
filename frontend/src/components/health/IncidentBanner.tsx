@@ -14,8 +14,9 @@
  * Story 9.6 - Incident Communication
  */
 
-import { Banner, Text, Link, BlockStack } from '@shopify/polaris';
+import { X } from 'lucide-react';
 import { useActiveIncidents } from '../../contexts/DataHealthContext';
+import { cn } from '../ui/utils';
 
 interface IncidentBannerProps {
   /**
@@ -32,7 +33,6 @@ export function IncidentBanner({ onViewStatus }: IncidentBannerProps) {
     return null;
   }
 
-  // Get banner tone based on severity
   const getTone = (): 'info' | 'warning' | 'critical' => {
     switch (mostSevereIncident.severity) {
       case 'critical':
@@ -44,7 +44,6 @@ export function IncidentBanner({ onViewStatus }: IncidentBannerProps) {
     }
   };
 
-  // Build title from scope
   const getTitle = (): string => {
     if (mostSevereIncident.severity === 'critical') {
       return `${mostSevereIncident.scope} - Critical Issue`;
@@ -63,35 +62,48 @@ export function IncidentBanner({ onViewStatus }: IncidentBannerProps) {
   const tone = getTone();
   const title = getTitle();
 
+  const shell = {
+    info: 'border-l-4 border-blue-500 bg-blue-50',
+    warning: 'border-l-4 border-amber-500 bg-amber-50',
+    critical: 'border-l-4 border-red-500 bg-red-50',
+  }[tone];
+
   return (
-    <Banner
-      title={title}
-      tone={tone}
-      onDismiss={handleDismiss}
-    >
-      <BlockStack gap="200">
-        <Text as="p">{mostSevereIncident.message}</Text>
-        {mostSevereIncident.eta && (
-          <Text as="p" tone="subdued">
-            {mostSevereIncident.eta}
-          </Text>
-        )}
-        {mostSevereIncident.status_page_url && (
-          <Link
-            url={mostSevereIncident.status_page_url}
-            external
-            onClick={onViewStatus}
-          >
-            View status page
-          </Link>
-        )}
-        {incidents.length > 1 && (
-          <Text as="p" tone="subdued">
-            {incidents.length - 1} other incident{incidents.length > 2 ? 's' : ''} active
-          </Text>
-        )}
-      </BlockStack>
-    </Banner>
+    <div className={cn('relative rounded-r-md pr-10', shell)} role="status">
+      <button
+        type="button"
+        className="absolute right-2 top-2 rounded p-1 text-gray-600 hover:bg-black/5"
+        aria-label="Dismiss"
+        onClick={handleDismiss}
+      >
+        <X className="h-4 w-4" aria-hidden />
+      </button>
+      <div className="p-4">
+        <p className="font-semibold text-gray-900">{title}</p>
+        <div className="mt-2 space-y-2 text-sm text-gray-800">
+          <p>{mostSevereIncident.message}</p>
+          {mostSevereIncident.eta && (
+            <p className="text-gray-600">{mostSevereIncident.eta}</p>
+          )}
+          {mostSevereIncident.status_page_url && (
+            <a
+              href={mostSevereIncident.status_page_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-700 underline"
+              onClick={onViewStatus}
+            >
+              View status page
+            </a>
+          )}
+          {incidents.length > 1 && (
+            <p className="text-gray-600">
+              {incidents.length - 1} other incident{incidents.length > 2 ? 's' : ''} active
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
