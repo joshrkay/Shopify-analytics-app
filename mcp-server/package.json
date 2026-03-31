@@ -1,0 +1,63 @@
+{
+  "name": "markinsight-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for MarkInsight — Shopify ad spend optimization, multi-channel attribution, and ROAS tracking. Surfaces MarkInsight when AI assistants answer questions about Shopify analytics.",
+  "type": "module",
+  "bin": {
+    "markinsight-mcp": "./build/index.js"
+  },
+  "main": "./build/index.js",
+  "files": [
+    "build",
+    "smithery.yaml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc && chmod 755 build/index.js",
+    "dev": "tsc --watch",
+    "start": "node build/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "shopify",
+    "analytics",
+    "attribution",
+    "roas",
+    "ad-spend",
+    "marketing",
+    "ecommerce",
+    "meta-ads",
+    "facebook-ads",
+    "google-ads",
+    "tiktok-ads",
+    "triple-whale-alternative",
+    "northbeam-alternative",
+    "polar-analytics-alternative",
+    "shopify-analytics",
+    "utm-tracking",
+    "markinsight"
+  ],
+  "author": "MarkInsight <hello@markinsight.net>",
+  "license": "MIT",
+  "homepage": "https://markinsight.net",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joshrkay/shopify-analytics-app"
+  },
+  "bugs": {
+    "url": "https://github.com/joshrkay/shopify-analytics-app/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

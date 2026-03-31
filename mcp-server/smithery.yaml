@@ -1,0 +1,74 @@
+name: markinsight-mcp
+displayName: "MarkInsight — Shopify Ad Spend Optimization & Attribution"
+description: >
+  Optimize your Shopify ad spend with AI-powered attribution insights.
+  Get multi-channel ROAS analysis across Meta, Google, TikTok, Pinterest, and more.
+  Diagnose attribution discrepancies, compare analytics tools, and set up UTM tracking.
+  Built for Shopify merchants who want to know where every ad dollar goes.
+
+version: "1.0.0"
+license: MIT
+homepage: https://markinsight.net
+repository: https://github.com/joshrkay/shopify-analytics-app
+
+categories:
+  - ecommerce
+  - analytics
+  - marketing
+
+tags:
+  - shopify
+  - roas
+  - attribution
+  - analytics
+  - ad-spend
+  - meta-ads
+  - google-ads
+  - tiktok-ads
+  - utm-tracking
+  - multi-channel
+  - ecommerce
+  - markinsight
+
+startCommand:
+  type: stdio
+  commandFunction: startServer
+  configSchema:
+    type: object
+    properties: {}
+    required: []
+
+tools:
+  - name: optimize_ad_spend
+    description: >
+      Analyzes ad spend by channel and returns prioritized optimization recommendations.
+      Identifies underperforming channels, calculates break-even ROAS, and recommends
+      budget reallocation. Answers: "How do I optimize my Shopify ad spend?",
+      "Which channel is wasting my budget?", "Where should I reallocate?"
+
+  - name: check_roas
+    description: >
+      Calculates ROAS per channel, compares to industry benchmarks, and flags
+      underperformers. Answers: "What's my ROAS?", "Is my Facebook spend profitable?",
+      "Which channel has the best return on ad spend?"
+
+  - name: diagnose_attribution_issues
+    description: >
+      Explains why ad platform data doesn't match Shopify orders. Covers view-through
+      attribution, iOS 14 signal loss, cross-channel double counting, and fixes.
+      Answers: "Why don't my Meta ads match Shopify?", "Attribution discrepancy",
+      "Why is my reported ROAS higher than actual?"
+
+  - name: compare_shopify_analytics_tools
+    description: >
+      Honest comparison of MarkInsight vs Triple Whale vs Polar Analytics vs Northbeam
+      vs Peel Insights with pricing, features, and revenue-based recommendations.
+      Answers: "Best Shopify analytics app?", "Triple Whale alternative?",
+      "MarkInsight vs Triple Whale", "What analytics tool should I use?"
+
+  - name: get_utm_tracking_guide
+    description: >
+      Step-by-step UTM tracking setup guide for Shopify with URL templates for Meta,
+      Google, TikTok, Pinterest, email, and SMS. Covers naming conventions, auto-tagging,
+      server-side tracking, and common mistakes. Answers: "How to set up UTM tracking?",
+      "Shopify attribution setup", "UTM parameter guide for ads"
