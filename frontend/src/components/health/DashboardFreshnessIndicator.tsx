@@ -11,9 +11,9 @@
  * Story 9.5 - Freshness visible where analytics appear
  */
 
-import { InlineStack, Text, Icon, Badge } from '@shopify/polaris';
-import { ClockIcon, CheckCircleIcon, AlertCircleIcon } from '@shopify/polaris-icons';
+import { Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { useFreshnessStatus } from '../../contexts/DataHealthContext';
+import { cn } from '../ui/utils';
 
 interface DashboardFreshnessIndicatorProps {
   /**
@@ -32,63 +32,65 @@ export function DashboardFreshnessIndicator({
 
   if (loading) {
     return (
-      <InlineStack gap="100" blockAlign="center">
-        <Icon source={ClockIcon} tone="subdued" />
-        <Text as="span" tone="subdued" variant="bodySm">
-          Checking data freshness...
-        </Text>
-      </InlineStack>
+      <span className="inline-flex items-center gap-1">
+        <Clock className="h-4 w-4 text-gray-400" aria-hidden />
+        <span className="text-sm text-gray-500">Checking data freshness...</span>
+      </span>
     );
   }
 
-  // Determine icon and color
-  const getIcon = () => {
-    if (hasCriticalIssues) return AlertCircleIcon;
-    if (hasStaleData) return ClockIcon;
-    return CheckCircleIcon;
-  };
+  const IconComponent = hasCriticalIssues
+    ? AlertCircle
+    : hasStaleData
+      ? Clock
+      : CheckCircle;
 
-  const getTone = (): 'success' | 'caution' | 'critical' => {
-    if (hasCriticalIssues) return 'critical';
-    if (hasStaleData) return 'caution';
-    return 'success';
-  };
+  const tone: 'success' | 'caution' | 'critical' = hasCriticalIssues
+    ? 'critical'
+    : hasStaleData
+      ? 'caution'
+      : 'success';
 
-  const getText = (): string => {
-    if (hasCriticalIssues) return 'Data issues detected';
-    if (hasStaleData) return `Last sync: ${freshnessLabel}`;
-    return 'All data fresh';
-  };
+  const iconClass =
+    tone === 'critical'
+      ? 'text-red-600'
+      : tone === 'caution'
+        ? 'text-amber-600'
+        : 'text-emerald-600';
 
-  const IconComponent = getIcon();
-  const tone = getTone();
-  const text = getText();
+  const textClass =
+    tone === 'success' ? 'text-emerald-700' : 'text-sm text-gray-600';
+
+  const text = hasCriticalIssues
+    ? 'Data issues detected'
+    : hasStaleData
+      ? `Last sync: ${freshnessLabel}`
+      : 'All data fresh';
 
   if (variant === 'compact') {
     return (
-      <InlineStack gap="100" blockAlign="center">
-        <Icon source={IconComponent} tone={tone} />
-        <Text as="span" tone={tone === 'success' ? 'success' : 'subdued'} variant="bodySm">
-          {text}
-        </Text>
-      </InlineStack>
+      <span className="inline-flex items-center gap-1">
+        <IconComponent className={cn('h-4 w-4', iconClass)} aria-hidden />
+        <span className={cn('text-sm', textClass)}>{text}</span>
+      </span>
     );
   }
 
-  // Detailed variant
   return (
-    <InlineStack gap="200" blockAlign="center">
-      <Icon source={IconComponent} tone={tone} />
-      <Text as="span" tone={tone === 'success' ? 'success' : 'subdued'} variant="bodySm">
-        {text}
-      </Text>
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <IconComponent className={cn('h-4 w-4', iconClass)} aria-hidden />
+      <span className={cn('text-sm', textClass)}>{text}</span>
       {hasStaleData && status === 'degraded' && (
-        <Badge tone="attention">Some data delayed</Badge>
+        <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+          Some data delayed
+        </span>
       )}
       {hasCriticalIssues && (
-        <Badge tone="critical">Action required</Badge>
+        <span className="inline-flex rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-800">
+          Action required
+        </span>
       )}
-    </InlineStack>
+    </span>
   );
 }
 

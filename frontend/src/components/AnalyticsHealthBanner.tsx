@@ -1,7 +1,7 @@
 /**
  * Analytics Health Banner
  *
- * Polaris Banner component displayed when analytics is temporarily unavailable.
+ * Banner displayed when analytics is temporarily unavailable.
  * Does NOT leak error details to users - only shows a generic message.
  * Emits audit events to backend for incident tracking (fire-and-forget).
  *
@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { Banner, Button, Spinner, InlineStack } from '@shopify/polaris';
+import { Loader2 } from 'lucide-react';
 import { API_BASE_URL } from '../services/apiUtils';
 import type { AccessSurface } from '../types/embed';
 
@@ -59,7 +59,6 @@ export const AnalyticsHealthBanner: React.FC<AnalyticsHealthBannerProps> = ({
 }) => {
   const incidentReportedRef = useRef(false);
 
-  // Report health incident on mount (fire-and-forget, only once)
   useEffect(() => {
     if (!incidentReportedRef.current) {
       incidentReportedRef.current = true;
@@ -68,20 +67,28 @@ export const AnalyticsHealthBanner: React.FC<AnalyticsHealthBannerProps> = ({
   }, [errorType, accessSurface]);
 
   return (
-    <Banner
-      title="Analytics temporarily unavailable"
-      tone="warning"
+    <div
+      className="border-l-4 border-amber-500 bg-amber-50 text-gray-900"
+      role="status"
     >
-      <p>We're retrying. You can also try manually.</p>
-      <div style={{ marginTop: '12px' }}>
-        <InlineStack gap="200" blockAlign="center">
-            {isRetrying && <Spinner size="small" />}
-            <Button onClick={onRetry} disabled={isRetrying}>
-              {isRetrying ? 'Retrying...' : 'Retry'}
-            </Button>
-          </InlineStack>
+      <div className="p-4">
+        <p className="font-semibold">Analytics temporarily unavailable</p>
+        <p className="mt-2 text-sm">We&apos;re retrying. You can also try manually.</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {isRetrying && (
+            <Loader2 className="h-4 w-4 animate-spin text-gray-600" aria-hidden />
+          )}
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={isRetrying}
+            className="rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isRetrying ? 'Retrying...' : 'Retry'}
+          </button>
+        </div>
       </div>
-    </Banner>
+    </div>
   );
 };
 

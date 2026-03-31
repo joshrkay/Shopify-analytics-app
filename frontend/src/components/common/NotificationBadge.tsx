@@ -8,7 +8,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { Badge, Spinner, InlineStack, Text, Tooltip } from '@shopify/polaris';
+import { Loader2 } from 'lucide-react';
+import { cn } from '../ui/utils';
 
 interface NotificationBadgeProps {
   /**
@@ -52,6 +53,22 @@ interface NotificationBadgeProps {
   pluralNoun?: string;
 }
 
+function toneClasses(
+  tone: 'info' | 'success' | 'warning' | 'critical' | 'attention',
+): string {
+  switch (tone) {
+    case 'success':
+      return 'border border-emerald-200 bg-emerald-50 text-emerald-800';
+    case 'warning':
+    case 'attention':
+      return 'border border-amber-200 bg-amber-50 text-amber-800';
+    case 'critical':
+      return 'border border-red-200 bg-red-50 text-red-800';
+    case 'info':
+      return 'border border-blue-200 bg-blue-50 text-blue-800';
+  }
+}
+
 export function NotificationBadge({
   fetchCount,
   onClick,
@@ -88,28 +105,22 @@ export function NotificationBadge({
     }
   }, [loadCount, refreshInterval]);
 
-  // Loading state
   if (isLoading && count === null) {
     if (showLabel) {
       return (
-        <InlineStack gap="100" blockAlign="center">
-          <Text as="span" variant="bodySm">
-            {label}
-          </Text>
-          <Spinner size="small" />
-        </InlineStack>
+        <span className="inline-flex items-center gap-1">
+          <span className="text-sm text-gray-700">{label}</span>
+          <Loader2 className="h-4 w-4 animate-spin text-gray-500" aria-hidden />
+        </span>
       );
     }
-    return <Spinner size="small" />;
+    return <Loader2 className="h-4 w-4 animate-spin text-gray-500" aria-hidden />;
   }
 
-  // Error or no items state
   if (error || count === null || count === 0) {
     if (showLabel) {
       return (
-        <Text as="span" variant="bodySm" tone="subdued">
-          {label}
-        </Text>
+        <span className="text-sm text-gray-500">{label}</span>
       );
     }
     return null;
@@ -118,40 +129,45 @@ export function NotificationBadge({
   const displayCount = count > 99 ? '99+' : count.toString();
   const tooltipText = `${count} ${count === 1 ? singularNoun : pluralNoun}`;
 
-  const badge = <Badge tone={tone}>{displayCount}</Badge>;
+  const badge = (
+    <span
+      className={cn(
+        'inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-medium',
+        toneClasses(tone),
+      )}
+    >
+      {displayCount}
+    </span>
+  );
 
   const badgeContent = showLabel ? (
-    <InlineStack gap="100" blockAlign="center">
-      <Text as="span" variant="bodySm">
-        {label}
-      </Text>
+    <span className="inline-flex items-center gap-1">
+      <span className="text-sm text-gray-600">{label}</span>
       {badge}
-    </InlineStack>
+    </span>
   ) : (
     badge
   );
 
   if (onClick) {
     return (
-      <Tooltip content={tooltipText}>
-        <button
-          type="button"
-          onClick={onClick}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-          }}
-          aria-label={tooltipText}
-        >
-          {badgeContent}
-        </button>
-      </Tooltip>
+      <button
+        type="button"
+        title={tooltipText}
+        onClick={onClick}
+        className="inline-flex border-0 bg-transparent p-0 cursor-pointer"
+        aria-label={tooltipText}
+      >
+        {badgeContent}
+      </button>
     );
   }
 
-  return <Tooltip content={tooltipText}>{badgeContent}</Tooltip>;
+  return (
+    <span title={tooltipText} className="inline-flex">
+      {badgeContent}
+    </span>
+  );
 }
 
 export default NotificationBadge;

@@ -34,8 +34,15 @@ import type {
   BuilderWizardState,
   BuilderStep,
   WidgetCatalogItem,
+  WidgetCategory,
+  WidgetDefinition,
+  WidgetSelection,
 } from '../types/customDashboards';
-import { MIN_GRID_DIMENSIONS, mapChartTypeToWidgetCategoryUnsafe } from '../types/customDashboards';
+import {
+  MIN_GRID_DIMENSIONS,
+  WIDGET_SIZE_TO_GRID,
+  mapChartTypeToWidgetCategoryUnsafe,
+} from '../types/customDashboards';
 import {
   getDashboard,
   updateDashboard,
@@ -107,9 +114,13 @@ interface DashboardBuilderActions {
   exitWizardMode: () => void;
   setBuilderStep: (step: BuilderStep) => void;
   setSelectedCategory: (category?: ChartType) => void;
+  setSelectedBusinessCategory: (category: WidgetCategory) => void;
   addCatalogWidget: (item: WidgetCatalogItem) => void;
+  addWidget: (definition: WidgetDefinition) => void;
   removeWizardWidget: (reportId: string) => void;
+  removeWidget: (selectionId: string) => void;
   moveWizardWidget: (reportId: string, newPosition: GridPosition) => void;
+  updateWidgetLayout: (selectionId: string, updates: Partial<WidgetSelection>) => void;
   updateWizardWidget: (widgetId: string, updates: Partial<Report>) => void;
   openWizardWidgetConfig: (widgetId: string) => void;
   bulkUpdateWizardWidgets: (widgets: Report[]) => void;
@@ -118,6 +129,9 @@ interface DashboardBuilderActions {
   setPreviewDateRange: (range: string) => void;
   setSaveAsTemplate: (value: boolean) => void;
   resetWizard: () => void;
+  advanceWizard: () => void;
+  goBackWizard: () => void;
+  publishWizardDashboard: () => Promise<string | undefined>;
   canProceedToCustomize: boolean;
   canProceedToPreview: boolean;
   canSaveDashboard: boolean;
@@ -186,6 +200,8 @@ interface DashboardBuilderProviderProps {
   dashboardId?: string;
   children: ReactNode;
 }
+
+const WIZARD_STEPS: BuilderStep[] = ['select', 'customize', 'preview'];
 
 export function DashboardBuilderProvider({
   dashboardId,
@@ -822,6 +838,16 @@ export function DashboardBuilderProvider({
     }));
   }, []);
 
+  const setSelectedBusinessCategory = useCallback((category: WidgetCategory) => {
+    setState((prev) => ({
+      ...prev,
+      wizardState: {
+        ...prev.wizardState,
+        selectedBusinessCategory: category,
+      },
+    }));
+  }, []);
+
   const addCatalogWidget = useCallback((item: WidgetCatalogItem) => {
     setState((prev) => {
       // Calculate auto-position: place at bottom of grid
@@ -868,6 +894,110 @@ export function DashboardBuilderProvider({
       };
     });
   }, []);
+
+  /**
+   * addWidget — accepts a WidgetDefinition and converts it to a wizard Report.
+   * Delegates to addCatalogWidget via a WidgetCatalogItem adapter.
+   */
+  const addWidget = useCallback((definition: WidgetDefinition) => {
+    const { w, h } = WIDGET_SIZE_TO_GRID[definition.defaultSize];
+    setState((prev) => {
+      const maxY = prev.wizardState.selectedWidgets.reduce(
+        (max, widget) => Math.max(max, widget.position_json.y + widget.position_json.h),
+        0,
+      );
+
+      const newReport: Report = {
+        id: `${definition.id}::${Date.now()}::${wizardWidgetSeqRef.current++}`,
+        dashboard_id: '',
+        name: definition.name,
+        description: definition.description,
+        chart_type: definition.defaultChartType,
+        dataset_name: definition.defaultDataset ?? '',
+        config_json: {
+          metrics: [],
+          dimensions: [],
+          time_range: 'last_30_days',
+          time_grain: 'P1D',
+          filters: [],
+          display: { show_legend: false },
+          ...(definition.defaultConfig as object),
+        },
+        position_json: { x: 0, y: maxY, w, h },
+        sort_order: prev.wizardState.selectedWidgets.length,
+        created_by: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        warnings: [],
+      };
+
+      return {
+        ...prev,
+        wizardState: {
+          ...prev.wizardState,
+          selectedWidgets: [...prev.wizardState.selectedWidgets, newReport],
+        },
+        isDirty: true,
+      };
+    });
+  }, []);
+
+  /** removeWidget — semantic alias for removeWizardWidget using selectionId */
+  const removeWidget = useCallback((selectionId: string) => {
+    setState((prev) => {
+      const nextWidgets = prev.wizardState.selectedWidgets.filter((w) => w.id !== selectionId);
+      const removedWidget = prev.wizardState.selectedWidgets.find((w) => w.id === selectionId);
+      const removedBaseId = removedWidget?.id.split('::')[0];
+
+      const nextCatalogItems = [...(prev.wizardState.selectedCatalogItems ?? [])];
+      if (removedBaseId) {
+        const idx = nextCatalogItems.findIndex((item) => item.id === removedBaseId);
+        if (idx >= 0) nextCatalogItems.splice(idx, 1);
+      }
+
+      return {
+        ...prev,
+        wizardState: {
+          ...prev.wizardState,
+          selectedWidgets: nextWidgets,
+          selectedCatalogItems: nextCatalogItems,
+          currentStep:
+            nextWidgets.length === 0 && prev.wizardState.currentStep !== 'select'
+              ? 'select'
+              : prev.wizardState.currentStep,
+        },
+        isDirty: true,
+      };
+    });
+  }, []);
+
+  /**
+   * updateWidgetLayout — applies WidgetSelection updates (size, position) to a
+   * wizard widget. Converts WidgetSize changes to GridPosition dimensions.
+   */
+  const updateWidgetLayout = useCallback(
+    (selectionId: string, updates: Partial<WidgetSelection>) => {
+      setState((prev) => ({
+        ...prev,
+        wizardState: {
+          ...prev.wizardState,
+          selectedWidgets: prev.wizardState.selectedWidgets.map((w) => {
+            if (w.id !== selectionId) return w;
+            const next = { ...w };
+            if (updates.name !== undefined) next.name = updates.name;
+            if (updates.position !== undefined) next.position_json = updates.position;
+            if (updates.size !== undefined) {
+              const dims = WIDGET_SIZE_TO_GRID[updates.size];
+              next.position_json = { ...next.position_json, w: dims.w, h: dims.h };
+            }
+            return next;
+          }),
+        },
+        isDirty: true,
+      }));
+    },
+    [],
+  );
 
   const removeWizardWidget = useCallback((reportId: string) => {
     setState((prev) => {
@@ -965,6 +1095,52 @@ export function DashboardBuilderProvider({
       isDirty: false,
     }));
   }, []);
+
+  /** advanceWizard — move forward one wizard step (select → customize → preview). */
+  const advanceWizard = useCallback(() => {
+    setState((prev) => {
+      const { currentStep, selectedWidgets, dashboardName } = prev.wizardState;
+      const idx = WIZARD_STEPS.indexOf(currentStep);
+      if (idx === WIZARD_STEPS.length - 1) return prev; // already at last step
+
+      const nextStep = WIZARD_STEPS[idx + 1];
+
+      // Guard: can't advance from select without widgets
+      if (nextStep === 'customize' && selectedWidgets.length === 0) return prev;
+      // Guard: can't advance to preview without widgets and a name
+      if (nextStep === 'preview' && (selectedWidgets.length === 0 || !dashboardName.trim())) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        wizardState: { ...prev.wizardState, currentStep: nextStep },
+      };
+    });
+  }, []);
+
+  /** goBackWizard — move backward one wizard step (preview → customize → select). */
+  const goBackWizard = useCallback(() => {
+    setState((prev) => {
+      const idx = WIZARD_STEPS.indexOf(prev.wizardState.currentStep);
+      if (idx === 0) return prev; // already at first step
+      return {
+        ...prev,
+        wizardState: {
+          ...prev.wizardState,
+          currentStep: WIZARD_STEPS[idx - 1],
+        },
+      };
+    });
+  }, []);
+
+  /**
+   * publishWizardDashboard — convenience alias for saveDashboard in wizard mode.
+   * Creates the dashboard and all reports, then exits wizard mode.
+   */
+  const publishWizardDashboard = useCallback((): Promise<string | undefined> => {
+    return saveDashboard();
+  }, [saveDashboard]);
 
   const updateWizardWidget = useCallback((widgetId: string, updates: Partial<Report>) => {
     setState((prev) => ({
@@ -1150,9 +1326,13 @@ export function DashboardBuilderProvider({
     exitWizardMode,
     setBuilderStep,
     setSelectedCategory,
+    setSelectedBusinessCategory,
     addCatalogWidget,
+    addWidget,
     removeWizardWidget,
+    removeWidget,
     moveWizardWidget,
+    updateWidgetLayout,
     updateWizardWidget,
     openWizardWidgetConfig,
     bulkUpdateWizardWidgets,
@@ -1161,6 +1341,9 @@ export function DashboardBuilderProvider({
     setPreviewDateRange,
     setSaveAsTemplate,
     resetWizard,
+    advanceWizard,
+    goBackWizard,
+    publishWizardDashboard,
     canProceedToCustomize,
     canProceedToPreview,
     canSaveDashboard,

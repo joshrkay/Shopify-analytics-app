@@ -14,10 +14,12 @@ import {
   User,
   Menu,
   X,
+  Search,
 } from 'lucide-react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { useEffect, useState } from 'react';
 import { MarkinsightIcon } from '../MarkinsightIcon';
+import { GlobalSearch } from './GlobalSearch';
 
 const CHANNEL_EMOJI: Record<string, string> = {
   google: '🔵',
@@ -89,6 +91,7 @@ export function Root() {
   const { signOut } = useClerk();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const isOnboarding =
     location.pathname === '/onboarding' || location.pathname === '/signup';
@@ -129,6 +132,15 @@ export function Root() {
           <MarkinsightIcon className="w-6 h-6 text-blue-600" />
           <h1 className="text-lg font-semibold text-gray-900">Markinsight</h1>
         </div>
+        <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          aria-label="Open search"
+        >
+          <Search className="w-6 h-6 text-gray-700" />
+        </button>
         <button
           onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -139,6 +151,7 @@ export function Root() {
             <Menu className="w-6 h-6 text-gray-700" />
           )}
         </button>
+        </div>
       </div>
 
       {/* Mobile overlay */}
@@ -165,6 +178,17 @@ export function Root() {
 
         {/* Navigation */}
         <nav className="flex-1 min-h-0 p-3 overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-gray-700 hover:bg-gray-50 w-full text-left transition-colors mb-1"
+          >
+            <Search className="w-5 h-5 flex-shrink-0" />
+            <span className="font-medium text-sm">Search</span>
+            <kbd className="ml-auto text-[10px] text-gray-400 font-sans hidden sm:inline border border-gray-200 rounded px-1">
+              ⌘K
+            </kbd>
+          </button>
           {/* Core */}
           <NavLink to="/" icon={Home} label="Overview" />
           <NavLink to="/attribution" icon={TrendingUp} label="Attribution" />
@@ -250,6 +274,8 @@ export function Root() {
         )}
         <Outlet />
       </main>
+
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }

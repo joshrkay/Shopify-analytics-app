@@ -10,8 +10,7 @@
  * Story 4.3 - Merchant Data Health Trust Layer
  */
 
-import { Button, InlineStack, Text, Icon } from '@shopify/polaris';
-import { EmailIcon } from '@shopify/polaris-icons';
+import { Mail } from 'lucide-react';
 import type { MerchantHealthState } from '../../utils/data_health_copy';
 
 interface DataHealthSupportCTAProps {
@@ -50,20 +49,17 @@ export function DataHealthSupportCTA({
   const mailtoHref = `mailto:${supportEmail}?subject=${subject}&body=${body}`;
 
   return (
-    <InlineStack gap="200" blockAlign="center">
-      <Icon source={EmailIcon} tone="subdued" />
-      <Text as="span" tone="subdued" variant="bodySm">
-        Need help?
-      </Text>
-      <Button
-        url={mailtoHref}
-        variant="plain"
-        external
-        accessibilityLabel="Contact support about data unavailability"
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <Mail className="h-4 w-4 text-gray-500" aria-hidden />
+      <span className="text-sm text-gray-600">Need help?</span>
+      <a
+        href={mailtoHref}
+        className="text-sm font-medium text-blue-700 underline"
+        aria-label="Contact support about data unavailability"
       >
         Contact Support
-      </Button>
-    </InlineStack>
+      </a>
+    </span>
   );
 }
 
