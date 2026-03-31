@@ -1,0 +1,87 @@
+{
+  "name": "YouTube Transcript Breakdown",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "video_url", "value": "https://www.youtube.com/watch?v=2GZ2SNXWK-c", "type": "string" },
+            { "name": "analysis_goal", "value": "Extract key n8n workflow patterns and monetizable service ideas", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-input",
+      "name": "Set Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const url = $json.video_url || '';\nconst m = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/) || url.match(/youtu\\.be\\/([a-zA-Z0-9_-]{11})/);\nif (!m) throw new Error('Could not parse video_id');\nreturn [{ ...$json, video_id: m[1] }];"
+      },
+      "id": "extract-id",
+      "name": "Extract Video ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://ytscribe.com/v/{{$json.video_id}}",
+        "options": {}
+      },
+      "id": "fetch-transcript-page",
+      "name": "Fetch Transcript Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $json.body || $json.data || '';\nconst lines = [];\nfor (const match of html.matchAll(/<div class=\\\"transcript-text\\\">([\\s\\S]*?)<\\/div>/g)) {\n  lines.push(match[1].replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim());\n}\nconst transcript = lines.filter(Boolean).join('\\n');\nif (!transcript) throw new Error('Transcript extraction failed; switch provider or ASR fallback.');\nreturn [{ ...$json, transcript, transcript_source: 'ytscribe_html_extract' }];"
+      },
+      "id": "parse-transcript",
+      "name": "Parse Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.transcript;\nconst chunkSize = 6000;\nconst out = [];\nfor (let i = 0; i < text.length; i += chunkSize) {\n  out.push({ ...$json, chunk_index: out.length, chunk_text: text.slice(i, i + chunkSize) });\n}\nreturn out;"
+      },
+      "id": "chunk-transcript",
+      "name": "Chunk Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Set Input", "type": "main", "index": 0 }]]
+    },
+    "Set Input": {
+      "main": [[{ "node": "Extract Video ID", "type": "main", "index": 0 }]]
+    },
+    "Extract Video ID": {
+      "main": [[{ "node": "Fetch Transcript Page", "type": "main", "index": 0 }]]
+    },
+    "Fetch Transcript Page": {
+      "main": [[{ "node": "Parse Transcript", "type": "main", "index": 0 }]]
+    },
+    "Parse Transcript": {
+      "main": [[{ "node": "Chunk Transcript", "type": "main", "index": 0 }]]
+    }
+  }
+}
