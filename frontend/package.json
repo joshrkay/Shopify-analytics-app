@@ -84,7 +84,7 @@
     "@vitejs/plugin-react": "^4.2.0",
     "@vitest/ui": "^1.6.1",
     "eslint": "^8.53.0",
-    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.4",
     "jsdom": "^23.0.1",
     "playwright-core": "1.49.0",
