@@ -8,7 +8,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Production / staging: set BASE_URL to your deployed origin (https://...).
  * Local webServer is skipped so tests hit the real site (Clerk key already in the prod build).
  *
- *   BASE_URL=https://app.example.com npm run test:e2e:prod
+ *   BASE_URL=https://app.example.com npm run test:e2e:prod   # smoke.spec.ts only
  *   BASE_URL=https://app.example.com npm run test:e2e:prod:ui
  *
  * Watch the real Chromium window (not just the Playwright panel):
