@@ -11,6 +11,12 @@ import { defineConfig, devices } from '@playwright/test';
  *   BASE_URL=https://app.example.com npm run test:e2e:prod
  *   BASE_URL=https://app.example.com npm run test:e2e:prod:ui
  *
+ * Watch the real Chromium window (not just the Playwright panel):
+ *   npm run test:e2e:visual
+ *   BASE_URL=https://app.example.com npm run test:e2e:visual
+ * In UI mode, turn ON "Show browser" in the left sidebar (eye / browser icon).
+ * Optional: npm run test:e2e:visual:ui — then enable "Show browser" before Run all.
+ *
  * Optional: PLAYWRIGHT_SKIP_WEB_SERVER=1 to reuse an already-running local dev server
  * with a custom BASE_URL (e.g. http://127.0.0.1:3000).
  *

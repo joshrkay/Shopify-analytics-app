@@ -80,10 +80,13 @@ npm run build           # Production build: tsc && vite build
 npm run lint            # ESLint with --max-warnings 0
 npm run test            # Run tests (Vitest)
 npm run test:ui         # Vitest UI
-npm run test:e2e        # Playwright E2E (local Vite + all specs)
+npm run test:e2e        # Playwright E2E (local Vite; excludes slow @visual-tour)
 npm run test:e2e:ui     # Playwright interactive UI (local)
 npm run test:e2e:install # One-time: install Chromium for Playwright
-# E2E against production (uses prod build’s Clerk key — no local secret needed):
+# Headed “watch the app” tour (real Chromium window, scrolls key routes):
+npm run test:e2e:visual
+BASE_URL=https://<your-prod-host> npm run test:e2e:visual
+# E2E smoke only against production (smoke.spec.ts):
 BASE_URL=https://<your-prod-host> npm run test:e2e:prod
 BASE_URL=https://<your-prod-host> npm run test:e2e:prod:ui
 ```

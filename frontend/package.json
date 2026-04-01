@@ -11,11 +11,13 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui --ui-host=127.0.0.1 --ui-port=9323",
+    "test:e2e": "playwright test --grep-invert \"@visual-tour\"",
+    "test:e2e:ui": "playwright test --ui --ui-host=127.0.0.1 --ui-port=9323 --grep-invert \"@visual-tour\"",
     "test:e2e:install": "playwright install chromium",
-    "test:e2e:prod": "playwright test --grep-invert @local-only",
-    "test:e2e:prod:ui": "playwright test --ui --ui-host=127.0.0.1 --ui-port=9323 --grep-invert @local-only"
+    "test:e2e:prod": "playwright test tests/e2e/smoke.spec.ts",
+    "test:e2e:prod:ui": "playwright test --ui --ui-host=127.0.0.1 --ui-port=9323 tests/e2e/smoke.spec.ts",
+    "test:e2e:visual": "playwright test --grep \"@visual-tour\" --headed --workers=1 --slow-mo=200",
+    "test:e2e:visual:ui": "playwright test --ui --ui-host=127.0.0.1 --ui-port=9323 --grep \"@visual-tour\" --headed"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.60.0",
