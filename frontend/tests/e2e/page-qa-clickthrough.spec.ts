@@ -30,7 +30,8 @@ async function clickVisibleButtons(page: import('@playwright/test').Page) {
   }
 }
 
-test.describe('Harness page QA clickthrough', () => {
+// Uses /e2e/test-harness.html from the dev server — not shipped to production builds.
+test.describe('Harness page QA clickthrough', { tag: '@local-only' }, () => {
   for (const route of QA_ROUTES) {
     test(`route ${route} renders and buttons are clickable`, async ({ page }) => {
       const consoleErrors: string[] = [];

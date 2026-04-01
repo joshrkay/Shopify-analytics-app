@@ -3,14 +3,37 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright E2E test configuration for MarkInsight.
  *
- * Run with: npx playwright test
- * Debug with: npx playwright test --debug
- * UI mode:    npm run test:e2e:ui
+ * Local (default): starts Vite on 127.0.0.1:3000 automatically.
  *
- * Note: Do not use process.env.CI to disable webServer — many dev environments
- * (including IDEs) set CI=true, which would skip Vite and cause ERR_CONNECTION_REFUSED.
+ * Production / staging: set BASE_URL to your deployed origin (https://...).
+ * Local webServer is skipped so tests hit the real site (Clerk key already in the prod build).
+ *
+ *   BASE_URL=https://app.example.com npm run test:e2e:prod
+ *   BASE_URL=https://app.example.com npm run test:e2e:prod:ui
+ *
+ * Optional: PLAYWRIGHT_SKIP_WEB_SERVER=1 to reuse an already-running local dev server
+ * with a custom BASE_URL (e.g. http://127.0.0.1:3000).
+ *
+ * Note: Do not use process.env.CI to disable webServer — many IDEs set CI=true.
  */
 const inGithubActions = !!process.env.GITHUB_ACTIONS;
+
+const defaultBase = 'http://127.0.0.1:3000';
+const baseURL = process.env.BASE_URL || process.env.E2E_BASE_URL || defaultBase;
+
+function isLocalBaseUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+const skipWebServer =
+  inGithubActions ||
+  process.env.PLAYWRIGHT_SKIP_WEB_SERVER === '1' ||
+  !isLocalBaseUrl(baseURL);
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -20,8 +43,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? 'github' : 'html',
   use: {
-    // 127.0.0.1 avoids ::1 vs IPv4 mismatches on some hosts
-    baseURL: process.env.BASE_URL || 'http://127.0.0.1:3000',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -31,12 +53,9 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  /* Start Vite before tests everywhere except GitHub Actions (where you provide your own URL). */
-  webServer: inGithubActions
+  webServer: skipWebServer
     ? undefined
     : {
-        // Bind IPv4 explicitly — Playwright's readiness probe uses 127.0.0.1; default Vite
-        // "localhost" can be IPv6-only (::1) on some systems and never answer the probe.
         command: 'npx vite --host 127.0.0.1 --port 3000',
         url: 'http://127.0.0.1:3000',
         reuseExistingServer: true,
