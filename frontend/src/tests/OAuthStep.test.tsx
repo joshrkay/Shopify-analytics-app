@@ -52,7 +52,7 @@ describe('OAuthStep', () => {
   });
 
   it('shows spinner when loading', () => {
-    const { container } = renderWithPolaris(
+    renderWithPolaris(
       <OAuthStep
         platform={mockPlatform}
         loading={true}
@@ -62,7 +62,7 @@ describe('OAuthStep', () => {
       />,
     );
 
-    expect(container.querySelector('[class*="Spinner"]')).toBeTruthy();
+    expect(screen.getAllByLabelText('Loading').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/redirecting to meta ads/i)).toBeInTheDocument();
   });
 

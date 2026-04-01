@@ -8,17 +8,8 @@
  * Phase 3 — Subphase 3.4: Connection Wizard Steps 1-3
  */
 
-import {
-  BlockStack,
-  Text,
-  Button,
-  Checkbox,
-  InlineStack,
-  Spinner,
-  Banner,
-  Box,
-  Badge,
-} from '@shopify/polaris';
+import { Loader2 } from 'lucide-react';
+import { cn } from '../../ui/utils';
 import type { AccountOption } from '../../../types/sourceConnection';
 
 interface AccountSelectStepProps {
@@ -53,93 +44,107 @@ export function AccountSelectStep({
 
   if (loading) {
     return (
-      <BlockStack gap="400" inlineAlign="center">
-        <Spinner size="large" />
-        <Text as="p" tone="subdued">
-          Loading accounts...
-        </Text>
-      </BlockStack>
+      <div className="flex flex-col items-center gap-4 py-8">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-600" aria-label="Loading" />
+        <p className="text-sm text-gray-600">Loading accounts...</p>
+      </div>
     );
   }
 
   return (
-    <BlockStack gap="500">
-      <BlockStack gap="200">
-        <Text as="h2" variant="headingLg">
-          Select Accounts
-        </Text>
-        <Text as="p" variant="bodyMd" tone="subdued">
-          Choose which accounts to sync data from.
-        </Text>
-      </BlockStack>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <h2 className="text-xl font-semibold text-gray-900">Select Accounts</h2>
+        <p className="text-sm text-gray-600">Choose which accounts to sync data from.</p>
+      </div>
 
       {error && (
-        <Banner tone="critical">
-          <p>{error}</p>
-        </Banner>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
       )}
 
       {accounts.length === 0 && !error ? (
-        <Banner tone="warning">
-          <p>No accounts found. Go back and re-authorize to try again.</p>
-        </Banner>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          No accounts found. Go back and re-authorize to try again.
+        </div>
       ) : (
         <>
-          <InlineStack gap="200">
-            <Button variant="plain" onClick={onSelectAll}>
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
               Select All
-            </Button>
-            <Button variant="plain" onClick={onDeselectAll}>
+            </button>
+            <button
+              type="button"
+              onClick={onDeselectAll}
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
               Deselect All
-            </Button>
-          </InlineStack>
+            </button>
+          </div>
 
-          <BlockStack gap="200">
+          <div className="flex flex-col gap-2">
             {accounts.map((account) => (
-              <Box
+              <div
                 key={account.id}
-                background="bg-surface"
-                borderColor="border"
-                borderWidth="025"
-                borderRadius="200"
-                padding="300"
+                className="rounded-lg border border-gray-200 bg-white p-3"
               >
-                <InlineStack align="space-between" blockAlign="center">
-                  <Checkbox
-                    label={account.accountName}
-                    helpText={`ID: ${account.accountId}`}
-                    checked={selectedAccountIds.includes(account.id)}
-                    onChange={() => onToggleAccount(account.id)}
-                  />
-                  <InlineStack gap="200" blockAlign="center">
-                    <Badge tone={account.isEnabled ? 'success' : undefined}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="flex items-start gap-3 cursor-pointer flex-1 min-w-0">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      checked={selectedAccountIds.includes(account.id)}
+                      onChange={() => onToggleAccount(account.id)}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-gray-900">{account.accountName}</span>
+                      <span className="block text-xs text-gray-500">ID: {account.accountId}</span>
+                    </span>
+                  </label>
+                  <div className="flex items-center gap-3 pl-7 sm:pl-0 shrink-0">
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                        account.isEnabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
+                      )}
+                    >
                       {account.isEnabled ? 'Active' : 'Inactive'}
-                    </Badge>
-                    <Text as="span" variant="bodySm" tone="subdued">
+                    </span>
+                    <span className="text-xs text-gray-500 whitespace-nowrap">
                       {formatSpend(account.last30dSpend)}
-                    </Text>
-                  </InlineStack>
-                </InlineStack>
-              </Box>
+                    </span>
+                  </div>
+                </div>
+              </div>
             ))}
-          </BlockStack>
+          </div>
         </>
       )}
 
-      <Banner tone="info">
-        <p>You can change this later in settings.</p>
-      </Banner>
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        You can change this later in settings.
+      </div>
 
-      <InlineStack gap="200" align="end">
-        <Button onClick={onBack}>Back</Button>
-        <Button
-          variant="primary"
+      <div className="flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Back
+        </button>
+        <button
+          type="button"
           onClick={onConfirm}
           disabled={selectedCount === 0}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {selectedCount > 0 ? `Connect (${selectedCount})` : 'Connect'} →
-        </Button>
-      </InlineStack>
-    </BlockStack>
+        </button>
+      </div>
+    </div>
   );
 }

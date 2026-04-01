@@ -9,7 +9,8 @@
  */
 
 import { useState } from 'react';
-import { BlockStack, Text, ProgressBar, Spinner, Banner, InlineStack, Button } from '@shopify/polaris';
+import { Loader2 } from 'lucide-react';
+import { cn } from '../../ui/utils';
 import type { DataSourceDefinition, DetailedSyncProgress } from '../../../types/sourceConnection';
 
 interface SyncProgressStepProps {
@@ -70,10 +71,14 @@ function getSyncStages(progress: DetailedSyncProgress | null) {
 
 function getStageIcon(status: 'completed' | 'in_progress' | 'pending' | 'failed') {
   switch (status) {
-    case 'completed': return '✓';
-    case 'in_progress': return '◎';
-    case 'failed': return '✗';
-    default: return '○';
+    case 'completed':
+      return '✓';
+    case 'in_progress':
+      return '◎';
+    case 'failed':
+      return '✗';
+    default:
+      return '○';
   }
 }
 
@@ -83,58 +88,84 @@ export function SyncProgressStep({ platform, progress, error, onNavigateDashboar
   const percent = progress?.percentComplete ?? 0;
 
   return (
-    <BlockStack gap="500">
-      <BlockStack gap="200" inlineAlign="center">
-        <InlineStack align="center" gap="200">
-          <Spinner size="small" />
-          <Text as="h2" variant="headingLg" alignment="center">
-            Syncing your {platform.displayName} data
-          </Text>
-        </InlineStack>
-      </BlockStack>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2 items-center text-center">
+        <div className="flex items-center justify-center gap-2">
+          <Loader2 className="h-5 w-5 animate-spin text-blue-600 shrink-0" aria-label="Loading" />
+          <h2 className="text-xl font-semibold text-gray-900">Syncing your {platform.displayName} data</h2>
+        </div>
+      </div>
 
-      <ProgressBar progress={percent} size="small" />
+      <div className="w-full">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+          <div
+            className="h-full rounded-full bg-blue-600 transition-[width] duration-300"
+            style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+            role="progressbar"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          />
+        </div>
+      </div>
 
-      <BlockStack gap="200">
+      <div className="flex flex-col gap-2">
         {stages.map((stage) => (
-          <InlineStack key={stage.label} gap="200" blockAlign="center">
-            <Text
-              as="span"
-              variant="bodyMd"
-              tone={stage.status === 'failed' ? 'critical' : stage.status === 'completed' ? 'success' : 'subdued'}
+          <div key={stage.label} className="flex items-center gap-2">
+            <span
+              className={cn(
+                'text-sm w-4 text-center',
+                stage.status === 'failed'
+                  ? 'text-red-600'
+                  : stage.status === 'completed'
+                    ? 'text-green-600'
+                    : 'text-gray-500'
+              )}
             >
               {getStageIcon(stage.status)}
-            </Text>
-            <Text
-              as="span"
-              variant="bodyMd"
-              fontWeight={stage.status === 'in_progress' ? 'semibold' : 'regular'}
-              tone={stage.status === 'pending' ? 'subdued' : undefined}
+            </span>
+            <span
+              className={cn(
+                'text-sm',
+                stage.status === 'in_progress' ? 'font-semibold text-gray-900' : '',
+                stage.status === 'pending' ? 'text-gray-500' : 'text-gray-800'
+              )}
             >
               {stage.label}
-            </Text>
-          </InlineStack>
+            </span>
+          </div>
         ))}
-      </BlockStack>
+      </div>
 
       {error && (
-        <Banner tone="critical" title="Sync Error">
-          <p>{error}</p>
-        </Banner>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <h3 className="text-sm font-semibold text-red-900 mb-1">Sync Error</h3>
+          <p className="text-sm text-red-800">{error}</p>
+        </div>
       )}
 
-      <Banner tone="info">
-        <p>Feel free to explore the app while your data syncs. We'll notify you when it's complete.</p>
-      </Banner>
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        Feel free to explore the app while your data syncs. We&apos;ll notify you when it&apos;s complete.
+      </div>
 
       {!error && !ctaDismissed && onNavigateDashboard && (
-        <InlineStack gap="200" align="end">
-          <Button onClick={() => setCtaDismissed(true)}>Stay here</Button>
-          <Button variant="primary" onClick={onNavigateDashboard}>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setCtaDismissed(true)}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Stay here
+          </button>
+          <button
+            type="button"
+            onClick={onNavigateDashboard}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
             Continue to Dashboard
-          </Button>
-        </InlineStack>
+          </button>
+        </div>
       )}
-    </BlockStack>
+    </div>
   );
 }

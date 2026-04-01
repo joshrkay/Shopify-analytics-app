@@ -146,11 +146,11 @@ describe('AccountSelectStep', () => {
   });
 
   it('loading state shows spinner while fetching accounts', () => {
-    const { container } = renderWithPolaris(
+    renderWithPolaris(
       <AccountSelectStep {...defaultProps} loading={true} />,
     );
 
-    expect(container.querySelector('[class*="Spinner"]')).toBeTruthy();
+    expect(screen.getByLabelText('Loading')).toBeInTheDocument();
   });
 
   it('"Back" button calls onBack', async () => {

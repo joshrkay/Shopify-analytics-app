@@ -7,7 +7,6 @@
  * Phase 3 — Subphase 3.5: Connection Wizard Steps 4-6
  */
 
-import { BlockStack, Text, Banner, Button, InlineStack, List } from '@shopify/polaris';
 import type { DataSourceDefinition } from '../../../types/sourceConnection';
 
 interface SuccessStepProps {
@@ -18,33 +17,42 @@ interface SuccessStepProps {
 
 export function SuccessStep({ platform, onConnectAnother, onViewDashboard }: SuccessStepProps) {
   return (
-    <BlockStack gap="500">
-      <Banner tone="success" title="Successfully Connected!">
-        <p>
+    <div className="flex flex-col gap-8">
+      <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+        <h3 className="text-sm font-semibold text-green-900 mb-1">Successfully Connected!</h3>
+        <p className="text-sm text-green-800">
           {platform.displayName} is now connected and your data is syncing.
         </p>
-      </Banner>
+      </div>
 
-      <BlockStack gap="300">
-        <Text as="h3" variant="headingSm">
-          What's next?
-        </Text>
-        <List>
-          <List.Item>View your dashboard to see incoming data</List.Item>
-          <List.Item>Connect another data source for richer insights</List.Item>
-          <List.Item>Configure sync settings in the Data Sources page</List.Item>
-          <List.Item>Set up alerts for data quality issues</List.Item>
-        </List>
-      </BlockStack>
+      <div className="flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-gray-900">What&apos;s next?</h3>
+        <ul className="list-disc pl-5 space-y-2 text-sm text-gray-700">
+          <li>View your dashboard to see incoming data</li>
+          <li>Connect another data source for richer insights</li>
+          <li>Configure sync settings in the Data Sources page</li>
+          <li>Set up alerts for data quality issues</li>
+        </ul>
+      </div>
 
-      <InlineStack gap="200" align="end">
+      <div className="flex flex-wrap justify-end gap-2">
         {onConnectAnother && (
-          <Button onClick={onConnectAnother}>Connect Another Source</Button>
+          <button
+            type="button"
+            onClick={onConnectAnother}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Connect Another Source
+          </button>
         )}
-        <Button variant="primary" onClick={onViewDashboard}>
+        <button
+          type="button"
+          onClick={onViewDashboard}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
           Go to Dashboard
-        </Button>
-      </InlineStack>
-    </BlockStack>
+        </button>
+      </div>
+    </div>
   );
 }

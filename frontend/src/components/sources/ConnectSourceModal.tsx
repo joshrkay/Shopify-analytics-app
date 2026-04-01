@@ -15,17 +15,8 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import {
-  Modal,
-  BlockStack,
-  InlineGrid,
-  TextField,
-  Button,
-  Banner,
-  Text,
-  Spinner,
-  InlineStack,
-} from '@shopify/polaris';
+import { X, Loader2 } from 'lucide-react';
+
 import type { DataSourceDefinition } from '../../types/sourceConnection';
 import { useConnectionWizard, useSourceCatalog } from '../../hooks/useSourceConnection';
 import { ConnectionSteps } from './ConnectionSteps';
@@ -40,18 +31,6 @@ interface ConnectSourceModalProps {
 
 /**
  * Modal wizard for connecting new data sources.
- *
- * Usage:
- * ```tsx
- * <ConnectSourceModal
- *   open={showModal}
- *   onClose={() => setShowModal(false)}
- *   onSuccess={(id) => {
- *     console.log('Connected:', id);
- *     loadSources();
- *   }}
- * />
- * ```
  */
 export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSourceModalProps) {
   const { catalog, loading: loadingCatalog } = useSourceCatalog();
@@ -65,12 +44,10 @@ export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSo
     reset,
   } = useConnectionWizard();
 
-  // Platform configuration state
   const [shopDomain, setShopDomain] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [configuring, setConfiguring] = useState(false);
 
-  // Auto-select platform when modal opens with an initialPlatform
   useEffect(() => {
     if (open && initialPlatform) {
       selectPlatform(initialPlatform);
@@ -86,7 +63,7 @@ export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSo
   }, [reset, onClose]);
 
   const handlePlatformSelect = useCallback(
-    (platform: any) => {
+    (platform: DataSourceDefinition) => {
       selectPlatform(platform);
     },
     [selectPlatform]
@@ -99,9 +76,8 @@ export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSo
     setError(null);
 
     try {
-      const config: Record<string, any> = {};
+      const config: Record<string, unknown> = {};
 
-      // Platform-specific configuration
       if (state.selectedPlatform.platform === 'shopify') {
         if (!shopDomain) {
           setError('Shop domain is required');
@@ -122,11 +98,9 @@ export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSo
 
       configure(config);
 
-      // For OAuth platforms, initiate OAuth flow
       if (state.selectedPlatform.authType === 'oauth') {
         await startOAuth();
       } else {
-        // For API key platforms, move to test step
         await testConnection();
       }
     } catch (err) {
@@ -145,32 +119,28 @@ export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSo
     setError,
   ]);
 
-  // Step 1: Select Platform
   const renderSelectStep = () => (
-    <BlockStack gap="400">
-      <Text as="p" tone="subdued">
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-gray-600">
         Choose a data source to connect. We support e-commerce platforms, advertising networks,
         email marketing, and SMS providers.
-      </Text>
+      </p>
 
       {loadingCatalog ? (
-        <InlineStack align="center">
-          <Spinner size="small" />
-          <Text as="span" tone="subdued">
-            Loading platforms...
-          </Text>
-        </InlineStack>
+        <div className="flex items-center justify-center gap-2 py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+          <span className="text-sm text-gray-600">Loading platforms...</span>
+        </div>
       ) : (
-        <InlineGrid columns={{ xs: 1, sm: 2, md: 2 }} gap="400">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {catalog.map((platform) => (
             <PlatformCard key={platform.id} platform={platform} onSelect={handlePlatformSelect} />
           ))}
-        </InlineGrid>
+        </div>
       )}
-    </BlockStack>
+    </div>
   );
 
-  // Step 2: Configure
   const renderConfigureStep = () => {
     if (!state.selectedPlatform) return null;
 
@@ -178,113 +148,161 @@ export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSo
     const isApiKey = state.selectedPlatform.authType === 'api_key';
 
     return (
-      <BlockStack gap="400">
-        <Text as="p" tone="subdued">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-gray-600">
           {isShopify
             ? 'Enter your Shopify store domain to connect.'
             : isApiKey
               ? `Enter your ${state.selectedPlatform.displayName} API credentials.`
               : `Authorize ${state.selectedPlatform.displayName} to sync your data.`}
-        </Text>
+        </p>
 
         {isShopify && (
-          <TextField
-            label="Shop Domain"
-            value={shopDomain}
-            onChange={setShopDomain}
-            placeholder="your-store.myshopify.com"
-            autoComplete="off"
-            helpText="Your Shopify store URL (e.g., your-store.myshopify.com)"
-          />
+          <div>
+            <label htmlFor="connect-shop-domain" className="block text-sm font-medium text-gray-900 mb-2">
+              Shop Domain
+            </label>
+            <input
+              id="connect-shop-domain"
+              type="text"
+              value={shopDomain}
+              onChange={(e) => setShopDomain(e.target.value)}
+              placeholder="your-store.myshopify.com"
+              autoComplete="off"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Your Shopify store URL (e.g., your-store.myshopify.com)
+            </p>
+          </div>
         )}
 
         {isApiKey && (
-          <TextField
-            label="API Key"
-            value={apiKey}
-            onChange={setApiKey}
-            type="password"
-            autoComplete="off"
-            helpText={`Your ${state.selectedPlatform.displayName} API key`}
-          />
+          <div>
+            <label htmlFor="connect-api-key" className="block text-sm font-medium text-gray-900 mb-2">
+              API Key
+            </label>
+            <input
+              id="connect-api-key"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              autoComplete="off"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Your {state.selectedPlatform.displayName} API key
+            </p>
+          </div>
         )}
 
         {!isApiKey && !isShopify && (
-          <Banner>
-            <p>
-              You'll be redirected to {state.selectedPlatform.displayName} to authorize access to
-              your account. After authorization, you'll be redirected back here.
-            </p>
-          </Banner>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+            You&apos;ll be redirected to {state.selectedPlatform.displayName} to authorize access to your
+            account. After authorization, you&apos;ll be redirected back here.
+          </div>
         )}
 
-        <InlineStack gap="200">
-          <Button onClick={handleClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleConfigure} loading={configuring}>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfigure}
+            disabled={configuring}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {configuring && <Loader2 className="h-4 w-4 animate-spin" />}
             {isApiKey ? 'Connect' : 'Continue to Authorization'}
-          </Button>
-        </InlineStack>
-      </BlockStack>
+          </button>
+        </div>
+      </div>
     );
   };
 
-  // Step 3: Authenticate (OAuth redirect happens automatically)
   const renderAuthenticateStep = () => (
-    <BlockStack gap="400" inlineAlign="center">
-      <Spinner size="large" />
-      <Text as="p" tone="subdued">
-        Redirecting to authorization...
-      </Text>
-    </BlockStack>
+    <div className="flex flex-col items-center gap-4 py-8">
+      <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+      <p className="text-sm text-gray-600 text-center">Redirecting to authorization...</p>
+    </div>
   );
 
-  // Step 4: Test Connection
   const renderTestStep = () => (
-    <BlockStack gap="400" inlineAlign="center">
-      <Spinner size="large" />
-      <Text as="p" tone="subdued">
-        Testing connection...
-      </Text>
-    </BlockStack>
+    <div className="flex flex-col items-center gap-4 py-8">
+      <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+      <p className="text-sm text-gray-600 text-center">Testing connection...</p>
+    </div>
   );
 
-  // Step 5: Complete
   const renderCompleteStep = () => (
-    <BlockStack gap="400">
-      <Banner tone="success">
-        <p>
-          {state.selectedPlatform?.displayName} connected successfully! Your data will begin
-          syncing shortly.
-        </p>
-      </Banner>
+    <div className="flex flex-col gap-4">
+      <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+        {state.selectedPlatform?.displayName} connected successfully! Your data will begin syncing
+        shortly.
+      </div>
 
-      <Text as="p">
-        You can now view and manage this connection in your Data Sources page. The initial sync may
-        take a few minutes depending on your data volume.
-      </Text>
+      <p className="text-sm text-gray-800">
+        You can now view and manage this connection in your Data Sources page. The initial sync may take a
+        few minutes depending on your data volume.
+      </p>
 
-      <Button variant="primary" onClick={handleClose}>
+      <button
+        type="button"
+        onClick={handleClose}
+        className="self-start rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+      >
         Done
-      </Button>
-    </BlockStack>
+      </button>
+    </div>
   );
+
+  if (!open) return null;
 
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      title="Connect Data Source"
-      size="large"
-      primaryAction={undefined}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="connect-source-modal-title"
+      onClick={handleClose}
     >
-      <Modal.Section>
-        <BlockStack gap="400">
+      <div
+        className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+          <h2 id="connect-source-modal-title" className="text-lg font-semibold text-gray-900">
+            Connect Data Source
+          </h2>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="p-2 hover:bg-gray-100 rounded-lg"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5 text-gray-600" />
+          </button>
+        </div>
+
+        <div className="p-6 flex flex-col gap-4">
           <ConnectionSteps currentStep={state.step} />
 
           {state.error && (
-            <Banner tone="critical" onDismiss={() => setError(null)}>
-              <p>{state.error}</p>
-            </Banner>
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex justify-between gap-4 items-start">
+              <p className="text-sm text-red-800 flex-1">{state.error}</p>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="text-sm font-medium text-red-800 hover:underline shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
           )}
 
           {state.step === 'select' && renderSelectStep()}
@@ -292,8 +310,8 @@ export function ConnectSourceModal({ open, onClose, initialPlatform }: ConnectSo
           {state.step === 'authenticate' && renderAuthenticateStep()}
           {state.step === 'test' && renderTestStep()}
           {state.step === 'complete' && renderCompleteStep()}
-        </BlockStack>
-      </Modal.Section>
-    </Modal>
+        </div>
+      </div>
+    </div>
   );
 }

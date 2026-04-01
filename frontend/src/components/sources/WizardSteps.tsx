@@ -9,7 +9,7 @@
  * Phase 3 — Subphase 3.4: Connection Wizard
  */
 
-import { InlineStack, Badge, Text } from '@shopify/polaris';
+import { cn } from '../ui/utils';
 import type { WizardStep, WizardStepMeta } from '../../types/sourceConnection';
 
 interface WizardStepsProps {
@@ -25,39 +25,50 @@ const WIZARD_STEPS: WizardStepMeta[] = [
   { key: 'success', label: 'Done', order: 6 },
 ];
 
+function stepBadgeClass(isActive: boolean, isCompleted: boolean) {
+  if (isActive) return 'bg-blue-100 text-blue-800';
+  if (isCompleted) return 'bg-green-100 text-green-800';
+  return 'bg-gray-100 text-gray-700';
+}
+
 export function WizardSteps({ currentStep }: WizardStepsProps) {
   const currentOrder = WIZARD_STEPS.find((s) => s.key === currentStep)?.order ?? 1;
 
   return (
-    <InlineStack gap="300" align="center" wrap={false}>
+    <div className="flex flex-wrap items-center gap-3">
       {WIZARD_STEPS.map((step, index) => {
         const isActive = step.key === currentStep;
         const isCompleted = step.order < currentOrder;
         const isFuture = step.order > currentOrder;
 
         return (
-          <InlineStack key={step.key} gap="200" blockAlign="center" wrap={false}>
+          <div key={step.key} className="flex items-center gap-2 shrink-0">
             {index > 0 && (
-              <Text as="span" tone="subdued">
+              <span className="text-gray-400 text-sm" aria-hidden>
                 →
-              </Text>
+              </span>
             )}
-            <InlineStack gap="100" blockAlign="center">
-              <Badge tone={isActive ? 'info' : isCompleted ? 'success' : undefined}>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full text-xs font-medium',
+                  stepBadgeClass(isActive, isCompleted)
+                )}
+              >
                 {String(step.order)}
-              </Badge>
-              <Text
-                as="span"
-                variant="bodySm"
-                fontWeight={isActive ? 'semibold' : 'regular'}
-                tone={isFuture ? 'subdued' : undefined}
+              </span>
+              <span
+                className={cn(
+                  'text-sm',
+                  isActive ? 'font-semibold text-gray-900' : isFuture ? 'text-gray-400' : 'text-gray-700'
+                )}
               >
                 {step.label}
-              </Text>
-            </InlineStack>
-          </InlineStack>
+              </span>
+            </div>
+          </div>
         );
       })}
-    </InlineStack>
+    </div>
   );
 }

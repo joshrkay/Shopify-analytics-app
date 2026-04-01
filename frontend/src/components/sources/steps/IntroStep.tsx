@@ -7,7 +7,6 @@
  * Phase 3 — Subphase 3.4: Connection Wizard Steps 1-3
  */
 
-import { BlockStack, Text, List, Banner, Button, InlineStack, Box } from '@shopify/polaris';
 import type { DataSourceDefinition } from '../../../types/sourceConnection';
 import type { SourcePlatform } from '../../../types/sources';
 
@@ -91,47 +90,50 @@ export function IntroStep({ platform, onContinue, onCancel }: IntroStepProps) {
   const permissions = getPermissions(platform.platform);
 
   return (
-    <BlockStack gap="500">
-      <BlockStack gap="200" inlineAlign="center">
-        <Text as="h2" variant="headingLg" alignment="center">
-          {platform.displayName}
-        </Text>
-        <Text as="p" variant="bodyMd" tone="subdued" alignment="center">
-          {platform.description}
-        </Text>
-      </BlockStack>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2 text-center">
+        <h2 className="text-xl font-semibold text-gray-900">{platform.displayName}</h2>
+        <p className="text-sm text-gray-600">{platform.description}</p>
+      </div>
 
-      <Box>
-        <BlockStack gap="200">
-          <Text as="h3" variant="headingSm">
-            What you'll get
-          </Text>
-          <List>
-            {features.map((feature) => (
-              <List.Item key={feature}>{feature}</List.Item>
-            ))}
-          </List>
-        </BlockStack>
-      </Box>
-
-      <Banner tone="warning" title="Required Permissions">
-        <List>
-          {permissions.map((permission) => (
-            <List.Item key={permission}>{permission}</List.Item>
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">What you&apos;ll get</h3>
+        <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
+          {features.map((feature) => (
+            <li key={feature}>{feature}</li>
           ))}
-        </List>
-      </Banner>
+        </ul>
+      </div>
 
-      <Banner tone="info">
-        <p>Your data is encrypted and secure. We only request read-only access.</p>
-      </Banner>
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <h3 className="text-sm font-semibold text-amber-900 mb-2">Required Permissions</h3>
+        <ul className="list-disc pl-5 space-y-1 text-sm text-amber-900">
+          {permissions.map((permission) => (
+            <li key={permission}>{permission}</li>
+          ))}
+        </ul>
+      </div>
 
-      <InlineStack gap="200" align="end">
-        <Button onClick={onCancel}>Cancel</Button>
-        <Button variant="primary" onClick={onContinue}>
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        Your data is encrypted and secure. We only request read-only access.
+      </div>
+
+      <div className="flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
           Continue with {platform.displayName}
-        </Button>
-      </InlineStack>
-    </BlockStack>
+        </button>
+      </div>
+    </div>
   );
 }
