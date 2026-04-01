@@ -18,8 +18,13 @@ test.describe('Smoke tests', () => {
 
   test('health endpoint returns 200', async ({ request }) => {
     const response = await request.get('/api/health');
-    // 200 = backend up. 502 = proxy target refused (some setups).
-    // 500 = Vite proxy error when backend is down (common locally).
+    const raw = process.env.BASE_URL || process.env.E2E_BASE_URL || '';
+    const isHttpsRemote = /^https:\/\//i.test(raw);
+    if (isHttpsRemote) {
+      expect(response.status(), `/api/health on ${raw}`).toBe(200);
+      return;
+    }
+    // Local Vite: 502/500 when API proxy target is down.
     expect([200, 500, 502]).toContain(response.status());
   });
 });
