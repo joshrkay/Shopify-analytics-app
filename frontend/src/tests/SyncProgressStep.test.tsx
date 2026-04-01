@@ -56,11 +56,11 @@ describe('SyncProgressStep', () => {
   });
 
   it('renders progress bar', () => {
-    const { container } = renderWithPolaris(
+    renderWithPolaris(
       <SyncProgressStep platform={mockPlatform} progress={mockProgress} error={null} />,
     );
 
-    expect(container.querySelector('[class*="ProgressBar"]')).toBeTruthy();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 
   it('shows stage checklist with status icons', () => {
@@ -88,11 +88,11 @@ describe('SyncProgressStep', () => {
   });
 
   it('renders spinner when progress is null (loading)', () => {
-    const { container } = renderWithPolaris(
+    renderWithPolaris(
       <SyncProgressStep platform={mockPlatform} progress={null} error={null} />,
     );
 
-    expect(container.querySelector('[class*="Spinner"]')).toBeTruthy();
+    expect(screen.getByLabelText('Loading')).toBeInTheDocument();
   });
 
   it('"Continue to Dashboard" button calls onNavigateDashboard', async () => {

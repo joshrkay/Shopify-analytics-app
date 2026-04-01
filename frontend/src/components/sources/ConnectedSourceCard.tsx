@@ -7,7 +7,7 @@
  * Phase 3 — Subphase 3.3: Source Catalog Page
  */
 
-import { Box, BlockStack, InlineStack, Text, Badge, Button } from '@shopify/polaris';
+import { cn } from '../ui/utils';
 import type { Source, SourceStatus } from '../../types/sources';
 import { PLATFORM_DISPLAY_NAMES } from '../../types/sources';
 
@@ -20,17 +20,18 @@ interface ConnectedSourceCardProps {
 }
 
 function getStatusBadge(status: SourceStatus) {
+  const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium shrink-0';
   switch (status) {
     case 'active':
-      return <Badge tone="success">Active</Badge>;
+      return <span className={cn(base, 'bg-green-100 text-green-800')}>Active</span>;
     case 'pending':
-      return <Badge tone="attention">Pending</Badge>;
+      return <span className={cn(base, 'bg-amber-100 text-amber-800')}>Pending</span>;
     case 'failed':
-      return <Badge tone="critical">Error</Badge>;
+      return <span className={cn(base, 'bg-red-100 text-red-800')}>Error</span>;
     case 'inactive':
-      return <Badge>Inactive</Badge>;
+      return <span className={cn(base, 'bg-gray-100 text-gray-800')}>Inactive</span>;
     default:
-      return <Badge>{status}</Badge>;
+      return <span className={cn(base, 'bg-gray-100 text-gray-800')}>{status}</span>;
   }
 }
 
@@ -59,53 +60,51 @@ export function ConnectedSourceCard({
   testing = false,
 }: ConnectedSourceCardProps) {
   return (
-    <Box
-      background="bg-surface"
-      borderColor="border"
-      borderWidth="025"
-      borderRadius="200"
-      padding="300"
-    >
-      <InlineStack align="space-between" blockAlign="center" wrap={false}>
-        <BlockStack gap="100">
-          <Text as="span" variant="bodyMd" fontWeight="semibold">
-            {source.displayName}
-          </Text>
-          <Text as="span" variant="bodySm" tone="subdued">
+    <div className="rounded-lg border border-gray-200 bg-white p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="text-sm font-semibold text-gray-900 truncate">{source.displayName}</span>
+          <span className="text-xs text-gray-500">
             {PLATFORM_DISPLAY_NAMES[source.platform] ?? source.platform}
-          </Text>
-        </BlockStack>
+          </span>
+        </div>
 
-        <InlineStack gap="400" blockAlign="center">
-          <BlockStack gap="100" inlineAlign="end">
-            <Text as="span" variant="bodySm" tone="subdued">
-              Last sync: {formatRelativeTime(source.lastSyncAt)}
-            </Text>
-          </BlockStack>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <div className="text-xs text-gray-500 sm:text-right whitespace-nowrap">
+            Last sync: {formatRelativeTime(source.lastSyncAt)}
+          </div>
 
           {getStatusBadge(source.status)}
 
-          <InlineStack gap="200">
-            <Button variant="plain" onClick={() => onManage(source)}>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onManage(source)}
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
               Manage
-            </Button>
-            <Button
-              variant="plain"
+            </button>
+            <button
+              type="button"
               onClick={() => onTestConnection(source)}
-              loading={testing}
+              disabled={testing}
+              className={cn(
+                'text-sm font-medium text-blue-600 hover:text-blue-800',
+                testing && 'opacity-50 cursor-wait'
+              )}
             >
               Test
-            </Button>
-            <Button
-              variant="plain"
-              tone="critical"
+            </button>
+            <button
+              type="button"
               onClick={() => onDisconnect(source)}
+              className="text-sm font-medium text-red-600 hover:text-red-800"
             >
               Disconnect
-            </Button>
-          </InlineStack>
-        </InlineStack>
-      </InlineStack>
-    </Box>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
