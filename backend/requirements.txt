@@ -5,7 +5,7 @@ uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
 # Authentication and JWT
-PyJWT==2.8.0
+PyJWT==2.12.1
 cryptography==41.0.7
 httpx==0.25.1
 svix==1.17.0  # Clerk webhook signature verification
