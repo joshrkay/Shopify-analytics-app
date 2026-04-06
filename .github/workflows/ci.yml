@@ -714,6 +714,27 @@ jobs:
           echo "=========================================="
           npm run build
 
+      - name: Fail if Playwright artifacts are tracked
+        run: |
+          set -euo pipefail
+          tracked_files=$(git ls-files 'frontend/playwright-report/**' 'frontend/test-results/**')
+          if [ -n "$tracked_files" ]; then
+            echo "::error::Generated Playwright artifacts must not be committed:"
+            echo "$tracked_files"
+            exit 1
+          fi
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Frontend Validation Summary
         if: always()
         run: |

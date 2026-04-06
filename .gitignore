@@ -67,3 +67,7 @@ analytics/dbt_packages/
 analytics/logs/
 analytics/*.log
 .hypothesis/
+# Playwright test artifacts
+frontend/playwright-report/
+frontend/test-results/
+
