@@ -1,8 +1,9 @@
 """
 Debug endpoints for environment and deployment status.
-These endpoints bypass authentication for troubleshooting.
 
-SECURITY: Disabled in production (ENV=production) to prevent information leakage.
+SECURITY: Debug routes are disabled by default and require BOTH:
+1. DEBUG_ROUTES_ENABLED=true
+2. Authenticated admin permission (admin:system:config)
 """
 
 import os
@@ -11,18 +12,37 @@ import json
 import logging
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
+
+from src.auth.context_resolver import AuthContext
+from src.auth.middleware import require_permission
+from src.constants.permissions import Permission
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _production_guard():
-    """Return a 404 response if running in production, else None."""
-    if os.getenv("ENV") == "production":
+def is_debug_routes_enabled() -> bool:
+    """Feature flag gate for debug route exposure."""
+    return os.getenv("DEBUG_ROUTES_ENABLED", "false").strip().lower() == "true"
+
+
+def _debug_routes_guard():
+    """Return a 404 response unless debug routes are explicitly enabled."""
+    if not is_debug_routes_enabled():
         return JSONResponse(status_code=404, content={"detail": "Not found"})
     return None
+
+
+def require_debug_admin_auth(
+    auth: AuthContext = Depends(require_permission(Permission.ADMIN_SYSTEM_CONFIG)),
+) -> AuthContext:
+    """Debug routes require authenticated admin permission."""
+    return auth
+
+
+router.dependencies.append(Depends(require_debug_admin_auth))
 
 
 @router.get("/debug/env-status")
@@ -31,7 +51,7 @@ def env_status():
     Check which environment variables are configured.
     Returns status without exposing sensitive values.
     """
-    blocked = _production_guard()
+    blocked = _debug_routes_guard()
     if blocked:
         return blocked
     # Environment variables to check
@@ -90,7 +110,7 @@ async def auth_check(request: Request):
     4. If Authorization header is provided, decodes (without verifying)
        the JWT payload to show issuer/expiry/org_id for comparison
     """
-    blocked = _production_guard()
+    blocked = _debug_routes_guard()
     if blocked:
         return blocked
 

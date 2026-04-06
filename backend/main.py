@@ -260,8 +260,11 @@ app.add_middleware(AuditLoggingMiddleware)
 # Include health route (bypasses authentication)
 app.include_router(health.router)
 
-# Include debug routes (bypasses authentication)
-app.include_router(debug.router)
+# Include debug routes only when explicitly enabled.
+# SECURITY: disabled by default in all environments.
+if debug.is_debug_routes_enabled():
+    logger.warning("Debug routes enabled via DEBUG_ROUTES_ENABLED=true")
+    app.include_router(debug.router)
 
 # Include billing routes (requires authentication)
 app.include_router(billing.router)

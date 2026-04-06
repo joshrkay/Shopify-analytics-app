@@ -29,6 +29,8 @@ services:
       # ── Core ──────────────────────────────────────────────────────
       - key: ENV
         value: production
+      - key: DEBUG_ROUTES_ENABLED
+        value: "false"
       # Database connection (auto-injected from Render Postgres)
       - key: DATABASE_URL
         fromDatabase:
@@ -177,6 +179,8 @@ services:
     envVars:
       - key: ENV
         value: production
+      - key: DEBUG_ROUTES_ENABLED
+        value: "false"
       - key: DATABASE_URL
         fromDatabase:
           name: markinsight-db
