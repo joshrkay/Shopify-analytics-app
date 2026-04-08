@@ -52,6 +52,49 @@ export async function listSources(): Promise<Source[]> {
 // =============================================================================
 
 /**
+ * Raw catalog entry shape returned by the backend (snake_case).
+ */
+interface RawCatalogEntry {
+  id: string;
+  platform: string;
+  display_name: string;
+  description: string;
+  auth_type: string;
+  category: string;
+  is_enabled: boolean;
+  can_connect?: boolean;
+  capabilities?: { connect?: boolean; canConnect?: boolean };
+}
+
+interface RawCatalogResponse {
+  sources: RawCatalogEntry[];
+  total: number;
+}
+
+/**
+ * Normalize a snake_case catalog entry from the backend into a camelCase
+ * DataSourceDefinition for the frontend.
+ *
+ * The backend returns snake_case (is_enabled, display_name, auth_type) but the
+ * frontend's DataSourceDefinition and isPlatformConnectable() expect camelCase
+ * (isEnabled, displayName, authType). Without this mapping, isEnabled is always
+ * undefined and every platform shows as "Not available".
+ */
+function normalizeCatalogEntry(raw: RawCatalogEntry): DataSourceDefinition {
+  return {
+    id: raw.id,
+    platform: raw.platform as DataSourceDefinition['platform'],
+    displayName: raw.display_name,
+    description: raw.description,
+    authType: raw.auth_type as DataSourceDefinition['authType'],
+    category: raw.category as DataSourceDefinition['category'],
+    isEnabled: raw.is_enabled,
+    canConnect: raw.can_connect,
+    capabilities: raw.capabilities,
+  };
+}
+
+/**
  * Get list of available data source platforms that can be connected.
  *
  * Returns catalog of all supported platforms (Shopify, Meta Ads, Google Ads, etc.)
@@ -63,8 +106,8 @@ export async function getAvailableSources(): Promise<DataSourceDefinition[]> {
     method: 'GET',
     headers,
   });
-  const data = await handleResponse<CatalogResponse>(response);
-  return data.sources;
+  const data = await handleResponse<RawCatalogResponse>(response);
+  return data.sources.map(normalizeCatalogEntry);
 }
 
 // =============================================================================
