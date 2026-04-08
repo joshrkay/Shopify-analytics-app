@@ -1,0 +1,48 @@
+name: Preview Smoke Tests
+
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment_status.environment != 'production'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve preview URL
+        id: preview
+        run: |
+          url="${{ github.event.deployment_status.target_url }}"
+          if [ -z "$url" ]; then
+            echo "No preview target_url found"
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke check landing page
+        run: |
+          url="${{ steps.preview.outputs.url }}"
+          echo "Checking $url"
+          code=$(curl -L -s -o /tmp/preview.html -w "%{http_code}" "$url")
+          if [ "$code" -lt 200 ] || [ "$code" -ge 400 ]; then
+            echo "Preview returned HTTP $code"
+            exit 1
+          fi
+          grep -Eiq "<html|<!doctype html|shopify|analytics" /tmp/preview.html
+
+      - name: Smoke check health endpoints
+        run: |
+          base="${{ steps.preview.outputs.url }}"
+          if curl -L -s -f "$base/health" >/dev/null; then
+            echo "Health endpoint passed: /health"
+            exit 0
+          fi
+          if curl -L -s -f "$base/api/health/readiness" >/dev/null; then
+            echo "Health endpoint passed: /api/health/readiness"
+            exit 0
+          fi
+          echo "Health endpoint not exposed on preview; landing page smoke already passed."

@@ -25,7 +25,7 @@ VALUES (
     'US',
     'active'
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- 2. Seed 60 test orders into airbyte_raw.orders (V2 typed columns)
 -- Spread across 90 days with varied amounts and statuses.
@@ -119,4 +119,4 @@ VALUES
 (gen_random_uuid()::text, NOW(), '{"errors": []}'::jsonb, 0, 900059, '#1059', 'frank@example.com', 'test-1111111111111111111111111111111111711111111111129799', NOW() - INTERVAL '12 hours', NOW() - INTERVAL '12 hours', 'pending', 'unfulfilled', 79.99, 69.99, 10.00, 'USD', 1059, true, false, 0, 69.99, 79.99, 79.99, 69.99, 10.00, 0, 79.99, 0, false, false, '{"shop_money":{"amount":"5.99","currency_code":"USD"}}'::jsonb, '{"id": 800006}'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '["bogus"]'::jsonb, '[]'::jsonb, '[]'::jsonb),
 (gen_random_uuid()::text, NOW(), '{"errors": []}'::jsonb, 0, 900060, '#1060', 'grace@example.com', 'test-1111111111111111111111111111111111711111111111129799', NOW() - INTERVAL '4 hours', NOW() - INTERVAL '4 hours', 'paid', 'unfulfilled', 172.00, 152.00, 20.00, 'USD', 1060, true, false, 0, 152.00, 172.00, 172.00, 152.00, 20.00, 0, 0, 0, true, false, '{"shop_money":{"amount":"5.99","currency_code":"USD"}}'::jsonb, '{"id": 800007}'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '["bogus"]'::jsonb, '[]'::jsonb, '[]'::jsonb)
 
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;

@@ -1,0 +1,97 @@
+name: PR Risk Classification
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            high:
+              - 'backend/migrations/**'
+              - 'backend/src/auth/**'
+              - 'backend/src/api/routes/billing.py'
+              - 'backend/src/services/billing_service.py'
+              - 'backend/src/services/clerk_sync_service.py'
+              - 'backend/src/services/clerk_webhook_handler.py'
+              - 'backend/src/services/agency_access_service.py'
+              - 'backend/src/services/*agent*.py'
+              - '.github/workflows/**'
+              - 'docker/**'
+              - 'render.yaml'
+            medium:
+              - 'backend/src/api/**'
+              - 'backend/src/services/**'
+              - 'backend/src/models/**'
+              - 'analytics/**'
+              - 'workers/**'
+
+      - name: Compute risk level
+        id: classify
+        run: |
+          total_changes=$(( ${{ github.event.pull_request.additions }} + ${{ github.event.pull_request.deletions }} ))
+          risk="low"
+
+          if [ "${{ steps.filter.outputs.medium }}" = "true" ]; then
+            risk="medium"
+          fi
+
+          if [ "${{ steps.filter.outputs.high }}" = "true" ] || [ "$total_changes" -gt 500 ]; then
+            risk="high"
+          fi
+
+          echo "risk=$risk" >> "$GITHUB_OUTPUT"
+          echo "total_changes=$total_changes" >> "$GITHUB_OUTPUT"
+
+      - name: Update PR labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const risk = '${{ steps.classify.outputs.risk }}';
+            const number = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const labels = ['risk:low', 'risk:medium', 'risk:high'];
+            for (const label of labels) {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name: label });
+              } catch (_) {}
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: number,
+              labels: [`risk:${risk}`],
+            });
+
+      - name: Publish status check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const risk = '${{ steps.classify.outputs.risk }}';
+            const total = '${{ steps.classify.outputs.total_changes }}';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'success',
+              context: 'review/risk-classification',
+              description: `Risk=${risk}, changed lines=${total}`,
+            });

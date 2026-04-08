@@ -1,0 +1,85 @@
+name: L3 Security Sign-off
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  enforce-l3:
+    runs-on: ubuntu-latest
+    env:
+      SECURITY_REVIEWERS: joshrkay
+    steps:
+      - name: Enforce conditional L3 sign-off
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const prNumber = context.payload.pull_request
+              ? context.payload.pull_request.number
+              : context.payload.review.pull_request_url.split('/').pop();
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: Number(prNumber),
+            });
+
+            const labels = (pr.labels || []).map(l => l.name);
+            const isHighRisk = labels.includes('risk:high');
+
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const latestByUser = new Map();
+            for (const review of reviews) {
+              latestByUser.set(review.user.login, review.state);
+            }
+
+            const approvers = [...latestByUser.entries()]
+              .filter(([, state]) => state === 'APPROVED')
+              .map(([login]) => login);
+
+            const securityReviewers = (process.env.SECURITY_REVIEWERS || '')
+              .split(',')
+              .map(v => v.trim().replace(/^@/, ''))
+              .filter(Boolean);
+
+            const hasSecurityApproval = securityReviewers.length === 0
+              ? true
+              : approvers.some(login => securityReviewers.includes(login));
+
+            let state = 'success';
+            let description = 'L3 sign-off not required (risk:low or risk:medium)';
+
+            if (isHighRisk) {
+              const hasThreeApprovals = approvers.length >= 3;
+              if (!hasThreeApprovals || !hasSecurityApproval) {
+                state = 'pending';
+                description = 'Awaiting L3 sign-off (need 3 approvals incl. security reviewer)';
+              } else {
+                description = 'L3 sign-off satisfied (3 approvals incl. security reviewer)';
+              }
+            }
+
+            await github.rest.repos.createCommitStatus({
+              owner,
+              repo,
+              sha: pr.head.sha,
+              state,
+              context: 'review/security-signoff',
+              description,
+            });

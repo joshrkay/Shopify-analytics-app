@@ -1,0 +1,76 @@
+name: Browser Sign-off Check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce browser sign-off checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const prNumber = context.payload.pull_request
+              ? context.payload.pull_request.number
+              : context.payload.review.pull_request_url.split('/').pop();
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: Number(prNumber),
+            });
+
+            const body = pr.body || '';
+            const browsers = ['Chrome', 'Firefox', 'Edge', 'Safari'];
+            const checked = browsers.filter((browser) => {
+              const regex = new RegExp(`-\\s*\\[[xX]\\]\\s*${browser}\\b`, 'm');
+              return regex.test(body);
+            });
+            const missing = browsers.filter((browser) => !checked.includes(browser));
+
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const latestByUser = new Map();
+            for (const review of reviews) {
+              latestByUser.set(review.user.login, review.state);
+            }
+            const approvals = [...latestByUser.values()].filter((state) => state === 'APPROVED').length;
+            const l1l2Satisfied = approvals >= 2;
+            const browsersSatisfied = missing.length === 0;
+
+            const state = l1l2Satisfied && browsersSatisfied ? 'success' : 'pending';
+
+            let description = '';
+            if (!l1l2Satisfied) {
+              description = `Awaiting L1/L2 approvals (${approvals}/2)`;
+            } else if (!browsersSatisfied) {
+              description = `Awaiting browser checks: ${missing.join(', ')}`;
+            } else {
+              description = 'All browser sign-offs complete (Chrome/Firefox/Edge/Safari)';
+            }
+
+            await github.rest.repos.createCommitStatus({
+              owner,
+              repo,
+              sha: pr.head.sha,
+              state,
+              context: 'review/browser-signoff',
+              description,
+            });

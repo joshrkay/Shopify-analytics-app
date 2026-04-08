@@ -1,0 +1,136 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai-review:
+    name: review/ai-code-review
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Run AI review
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.request
+
+          def gh_request(url: str, method: str = "GET", body=None):
+              headers = {
+                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              }
+              data = None
+              if body is not None:
+                  data = json.dumps(body).encode("utf-8")
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req) as resp:
+                  return json.loads(resp.read().decode("utf-8")) if resp.readable() else None
+
+          openai_key = os.getenv("OPENAI_API_KEY", "")
+          if not openai_key:
+              print("OPENAI_API_KEY is not configured. Blocking as required.")
+              sys.exit(1)
+
+          owner, repo = os.environ["GITHUB_REPOSITORY"].split("/", 1)
+          pr_number = os.environ["PR_NUMBER"]
+
+          files = []
+          page = 1
+          while True:
+              url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files?per_page=100&page={page}"
+              batch = gh_request(url)
+              if not batch:
+                  break
+              files.extend(batch)
+              if len(batch) < 100:
+                  break
+              page += 1
+
+          patches = []
+          for f in files:
+              patch = f.get("patch")
+              if patch:
+                  patches.append(f"FILE: {f['filename']}\n{patch}")
+
+          diff_text = "\n\n".join(patches)
+          if len(diff_text) > 24000:
+              diff_text = diff_text[:24000] + "\n\n[TRUNCATED]"
+
+          prompt = (
+              "Review this PR diff for defects. Focus on security, tenant isolation, auth, billing, data leaks, and correctness. "
+              "Return JSON only with keys: highest_severity (info|medium|high), summary, findings (array of short strings)."
+          )
+
+          body = {
+              "model": os.getenv("AI_REVIEW_MODEL", "gpt-4.1-mini"),
+              "temperature": 0,
+              "response_format": {"type": "json_object"},
+              "messages": [
+                  {"role": "system", "content": "You are a strict senior reviewer."},
+                  {"role": "user", "content": prompt + "\n\nDIFF:\n" + (diff_text or "No textual patch available.")},
+              ],
+          }
+
+          req = urllib.request.Request(
+              "https://api.openai.com/v1/chat/completions",
+              data=json.dumps(body).encode("utf-8"),
+              headers={
+                  "Authorization": f"Bearer {openai_key}",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(req) as resp:
+              result = json.loads(resp.read().decode("utf-8"))
+
+          content = result["choices"][0]["message"]["content"]
+          try:
+              review = json.loads(content)
+          except json.JSONDecodeError:
+              start = content.find("{")
+              end = content.rfind("}")
+              if start >= 0 and end > start:
+                  review = json.loads(content[start:end + 1])
+              else:
+                  raise
+
+          highest = (review.get("highest_severity") or "info").lower()
+          summary = review.get("summary", "")
+          findings = review.get("findings", [])
+
+          comment = "## AI Review\n"
+          comment += f"- Highest severity: `{highest}`\n"
+          if summary:
+              comment += f"- Summary: {summary}\n"
+          if findings:
+              comment += "- Findings:\n"
+              for item in findings[:10]:
+                  comment += f"  - {item}\n"
+
+          gh_request(
+              f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments",
+              method="POST",
+              body={"body": comment},
+          )
+
+          if highest == "high":
+              print("High-severity AI findings detected")
+              sys.exit(1)
+
+          print("AI review passed")
+          PY

@@ -1,0 +1,23 @@
+# Default reviewer pool (L1 peer)
+* @joshrkay
+
+# L2 lead ownership routing
+backend/src/api/** @joshrkay
+backend/src/services/** @joshrkay
+backend/src/models/** @joshrkay
+frontend/src/** @joshrkay
+analytics/** @joshrkay
+workers/** @joshrkay
+
+# L3 high-risk ownership routing
+backend/migrations/** @joshrkay
+backend/src/auth/** @joshrkay
+backend/src/api/routes/billing.py @joshrkay
+backend/src/services/billing_service.py @joshrkay
+backend/src/services/clerk_sync_service.py @joshrkay
+backend/src/services/clerk_webhook_handler.py @joshrkay
+backend/src/services/agency_access_service.py @joshrkay
+backend/src/services/*agent*.py @joshrkay
+.github/workflows/** @joshrkay
+docker/** @joshrkay
+render.yaml @joshrkay
