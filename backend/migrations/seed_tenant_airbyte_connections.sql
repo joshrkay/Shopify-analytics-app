@@ -23,7 +23,6 @@
 -- =============================================================================
 
 INSERT INTO platform.tenant_airbyte_connections (
-    id,
     tenant_id,
     airbyte_connection_id,
     airbyte_source_id,
@@ -41,7 +40,6 @@ INSERT INTO platform.tenant_airbyte_connections (
 VALUES
     -- Shopify connection
     (
-        uuid_generate_v4()::TEXT,
         '7b9aad14-bb5c-4659-a23d-a5deecc8c52a',
         'f87a1906-6cf4-482d-8667-cbadc65f8401',
         '98a06836-e979-41f5-8f96-1a560fa058e7',
@@ -60,7 +58,6 @@ VALUES
     ),
     -- Facebook Marketing connection
     (
-        uuid_generate_v4()::TEXT,
         '7b9aad14-bb5c-4659-a23d-a5deecc8c52a',
         '8bb25ebb-7497-4a7b-80b5-437e35c561f3',
         '959d55ca-5f15-44a5-801b-4b00c95f52de',
@@ -80,7 +77,6 @@ VALUES
     ),
     -- Google Ads connection
     (
-        uuid_generate_v4()::TEXT,
         '7b9aad14-bb5c-4659-a23d-a5deecc8c52a',
         '516b10d7-99ce-45fe-8cbe-0066e7670b23',
         'af6b2268-87cf-4576-9069-d5a28eddd88c',
