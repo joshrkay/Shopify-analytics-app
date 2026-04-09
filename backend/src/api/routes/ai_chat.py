@@ -19,10 +19,12 @@ from src.platform.tenant_context import get_tenant_context
 from src.api.dependencies.entitlements import check_llm_routing_entitlement
 from src.services.llm_routing_service import LLMRoutingService, LLMRoutingError
 from src.integrations.openrouter.models import ChatMessage
+from src.integrations.openrouter.client import get_openrouter_client
 from src.services.analytics_context_service import (
     get_analytics_snapshot,
     build_analytics_system_prompt,
 )
+from src.agents.analytics_agent import AnalyticsAgent
 
 logger = logging.getLogger(__name__)
 
@@ -74,23 +76,38 @@ async def ai_chat(
 
     service = LLMRoutingService(db_session, tenant_ctx.tenant_id)
 
+    try:
+        primary_model = service.get_primary_model()
+        fallback_model = service.get_fallback_model()
+    except LLMRoutingError as exc:
+        logger.error(
+            "AI chat model resolution failed",
+            extra={"tenant_id": tenant_ctx.tenant_id, "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI service is temporarily unavailable. Please try again.",
+        )
+
     messages = [
         ChatMessage(role="system", content=system_prompt),
         ChatMessage(role="user", content=body.question),
     ]
 
+    agent = AnalyticsAgent(
+        client=get_openrouter_client(),
+        primary_model=primary_model,
+        fallback_model=fallback_model,
+        db=db_session,
+        tenant_id=tenant_ctx.tenant_id,
+    )
+
     try:
-        result = await service.complete(
-            messages=messages,
-            template_key="ai_chat",
-        )
-    except LLMRoutingError as exc:
+        result = await agent.run(messages=messages)
+    except Exception as exc:
         logger.error(
-            "AI chat LLM routing failed",
-            extra={
-                "tenant_id": tenant_ctx.tenant_id,
-                "error": str(exc),
-            },
+            "AI chat agent failed",
+            extra={"tenant_id": tenant_ctx.tenant_id, "error": str(exc)},
         )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
