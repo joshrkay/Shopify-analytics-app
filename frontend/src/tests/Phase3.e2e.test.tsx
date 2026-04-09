@@ -107,8 +107,8 @@ describe('Phase 3 E2E Smoke Tests', () => {
     setupFetch({
       '/api/sources/catalog': {
         sources: [
-          { id: 'meta_ads', platform: 'meta_ads', displayName: 'Meta Ads', description: 'Facebook ads', authType: 'oauth', category: 'ads', isEnabled: true },
-          { id: 'google_ads', platform: 'google_ads', displayName: 'Google Ads', description: 'Google ads', authType: 'oauth', category: 'ads', isEnabled: true },
+          { id: 'meta_ads', platform: 'meta_ads', display_name: 'Meta Ads', description: 'Facebook ads', auth_type: 'oauth', category: 'ads', is_enabled: true },
+          { id: 'google_ads', platform: 'google_ads', display_name: 'Google Ads', description: 'Google ads', auth_type: 'oauth', category: 'ads', is_enabled: true },
         ],
         total: 2,
       },
@@ -131,7 +131,7 @@ describe('Phase 3 E2E Smoke Tests', () => {
     setupFetch({
       '/api/sources/catalog': {
         sources: [
-          { id: 'google_ads', platform: 'google_ads', displayName: 'Google Ads', description: 'Google ads', authType: 'oauth', category: 'ads', isEnabled: true },
+          { id: 'google_ads', platform: 'google_ads', display_name: 'Google Ads', description: 'Google ads', auth_type: 'oauth', category: 'ads', is_enabled: true },
         ],
         total: 1,
       },
@@ -179,9 +179,9 @@ describe('Phase 3 E2E Smoke Tests', () => {
     setupFetch({
       '/api/sources/catalog': {
         sources: [
-          { id: 'meta_ads', platform: 'meta_ads', displayName: 'Meta Ads', description: 'Facebook ads', authType: 'oauth', category: 'ads', isEnabled: true },
-          { id: 'google_ads', platform: 'google_ads', displayName: 'Google Ads', description: 'Google ads', authType: 'oauth', category: 'ads', isEnabled: true },
-          { id: 'tiktok_ads', platform: 'tiktok_ads', displayName: 'TikTok Ads', description: 'TikTok ads', authType: 'oauth', category: 'ads', isEnabled: true },
+          { id: 'meta_ads', platform: 'meta_ads', display_name: 'Meta Ads', description: 'Facebook ads', auth_type: 'oauth', category: 'ads', is_enabled: true },
+          { id: 'google_ads', platform: 'google_ads', display_name: 'Google Ads', description: 'Google ads', auth_type: 'oauth', category: 'ads', is_enabled: true },
+          { id: 'tiktok_ads', platform: 'tiktok_ads', display_name: 'TikTok Ads', description: 'TikTok ads', auth_type: 'oauth', category: 'ads', is_enabled: true },
         ],
         total: 3,
       },
