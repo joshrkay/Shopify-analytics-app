@@ -27,6 +27,7 @@ from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_session_factory
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,7 @@ async def get_channel_metrics(
     request: Request,
     timeframe: str = Query("30days", description="7days|thisWeek|30days|thisMonth|90days|thisQuarter"),
     db_session=Depends(_get_db_for_channels),
+    _rate_limit=Depends(rate_limit_dependency("channels", limit=30, window=60)),
 ):
     """
     Aggregated metrics for a single ad platform.

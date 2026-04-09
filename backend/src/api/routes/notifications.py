@@ -21,6 +21,7 @@ from fastapi import APIRouter, Request, HTTPException, status, Depends, Query
 
 from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session
+from src.middleware.rate_limit import rate_limit_dependency
 from src.models.notification import (
     Notification,
     NotificationEventType,
@@ -77,6 +78,7 @@ async def list_notifications(
     ),
     limit: int = Query(50, le=100, description="Maximum notifications to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    _rate_limit=Depends(rate_limit_dependency("notifications", limit=60, window=60)),
 ):
     """
     List notifications for the current user.
@@ -134,6 +136,7 @@ async def list_notifications(
 async def get_unread_count(
     request: Request,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("notifications", limit=60, window=60)),
 ):
     """
     Get count of unread notifications for the current user.
@@ -155,6 +158,7 @@ async def get_unread_count(
 async def get_notification_preferences(
     request: Request,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("notifications", limit=60, window=60)),
 ):
     """
     Get per-event-type notification preferences for the current user.
@@ -197,6 +201,7 @@ async def update_notification_preferences(
     request: Request,
     body: NotificationPreferencesUpdateRequest,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("notifications", limit=60, window=60)),
 ):
     """
     Upsert per-event-type notification preferences for the current user.
@@ -283,6 +288,7 @@ async def get_notification(
     request: Request,
     notification_id: str,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("notifications", limit=60, window=60)),
 ):
     """
     Get a single notification by ID.
@@ -318,6 +324,7 @@ async def mark_as_read(
     request: Request,
     notification_id: str,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("notifications", limit=60, window=60)),
 ):
     """
     Mark a notification as read.
@@ -347,6 +354,7 @@ async def mark_as_read(
 async def mark_all_as_read(
     request: Request,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("notifications", limit=60, window=60)),
 ):
     """
     Mark all notifications as read for the current user.

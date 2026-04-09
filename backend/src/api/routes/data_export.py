@@ -30,6 +30,7 @@ from pydantic import BaseModel
 
 from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session
+from src.middleware.rate_limit import rate_limit_dependency
 from src.services.billing_entitlements import (
     BillingEntitlementsService,
     BillingFeature,
@@ -211,7 +212,7 @@ def _get_row_limit(billing_tier: str, requested_limit: Optional[int]) -> int:
     "/datasets",
     response_model=AvailableDatasetsResponse,
 )
-async def list_export_datasets(request: Request):
+async def list_export_datasets(request: Request, _rate_limit=Depends(rate_limit_dependency("data_export", limit=10, window=3600))):
     """List available datasets for export."""
     get_tenant_context(request)
     return AvailableDatasetsResponse(
@@ -227,6 +228,7 @@ async def export_data(
     request: Request,
     body: DataExportRequest,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("data_export", limit=10, window=3600)),
 ):
     """
     Export analytics data as CSV or JSON.
@@ -271,9 +273,16 @@ async def export_data(
     billing_tier = entitlements.get_billing_tier()
     row_limit = _get_row_limit(billing_tier, body.limit)
 
-    # Build query
+    # Build query — table and column names come from hardcoded allowlists
+    # (DATASET_TO_TABLE / AVAILABLE_DATASETS), not user input. body.dataset
+    # is validated against AVAILABLE_DATASETS above.
     table = DATASET_TO_TABLE[body.dataset]
     dataset_info = AVAILABLE_DATASETS[body.dataset]
+
+    # SECURITY: Defensive assertion — even though table/columns are from
+    # hardcoded dicts, verify they are in the known allowlist to prevent
+    # SQL injection if the mappings are ever modified to accept dynamic values.
+    assert table in DATASET_TO_TABLE.values(), f"Unexpected table: {table}"
     columns = ", ".join(dataset_info.columns)
 
     export_id = str(uuid.uuid4())
@@ -367,6 +376,7 @@ async def export_to_sheets(
     request: Request,
     body: SheetsExportRequest,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("data_export", limit=10, window=3600)),
 ):
     """
     Export analytics data to a new Google Sheet.

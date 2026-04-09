@@ -4,6 +4,10 @@ Shopify webhook handlers for billing events.
 SECURITY: All webhooks MUST verify HMAC signature before processing.
 Shopify signs webhooks with the app's API secret.
 
+Replay protection: Deduplicates using X-Shopify-Webhook-Id header with a
+TTL-based in-memory cache (1 hour window). This prevents replayed or
+retried webhooks from being processed twice.
+
 Documentation: https://shopify.dev/docs/apps/webhooks/configuration/https
 """
 
@@ -12,6 +16,7 @@ import hmac
 import hashlib
 import base64
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -22,6 +27,36 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webhooks/shopify", tags=["webhooks"])
+
+# ---------------------------------------------------------------------------
+# Webhook replay protection — deduplication via X-Shopify-Webhook-Id
+# ---------------------------------------------------------------------------
+_WEBHOOK_ID_TTL_SECONDS = 3600  # 1 hour
+_seen_webhook_ids: dict[str, float] = {}  # webhook_id -> timestamp
+_seen_lock = threading.Lock()
+
+
+def _is_duplicate_webhook(webhook_id: str | None) -> bool:
+    """Return True if this webhook ID was already processed recently."""
+    if not webhook_id:
+        return False  # No ID header — fall through to HMAC check
+
+    now = datetime.now(timezone.utc).timestamp()
+
+    with _seen_lock:
+        # Evict expired entries (keep lock duration short — dict is small)
+        expired = [
+            wid for wid, ts in _seen_webhook_ids.items()
+            if now - ts > _WEBHOOK_ID_TTL_SECONDS
+        ]
+        for wid in expired:
+            del _seen_webhook_ids[wid]
+
+        if webhook_id in _seen_webhook_ids:
+            return True
+
+        _seen_webhook_ids[webhook_id] = now
+        return False
 
 # Webhook topics we handle
 WEBHOOK_TOPIC_SUBSCRIPTION_UPDATE = "app_subscriptions/update"
@@ -86,6 +121,15 @@ async def get_verified_webhook_body(request: Request) -> tuple[dict, str]:
     Raises:
         HTTPException: If verification fails
     """
+    # Replay protection: reject duplicate webhook deliveries
+    webhook_id = request.headers.get("X-Shopify-Webhook-Id")
+    if _is_duplicate_webhook(webhook_id):
+        logger.info("Duplicate webhook rejected", extra={"webhook_id": webhook_id})
+        raise HTTPException(
+            status_code=status.HTTP_200_OK,
+            detail="Already processed",
+        )
+
     # Get HMAC header
     hmac_header = request.headers.get("X-Shopify-Hmac-Sha256")
     if not hmac_header:

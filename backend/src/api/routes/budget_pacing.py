@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from src.platform.tenant_context import get_tenant_context
 from src.services.budget_pacing_service import BudgetPacingService
 from src.api.dependencies.entitlements import check_budget_pacing_entitlement
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["budget_pacing"])
@@ -70,7 +71,7 @@ class PacingResponse(BaseModel):
 
 
 @router.get("/budgets", response_model=List[BudgetResponse])
-async def list_budgets(request: Request, db: Session = Depends(check_budget_pacing_entitlement)):
+async def list_budgets(request: Request, db: Session = Depends(check_budget_pacing_entitlement), _rate_limit=Depends(rate_limit_dependency("budget_pacing", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = BudgetPacingService(db, tenant_ctx.tenant_id)
     budgets = svc.list_budgets()
@@ -88,7 +89,7 @@ async def list_budgets(request: Request, db: Session = Depends(check_budget_paci
 
 
 @router.post("/budgets", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
-async def create_budget(request: Request, body: BudgetCreate, db: Session = Depends(check_budget_pacing_entitlement)):
+async def create_budget(request: Request, body: BudgetCreate, db: Session = Depends(check_budget_pacing_entitlement), _rate_limit=Depends(rate_limit_dependency("budget_pacing", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = BudgetPacingService(db, tenant_ctx.tenant_id)
     budget = svc.create_budget(
@@ -108,7 +109,7 @@ async def create_budget(request: Request, body: BudgetCreate, db: Session = Depe
 
 
 @router.put("/budgets/{budget_id}", response_model=BudgetResponse)
-async def update_budget(request: Request, budget_id: str, body: BudgetUpdate, db: Session = Depends(check_budget_pacing_entitlement)):
+async def update_budget(request: Request, budget_id: str, body: BudgetUpdate, db: Session = Depends(check_budget_pacing_entitlement), _rate_limit=Depends(rate_limit_dependency("budget_pacing", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = BudgetPacingService(db, tenant_ctx.tenant_id)
     updates = body.model_dump(exclude_unset=True)
@@ -126,7 +127,7 @@ async def update_budget(request: Request, budget_id: str, body: BudgetUpdate, db
 
 
 @router.delete("/budgets/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_budget(request: Request, budget_id: str, db: Session = Depends(check_budget_pacing_entitlement)):
+async def delete_budget(request: Request, budget_id: str, db: Session = Depends(check_budget_pacing_entitlement), _rate_limit=Depends(rate_limit_dependency("budget_pacing", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = BudgetPacingService(db, tenant_ctx.tenant_id)
     if not svc.delete_budget(budget_id):
@@ -134,7 +135,7 @@ async def delete_budget(request: Request, budget_id: str, db: Session = Depends(
 
 
 @router.get("/budget-pacing", response_model=PacingResponse)
-async def get_budget_pacing(request: Request, db: Session = Depends(check_budget_pacing_entitlement)):
+async def get_budget_pacing(request: Request, db: Session = Depends(check_budget_pacing_entitlement), _rate_limit=Depends(rate_limit_dependency("budget_pacing", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = BudgetPacingService(db, tenant_ctx.tenant_id)
     pacing = svc.get_pacing()

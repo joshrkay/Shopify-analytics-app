@@ -243,8 +243,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Requested-With",
+        "X-Correlation-ID",
+        "Accept",
+        "Origin",
+    ],
 )
 
 # CSP middleware for Shopify Admin embedding (only applied to /api/v1/embed routes)

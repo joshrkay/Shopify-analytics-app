@@ -73,17 +73,29 @@ class SecretsManager:
             return
 
         try:
-            # Derive a valid Fernet key from the provided key
-            # Using PBKDF2 for key derivation
+            # Derive a valid Fernet key from the provided key using PBKDF2.
+            #
+            # ENCRYPTION_SALT env var provides a per-deployment salt. When not
+            # set, falls back to the legacy static salt for backward
+            # compatibility with existing encrypted data. New deployments
+            # SHOULD set ENCRYPTION_SALT to a random 32+ character string.
+            salt = os.getenv(
+                "ENCRYPTION_SALT",
+                "shopify-analytics-salt",  # Legacy fallback
+            ).encode()
+
             derived_key = hashlib.pbkdf2_hmac(
                 "sha256",
                 encryption_key.encode(),
-                b"shopify-analytics-salt",  # Static salt (in production, use unique salt)
+                salt,
                 100000,  # Iterations
                 dklen=32,  # Fernet requires 32 bytes
             )
             self._local_key = base64.urlsafe_b64encode(derived_key)
-            logger.info("Encryption initialized using ENCRYPTION_KEY")
+            logger.info(
+                "Encryption initialized using ENCRYPTION_KEY",
+                extra={"custom_salt": os.getenv("ENCRYPTION_SALT") is not None},
+            )
 
         except Exception as e:
             logger.error("Failed to initialize encryption", extra={"error": str(e)})

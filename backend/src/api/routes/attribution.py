@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/attribution", tags=["attribution"])
@@ -111,6 +112,7 @@ async def get_attribution_summary(
     request: Request,
     timeframe: str = Query("30days", description="7days|30days|90days|thisMonth|thisQuarter"),
     db=Depends(_get_db),
+    _rate_limit=Depends(rate_limit_dependency("attribution", limit=30, window=60)),
 ):
     """
     Aggregated attribution KPIs for the Attribution dashboard.
@@ -229,6 +231,7 @@ async def get_attributed_orders(
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     db=Depends(_get_db),
+    _rate_limit=Depends(rate_limit_dependency("attribution", limit=30, window=60)),
 ):
     """
     Paginated order list with UTM attribution fields.

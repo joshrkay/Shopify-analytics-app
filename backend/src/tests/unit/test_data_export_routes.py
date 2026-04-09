@@ -68,10 +68,13 @@ def app():
 
 @pytest.fixture
 def client(app, mock_entitled):
-    with patch("src.api.routes.data_export.get_tenant_context") as mock_gtc:
+    with patch("src.api.routes.data_export.get_tenant_context") as mock_gtc, \
+         patch("src.middleware.rate_limit.get_tenant_context") as mock_rl_gtc:
         ctx = MagicMock()
         ctx.tenant_id = TENANT_ID
+        ctx.user_id = "test-user"
         mock_gtc.return_value = ctx
+        mock_rl_gtc.return_value = ctx
         yield TestClient(app)
 
 

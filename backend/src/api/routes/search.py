@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -61,6 +62,7 @@ async def global_search(
     request: Request,
     q: str = Query(..., min_length=2, max_length=100),
     db=Depends(_get_db),
+    _rate_limit=Depends(rate_limit_dependency("search", limit=30, window=60)),
 ):
     """Search across pages and custom dashboards."""
     tenant_ctx = get_tenant_context(request)

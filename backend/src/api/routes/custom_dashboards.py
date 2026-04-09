@@ -19,6 +19,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends, Query, status
 from src.platform.tenant_context import get_tenant_context
 from src.database.session import get_db_session
 from src.services.billing_entitlements import BillingEntitlementsService, BillingFeature
+from src.middleware.rate_limit import rate_limit_dependency
 from src.services.custom_dashboard_service import (
     CustomDashboardService,
     DashboardNotFoundError,
@@ -104,6 +105,7 @@ async def list_dashboards(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """List custom dashboards for the current tenant."""
     dashboards, total = service.list_dashboards(
@@ -128,6 +130,7 @@ async def get_dashboard_count(
     request: Request,
     service: CustomDashboardService = Depends(_get_dashboard_service),
     max_dashboards: Optional[int] = Depends(_get_dashboard_limit),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Get current dashboard count vs plan limit."""
     current = service.get_dashboard_count()
@@ -145,6 +148,7 @@ async def get_dashboard(
     dashboard_id: str,
     request: Request,
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Get a single dashboard with all its reports."""
     try:
@@ -166,6 +170,7 @@ async def create_dashboard(
     _ent=Depends(_check_write_entitlement),
     service: CustomDashboardService = Depends(_get_dashboard_service),
     max_dashboards: Optional[int] = Depends(_get_dashboard_limit),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Create a new custom dashboard."""
     try:
@@ -196,6 +201,7 @@ async def update_dashboard(
     request: Request,
     _ent=Depends(_check_write_entitlement),
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Update dashboard metadata or layout."""
     try:
@@ -223,6 +229,7 @@ async def archive_dashboard(
     request: Request,
     _ent=Depends(_check_write_entitlement),
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Archive (soft-delete) a dashboard. Owner only."""
     try:
@@ -237,6 +244,7 @@ async def publish_dashboard(
     request: Request,
     _ent=Depends(_check_write_entitlement),
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Publish a draft dashboard."""
     try:
@@ -255,6 +263,7 @@ async def duplicate_dashboard(
     _ent=Depends(_check_write_entitlement),
     service: CustomDashboardService = Depends(_get_dashboard_service),
     max_dashboards: Optional[int] = Depends(_get_dashboard_limit),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Duplicate a dashboard and all its reports."""
     try:
@@ -291,6 +300,7 @@ async def list_versions(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """List version history for a dashboard."""
     try:
@@ -312,6 +322,7 @@ async def get_version_detail(
     version_number: int,
     request: Request,
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Get a single version with its full snapshot for preview."""
     try:
@@ -329,6 +340,7 @@ async def restore_version(
     request: Request,
     _ent=Depends(_check_write_entitlement),
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Restore a dashboard to a previous version."""
     try:
@@ -350,6 +362,7 @@ async def list_audit_entries(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     service: CustomDashboardService = Depends(_get_dashboard_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """List audit trail for a dashboard."""
     try:
@@ -374,6 +387,7 @@ async def list_reports(
     dashboard_id: str,
     request: Request,
     service: CustomReportService = Depends(_get_report_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """List all reports in a dashboard."""
     try:
@@ -391,6 +405,7 @@ async def add_report(
     request: Request,
     _ent=Depends(_check_write_entitlement),
     service: CustomReportService = Depends(_get_report_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Add a report/chart to a dashboard."""
     try:
@@ -423,6 +438,7 @@ async def update_report(
     request: Request,
     _ent=Depends(_check_write_entitlement),
     service: CustomReportService = Depends(_get_report_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Update a report's configuration."""
     try:
@@ -454,6 +470,7 @@ async def remove_report(
     request: Request,
     _ent=Depends(_check_write_entitlement),
     service: CustomReportService = Depends(_get_report_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Remove a report from a dashboard."""
     try:
@@ -469,6 +486,7 @@ async def reorder_reports(
     request: Request,
     _ent=Depends(_check_write_entitlement),
     service: CustomReportService = Depends(_get_report_service),
+    _rate_limit=Depends(rate_limit_dependency("dashboards", limit=30, window=60)),
 ):
     """Reorder reports within a dashboard."""
     try:
