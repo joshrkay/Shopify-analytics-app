@@ -11,18 +11,54 @@ from typing import Optional, List, Dict, Any
 @dataclass
 class ChatMessage:
     """A message in a chat completion."""
-    role: str  # 'system', 'user', 'assistant'
+    role: str  # 'system', 'user', 'assistant', 'tool'
     content: str
+    # Used when role == 'tool' (tool result back to model)
+    tool_call_id: Optional[str] = None
+    name: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ChatMessage":
         return cls(
             role=data.get("role", ""),
-            content=data.get("content", ""),
+            content=data.get("content", "") or "",
+            tool_call_id=data.get("tool_call_id"),
+            name=data.get("name"),
         )
 
-    def to_dict(self) -> Dict[str, str]:
-        return {"role": self.role, "content": self.content}
+    def to_dict(self) -> Dict[str, Any]:
+        d: Dict[str, Any] = {"role": self.role, "content": self.content}
+        if self.tool_call_id is not None:
+            d["tool_call_id"] = self.tool_call_id
+        if self.name is not None:
+            d["name"] = self.name
+        return d
+
+
+@dataclass
+class ToolCall:
+    """A tool call requested by the model."""
+    id: str
+    name: str        # function name
+    arguments: str   # JSON-encoded argument dict — parse at call site
+
+
+@dataclass
+class ToolDefinition:
+    """Definition of a callable tool (function) exposed to the model."""
+    name: str
+    description: str
+    parameters: Dict[str, Any]  # JSON Schema object
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
 
 
 @dataclass
@@ -31,13 +67,24 @@ class ChatChoice:
     index: int
     message: ChatMessage
     finish_reason: Optional[str] = None
+    tool_calls: List[ToolCall] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ChatChoice":
+        raw_tool_calls = data.get("message", {}).get("tool_calls") or []
+        tool_calls = [
+            ToolCall(
+                id=tc.get("id", ""),
+                name=tc.get("function", {}).get("name", ""),
+                arguments=tc.get("function", {}).get("arguments", "{}"),
+            )
+            for tc in raw_tool_calls
+        ]
         return cls(
             index=data.get("index", 0),
             message=ChatMessage.from_dict(data.get("message", {})),
             finish_reason=data.get("finish_reason"),
+            tool_calls=tool_calls,
         )
 
 
@@ -85,6 +132,20 @@ class ChatCompletionResponse:
         if self.choices:
             return self.choices[0].message.content
         return ""
+
+    @property
+    def finish_reason(self) -> Optional[str]:
+        """Finish reason of the first choice."""
+        if self.choices:
+            return self.choices[0].finish_reason
+        return None
+
+    @property
+    def tool_calls(self) -> List[ToolCall]:
+        """Tool calls from the first choice (empty list if none)."""
+        if self.choices:
+            return self.choices[0].tool_calls
+        return []
 
     @property
     def input_tokens(self) -> int:

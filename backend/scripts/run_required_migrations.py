@@ -41,6 +41,7 @@ MIGRATIONS = [
     "ai_actions_schema.sql",
     "ai_safety_schema.sql",
     "llm_routing_schema.sql",
+    "seed_llm_insight_prompt_templates.sql",
     "dq_schema.sql",
     "data_availability.sql",
     "backfill_jobs.sql",

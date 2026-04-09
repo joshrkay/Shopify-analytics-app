@@ -32,6 +32,7 @@ from src.integrations.openrouter.exceptions import (
 from src.integrations.openrouter.models import (
     ChatMessage,
     ChatCompletionResponse,
+    ToolDefinition,
     ModelInfo,
 )
 
@@ -235,6 +236,8 @@ class OpenRouterClient:
         temperature: float = 0.7,
         top_p: Optional[float] = None,
         stop: Optional[List[str]] = None,
+        tools: Optional[List[ToolDefinition]] = None,
+        tool_choice: str = "auto",
     ) -> ChatCompletionResponse:
         """
         Create a chat completion.
@@ -246,9 +249,11 @@ class OpenRouterClient:
             temperature: Sampling temperature (0.0-2.0)
             top_p: Nucleus sampling parameter
             stop: Stop sequences
+            tools: Optional tool definitions for function calling
+            tool_choice: Tool selection mode ('auto', 'none', or specific tool)
 
         Returns:
-            ChatCompletionResponse with generated content
+            ChatCompletionResponse with generated content (and tool_calls when invoked)
 
         Raises:
             OpenRouterError: On API errors
@@ -265,6 +270,9 @@ class OpenRouterClient:
             request_body["top_p"] = top_p
         if stop:
             request_body["stop"] = stop
+        if tools:
+            request_body["tools"] = [t.to_dict() for t in tools]
+            request_body["tool_choice"] = tool_choice
 
         start_time = time.time()
 

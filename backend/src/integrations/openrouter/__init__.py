@@ -22,6 +22,8 @@ from src.integrations.openrouter.models import (
     ChatChoice,
     TokenUsage,
     ChatCompletionResponse,
+    ToolCall,
+    ToolDefinition,
     ModelInfo,
 )
 
@@ -42,5 +44,7 @@ __all__ = [
     "ChatChoice",
     "TokenUsage",
     "ChatCompletionResponse",
+    "ToolCall",
+    "ToolDefinition",
     "ModelInfo",
 ]
