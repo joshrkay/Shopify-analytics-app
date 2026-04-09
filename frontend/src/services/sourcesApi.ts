@@ -13,7 +13,6 @@ import { normalizeApiSource, type RawApiSource } from './sourceNormalizer';
 import type { Source, SourcePlatform } from '../types/sources';
 import type {
   DataSourceDefinition,
-  CatalogResponse,
   OAuthInitiateResponse,
   OAuthCallbackParams,
   OAuthCompleteResponse,
