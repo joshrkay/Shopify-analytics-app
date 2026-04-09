@@ -19,6 +19,10 @@ from src.platform.tenant_context import get_tenant_context
 from src.api.dependencies.entitlements import check_llm_routing_entitlement
 from src.services.llm_routing_service import LLMRoutingService, LLMRoutingError
 from src.integrations.openrouter.models import ChatMessage
+from src.services.analytics_context_service import (
+    get_analytics_snapshot,
+    build_analytics_system_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +48,6 @@ class AIChatResponse(BaseModel):
 
 
 # =============================================================================
-# System Prompt
-# =============================================================================
-
-_SYSTEM_PROMPT = (
-    "You are an analytics assistant for a Shopify merchant. "
-    "Answer questions about their marketing metrics, ad performance, "
-    "and revenue data. Be concise and data-driven."
-)
-
-
-# =============================================================================
 # Route
 # =============================================================================
 
@@ -69,13 +62,20 @@ async def ai_chat(
     Send a question to the AI analytics assistant.
 
     Requires LLM_ROUTING entitlement (Growth+ plan).
+
+    Fetches a 30-day analytics snapshot from the mart layer and injects it
+    into the system prompt so the LLM can answer questions about real data.
+    Falls back to a generic prompt when no mart data is available yet.
     """
     tenant_ctx = get_tenant_context(request)
+
+    context = get_analytics_snapshot(tenant_ctx.tenant_id, db_session)
+    system_prompt = build_analytics_system_prompt(context)
 
     service = LLMRoutingService(db_session, tenant_ctx.tenant_id)
 
     messages = [
-        ChatMessage(role="system", content=_SYSTEM_PROMPT),
+        ChatMessage(role="system", content=system_prompt),
         ChatMessage(role="user", content=body.question),
     ]
 
