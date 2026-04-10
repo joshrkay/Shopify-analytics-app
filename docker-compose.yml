@@ -102,6 +102,7 @@ services:
       - "8000:8000"
     environment:
       - ENV=development
+      - DEBUG_ROUTES_ENABLED=${DEBUG_ROUTES_ENABLED:-false}
       - PORT=8000
       - DATABASE_URL=postgresql://markinsight_user:localdev123@postgres:5432/markinsight
       - REDIS_URL=redis://redis:6379

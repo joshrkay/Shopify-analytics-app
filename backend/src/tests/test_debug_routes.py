@@ -1,59 +1,65 @@
 """
-Tests for debug endpoint production gating.
+Tests for debug endpoint feature-flag + auth gating.
 
-Debug endpoints expose env var prefixes, JWKS key IDs, and decoded JWTs.
-They MUST return 404 in production to prevent information leakage.
+Debug endpoints expose sensitive diagnostics and MUST be:
+1) disabled by default via DEBUG_ROUTES_ENABLED=false, and
+2) protected by authenticated admin permission checks.
 """
 
 import os
 from unittest.mock import patch
 
 
-
 def _get_client():
-    """Create a TestClient for the app."""
+    """Create a TestClient for a minimal app with conditional debug mounting."""
     from fastapi.testclient import TestClient
-    import importlib
-    main = importlib.import_module("main")
-    return TestClient(main.app)
+    from fastapi import FastAPI
+    from src.api.routes import debug
+
+    app = FastAPI()
+    if debug.is_debug_routes_enabled():
+        app.include_router(debug.router)
+    return TestClient(app)
 
 
 class TestDebugEnvStatus:
     """Tests for /debug/env-status endpoint."""
 
-    def test_blocked_in_production(self):
-        with patch.dict(os.environ, {"ENV": "production"}):
+    def test_not_mounted_when_feature_flag_disabled(self):
+        with patch.dict(os.environ, {"DEBUG_ROUTES_ENABLED": "false"}):
             client = _get_client()
             resp = client.get("/debug/env-status")
             assert resp.status_code == 404
 
-    def test_allowed_in_development(self):
-        with patch.dict(os.environ, {"ENV": "development"}):
+    def test_requires_auth_when_feature_flag_enabled(self):
+        with patch.dict(os.environ, {"DEBUG_ROUTES_ENABLED": "true"}):
             client = _get_client()
             resp = client.get("/debug/env-status")
-            assert resp.status_code == 200
+            assert resp.status_code == 401
 
-    def test_allowed_when_env_unset(self):
-        env = os.environ.copy()
-        env.pop("ENV", None)
-        with patch.dict(os.environ, env, clear=True):
+    def test_accessible_with_dependency_override(self):
+        with patch.dict(os.environ, {"DEBUG_ROUTES_ENABLED": "true"}):
             client = _get_client()
-            resp = client.get("/debug/env-status")
-            assert resp.status_code == 200
+            from src.api.routes import debug as debug_module
+            try:
+                client.app.dependency_overrides[debug_module.require_debug_admin_auth] = lambda: object()
+                resp = client.get("/debug/env-status")
+                assert resp.status_code == 200
+            finally:
+                client.app.dependency_overrides.clear()
 
 
 class TestDebugAuthCheck:
     """Tests for /debug/auth-check endpoint."""
 
-    def test_blocked_in_production(self):
-        with patch.dict(os.environ, {"ENV": "production"}):
+    def test_not_mounted_when_feature_flag_disabled(self):
+        with patch.dict(os.environ, {"DEBUG_ROUTES_ENABLED": "false"}):
             client = _get_client()
             resp = client.get("/debug/auth-check")
             assert resp.status_code == 404
 
-    def test_allowed_in_staging(self):
-        with patch.dict(os.environ, {"ENV": "staging"}):
+    def test_requires_auth_when_feature_flag_enabled(self):
+        with patch.dict(os.environ, {"DEBUG_ROUTES_ENABLED": "true"}):
             client = _get_client()
             resp = client.get("/debug/auth-check")
-            # May fail JWKS fetch without CLERK_FRONTEND_API, but shouldn't 404
-            assert resp.status_code != 404
+            assert resp.status_code == 401
