@@ -4,6 +4,19 @@ Shopify webhook handlers for billing events.
 SECURITY: All webhooks MUST verify HMAC signature before processing.
 Shopify signs webhooks with the app's API secret.
 
+Replay protection: After HMAC verification succeeds, deduplicates using
+the ``X-Shopify-Webhook-Id`` header via a Redis ``SET NX EX`` claim. This
+is distributed (works across all uvicorn workers and replicas), O(1), and
+gracefully falls through to "not a duplicate" if Redis is unavailable —
+HMAC verification is already a strong integrity gate so a skipped dedupe
+never lets forged traffic through, it just means an honest retry might
+execute twice. Individual handlers are idempotent by design (upserts,
+status-based dispatch) so a rare duplicate is safe.
+
+CRITICAL ORDERING RULE: ``verify_shopify_webhook`` MUST be called before
+``_claim_webhook_id``. Dedupe-before-HMAC would let unauthenticated
+callers burn webhook IDs to DoS legitimate traffic.
+
 Documentation: https://shopify.dev/docs/apps/webhooks/configuration/https
 """
 
@@ -22,6 +35,50 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webhooks/shopify", tags=["webhooks"])
+
+# ---------------------------------------------------------------------------
+# Webhook replay protection — Redis-backed dedupe via X-Shopify-Webhook-Id
+# ---------------------------------------------------------------------------
+_WEBHOOK_ID_TTL_SECONDS = 3600  # 1 hour
+_WEBHOOK_DEDUPE_KEY_PREFIX = "shopify:webhook:seen:"
+
+
+def _claim_webhook_id(webhook_id: str | None) -> bool:
+    """
+    Atomically claim a webhook ID. Returns True if this is the first time
+    we've seen it (caller should proceed), False if it's a duplicate.
+
+    Backed by Redis ``SET NX EX`` so the check is distributed across
+    workers/replicas and O(1). If Redis is unreachable or not configured,
+    returns True so handlers continue processing — HMAC has already been
+    verified at this point so we're choosing availability over strict
+    exactly-once semantics. Handlers are idempotent.
+
+    MUST be called AFTER HMAC verification.
+    """
+    if not webhook_id:
+        return True  # No ID header — best we can do is let it through
+
+    try:
+        from src.middleware.rate_limit import get_rate_limiter
+
+        client = get_rate_limiter()._get_redis()
+        # SET key value NX EX ttl — returns True on first set, None if key exists
+        claimed = client.set(
+            f"{_WEBHOOK_DEDUPE_KEY_PREFIX}{webhook_id}",
+            "1",
+            nx=True,
+            ex=_WEBHOOK_ID_TTL_SECONDS,
+        )
+        return bool(claimed)
+    except Exception as e:
+        # Redis unreachable / not configured — fail open (duplicate
+        # processing is safer than dropping legitimate webhooks).
+        logger.warning(
+            "Webhook dedupe check failed; allowing through",
+            extra={"webhook_id": webhook_id, "error": str(e)},
+        )
+        return True
 
 # Webhook topics we handle
 WEBHOOK_TOPIC_SUBSCRIPTION_UPDATE = "app_subscriptions/update"
@@ -135,6 +192,21 @@ async def get_verified_webhook_body(request: Request) -> tuple[dict, str]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON body"
+        )
+
+    # Replay protection — only AFTER HMAC has been verified. Claiming
+    # before verify would let an unauthenticated caller burn webhook IDs
+    # and DoS legitimate deliveries.
+    webhook_id = request.headers.get("X-Shopify-Webhook-Id")
+    if not _claim_webhook_id(webhook_id):
+        logger.info(
+            "Duplicate webhook rejected",
+            extra={"webhook_id": webhook_id, "shop_domain": shop_domain},
+        )
+        # 200 so Shopify stops retrying — duplicate already handled.
+        raise HTTPException(
+            status_code=status.HTTP_200_OK,
+            detail="Already processed",
         )
 
     return data, shop_domain

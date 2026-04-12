@@ -8,6 +8,7 @@ SECURITY:
 - Requires valid tenant context from JWT
 - Requires LLM_ROUTING entitlement (Growth+ tiers)
 - Input length limited to 2000 characters
+- Rate limited: 10 requests/minute per user (LLM calls are expensive)
 """
 
 import logging
@@ -17,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from src.platform.tenant_context import get_tenant_context
 from src.api.dependencies.entitlements import check_llm_routing_entitlement
+from src.middleware.rate_limit import rate_limit_dependency
 from src.services.llm_routing_service import LLMRoutingService, LLMRoutingError
 from src.integrations.openrouter.models import ChatMessage
 from src.integrations.openrouter.client import get_openrouter_client
@@ -59,6 +61,7 @@ async def ai_chat(
     request: Request,
     body: AIChatRequest,
     db_session=Depends(check_llm_routing_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("ai_chat", limit=10, window=60)),
 ):
     """
     Send a question to the AI analytics assistant.

@@ -13,6 +13,7 @@ Security Requirements:
 import os
 import logging
 from typing import Optional, Callable
+from urllib.parse import urlparse
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -124,17 +125,15 @@ class ShopifyCSPMiddleware(BaseHTTPMiddleware):
         # Content Security Policy
         response.headers["Content-Security-Policy"] = self.config.build_csp_header()
 
-        # X-Frame-Options for legacy browser support
-        # Using ALLOW-FROM is deprecated but still supported by some browsers
-        # Modern browsers use frame-ancestors from CSP
-        if self.config.frame_ancestors and len(self.config.frame_ancestors) > 1:
-            # Get first non-self ancestor
-            for ancestor in self.config.frame_ancestors:
-                if ancestor != "'self'":
-                    response.headers["X-Frame-Options"] = f"ALLOW-FROM {ancestor}"
-                    break
-        else:
-            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        # X-Frame-Options: ALLOW-FROM is deprecated and unsupported in modern
+        # browsers. Use SAMEORIGIN as a safe fallback; frame-ancestors in CSP
+        # handles the actual embedding allowlist.
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+
+        # HSTS — force HTTPS for 1 year including subdomains
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
 
         # Additional security headers
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -164,36 +163,59 @@ class EmbedOnlyCSPMiddleware(ShopifyCSPMiddleware):
         )
 
 
+def _is_origin_allowed(url_string: str, allowed_domains: list[str]) -> bool:
+    """
+    Check if a URL's hostname matches an allowed domain.
+
+    Uses proper URL parsing instead of substring matching to prevent
+    bypasses like evil-admin.shopify.com.attacker.com.
+    """
+    try:
+        parsed = urlparse(url_string)
+        hostname = parsed.hostname or ""
+    except Exception:
+        return False
+
+    for domain in allowed_domains:
+        if hostname == domain:
+            return True
+        # Support wildcard subdomains (e.g., *.myshopify.com)
+        if domain.startswith("*.") and hostname.endswith(domain[1:]):
+            return True
+        # Also match if hostname ends with .domain (subdomain match)
+        if hostname.endswith("." + domain):
+            return True
+
+    return False
+
+
 def validate_frame_origin(request: Request) -> bool:
     """
     Validate that the request comes from an allowed frame origin.
 
-    Checks:
-    - Origin header
-    - Referer header
+    Checks Origin and Referer headers against the configured
+    frame-ancestors using proper URL hostname parsing.
 
     Returns True if origin is allowed for embedding.
     """
     config = CSPConfig()
-    allowed_origins = [
-        a.replace("'self'", "").replace("https://", "").replace("*.", "")
-        for a in config.frame_ancestors
-        if a != "'self'"
-    ]
+    allowed_domains = []
+    for ancestor in config.frame_ancestors:
+        if ancestor == "'self'":
+            continue
+        # Strip scheme, keep domain (including wildcard prefix)
+        domain = ancestor.replace("https://", "").replace("http://", "")
+        allowed_domains.append(domain)
 
     # Check Origin header
     origin = request.headers.get("Origin", "")
-    if origin:
-        for allowed in allowed_origins:
-            if allowed in origin:
-                return True
+    if origin and _is_origin_allowed(origin, allowed_domains):
+        return True
 
     # Check Referer header as fallback
     referer = request.headers.get("Referer", "")
-    if referer:
-        for allowed in allowed_origins:
-            if allowed in referer:
-                return True
+    if referer and _is_origin_allowed(referer, allowed_domains):
+        return True
 
     # Also allow direct access (no embedding)
     if not origin and not referer:
@@ -204,7 +226,7 @@ def validate_frame_origin(request: Request) -> bool:
         extra={
             "origin": origin,
             "referer": referer,
-            "allowed_origins": allowed_origins,
+            "allowed_domains": allowed_domains,
             "path": request.url.path,
         }
     )

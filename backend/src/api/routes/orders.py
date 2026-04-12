@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -78,6 +79,7 @@ async def get_orders(
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     db=Depends(_get_db),
+    _rate_limit=Depends(rate_limit_dependency("orders", limit=30, window=60)),
 ):
     """
     Paginated Shopify order list with UTM attribution overlay.

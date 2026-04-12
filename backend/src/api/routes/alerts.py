@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from src.platform.tenant_context import get_tenant_context
 from src.services.alert_rule_service import AlertRuleService
 from src.api.dependencies.entitlements import check_alerts_entitlement
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
@@ -81,7 +82,7 @@ class RulesListResponse(BaseModel):
 
 
 @router.get("/rules", response_model=RulesListResponse)
-async def list_rules(request: Request, db=Depends(check_alerts_entitlement)):
+async def list_rules(request: Request, db=Depends(check_alerts_entitlement), _rate_limit=Depends(rate_limit_dependency("alerts", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = AlertRuleService(db, tenant_ctx.tenant_id)
     rules = svc.list_rules()
@@ -105,7 +106,7 @@ async def list_rules(request: Request, db=Depends(check_alerts_entitlement)):
 
 
 @router.post("/rules", response_model=AlertRuleResponse, status_code=status.HTTP_201_CREATED)
-async def create_rule(request: Request, body: AlertRuleCreate, db=Depends(check_alerts_entitlement)):
+async def create_rule(request: Request, body: AlertRuleCreate, db=Depends(check_alerts_entitlement), _rate_limit=Depends(rate_limit_dependency("alerts", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = AlertRuleService(db, tenant_ctx.tenant_id)
     rule = svc.create_rule(
@@ -130,7 +131,7 @@ async def create_rule(request: Request, body: AlertRuleCreate, db=Depends(check_
 
 
 @router.put("/rules/{rule_id}", response_model=AlertRuleResponse)
-async def update_rule(request: Request, rule_id: str, body: AlertRuleUpdate, db=Depends(check_alerts_entitlement)):
+async def update_rule(request: Request, rule_id: str, body: AlertRuleUpdate, db=Depends(check_alerts_entitlement), _rate_limit=Depends(rate_limit_dependency("alerts", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = AlertRuleService(db, tenant_ctx.tenant_id)
     updates = body.model_dump(exclude_unset=True)
@@ -149,7 +150,7 @@ async def update_rule(request: Request, rule_id: str, body: AlertRuleUpdate, db=
 
 
 @router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_rule(request: Request, rule_id: str, db=Depends(check_alerts_entitlement)):
+async def delete_rule(request: Request, rule_id: str, db=Depends(check_alerts_entitlement), _rate_limit=Depends(rate_limit_dependency("alerts", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = AlertRuleService(db, tenant_ctx.tenant_id)
     if not svc.delete_rule(rule_id):
@@ -157,7 +158,7 @@ async def delete_rule(request: Request, rule_id: str, db=Depends(check_alerts_en
 
 
 @router.patch("/rules/{rule_id}/toggle", response_model=AlertRuleResponse)
-async def toggle_rule(request: Request, rule_id: str, body: AlertRuleToggle, db=Depends(check_alerts_entitlement)):
+async def toggle_rule(request: Request, rule_id: str, body: AlertRuleToggle, db=Depends(check_alerts_entitlement), _rate_limit=Depends(rate_limit_dependency("alerts", limit=30, window=60))):
     tenant_ctx = get_tenant_context(request)
     svc = AlertRuleService(db, tenant_ctx.tenant_id)
     rule = svc.toggle_rule(rule_id, body.enabled)
@@ -180,6 +181,7 @@ async def list_history(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db=Depends(check_alerts_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("alerts", limit=30, window=60)),
 ):
     tenant_ctx = get_tenant_context(request)
     svc = AlertRuleService(db, tenant_ctx.tenant_id)
@@ -201,6 +203,7 @@ async def rule_history(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db=Depends(check_alerts_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("alerts", limit=30, window=60)),
 ):
     tenant_ctx = get_tenant_context(request)
     svc = AlertRuleService(db, tenant_ctx.tenant_id)

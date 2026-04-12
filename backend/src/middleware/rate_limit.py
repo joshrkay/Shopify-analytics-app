@@ -365,3 +365,91 @@ def rate_limit_dependency(
         return result
 
     return _dependency
+
+
+# ---------------------------------------------------------------------------
+# IP-based rate limiting for public endpoints (no JWT required)
+# ---------------------------------------------------------------------------
+
+def ip_rate_limit_dependency(
+    endpoint_name: str,
+    limit: Optional[int] = None,
+    window: Optional[int] = None,
+) -> Callable:
+    """
+    Create a FastAPI dependency that enforces IP-based rate limiting.
+
+    Unlike ``rate_limit_dependency``, this does NOT require a JWT/tenant
+    context. It keys on the client IP address, making it suitable for
+    public endpoints like pixel event ingestion.
+
+    Args:
+        endpoint_name: Logical name for the endpoint.
+        limit:         Per-window request limit (default from env).
+        window:        Window duration in seconds (default from env).
+
+    Usage::
+
+        @router.post("/api/pixel/events", status_code=204)
+        async def ingest_pixel_events(
+            request: Request,
+            _rate_limit=Depends(ip_rate_limit_dependency("pixel_events", limit=100, window=60)),
+        ):
+            ...
+    """
+
+    async def _dependency(request: Request) -> RateLimitResult:
+        if not _is_rate_limit_enabled():
+            return RateLimitResult(
+                allowed=True,
+                remaining=_get_default_limit(),
+                limit=_get_default_limit(),
+                reset_at=time.time() + _get_default_window(),
+                retry_after=0,
+            )
+
+        # Extract client IP — respect X-Forwarded-For behind reverse proxy
+        client_ip = (
+            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or request.client.host
+            if request.client
+            else "unknown"
+        )
+
+        limiter = get_rate_limiter()
+        result = limiter.check_rate_limit(
+            user_id=client_ip,
+            tenant_id="public",
+            endpoint=endpoint_name,
+            limit=limit,
+            window=window,
+        )
+
+        if not result.allowed:
+            logger.warning(
+                "IP rate limit triggered",
+                extra={
+                    "action": "rate_limit.ip_triggered",
+                    "client_ip": client_ip,
+                    "endpoint": endpoint_name,
+                    "limit": result.limit,
+                    "retry_after": result.retry_after,
+                    "path": request.url.path,
+                    "method": request.method,
+                },
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "error": "rate_limit_exceeded",
+                    "error_code": "RATE_LIMIT_EXCEEDED",
+                    "message": "Too many requests. Please wait before retrying.",
+                    "retry_after": result.retry_after,
+                },
+                headers={"Retry-After": str(result.retry_after)},
+            )
+
+        return result
+
+    return _dependency

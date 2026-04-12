@@ -27,6 +27,7 @@ from src.services.billing_entitlements import (
     BillingEntitlementsService,
     BillingFeature,
 )
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,7 @@ def _validate_destination_config(
     "/types",
     response_model=WarehouseTypesResponse,
 )
-async def list_warehouse_types(request: Request):
+async def list_warehouse_types(request: Request, _rate_limit=Depends(rate_limit_dependency("warehouse_export", limit=10, window=3600))):
     """List supported warehouse destination types."""
     get_tenant_context(request)
     return WarehouseTypesResponse(
@@ -181,6 +182,7 @@ async def list_warehouse_types(request: Request):
 async def list_warehouse_destinations(
     request: Request,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("warehouse_export", limit=10, window=3600)),
 ):
     """
     List all configured warehouse destinations for the tenant.
@@ -248,6 +250,7 @@ async def create_warehouse_destination(
     request: Request,
     body: WarehouseDestinationCreateRequest,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("warehouse_export", limit=10, window=3600)),
 ):
     """
     Create a new warehouse destination.
@@ -357,6 +360,7 @@ async def delete_warehouse_destination(
     request: Request,
     destination_id: str,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("warehouse_export", limit=10, window=3600)),
 ):
     """Remove a warehouse destination."""
     tenant_ctx = get_tenant_context(request)
@@ -400,6 +404,7 @@ async def test_warehouse_connection(
     request: Request,
     destination_id: str,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("warehouse_export", limit=10, window=3600)),
 ):
     """Test connectivity to a warehouse destination."""
     tenant_ctx = get_tenant_context(request)
@@ -429,6 +434,7 @@ async def trigger_warehouse_sync(
     request: Request,
     destination_id: str,
     db_session=Depends(get_db_session),
+    _rate_limit=Depends(rate_limit_dependency("warehouse_export", limit=10, window=3600)),
 ):
     """Trigger a manual sync to a warehouse destination."""
     tenant_ctx = get_tenant_context(request)

@@ -282,9 +282,21 @@ class TenantContext:
         """
         return tenant_id in self.allowed_tenants
 
+    @staticmethod
+    def _is_safe_identifier(value: str) -> bool:
+        """Check that a tenant ID contains only safe characters (UUID or org_ prefix)."""
+        import re
+        # Allow UUIDs, org_* Clerk IDs, and alphanumeric test IDs with hyphens
+        return bool(re.match(r'^[a-zA-Z0-9_\-]+$', value))
+
     def get_rls_clause(self) -> str:
         """
         Generate RLS WHERE clause for query filtering.
+
+        SECURITY: Tenant IDs are validated to contain only safe characters
+        before interpolation. Although tenant_ids are system-generated
+        (UUIDs or Clerk org_ prefixes), this prevents SQL injection if an
+        attacker were to manipulate tenant ID assignment.
 
         Returns:
             SQL clause for tenant isolation:
@@ -293,6 +305,17 @@ class TenantContext:
         """
         if not self.allowed_tenants:
             return "1=0"  # Guarantees no rows are returned
+
+        # Validate all tenant IDs contain only safe characters
+        for tid in self.allowed_tenants:
+            if not self._is_safe_identifier(tid):
+                import logging
+                logging.getLogger(__name__).error(
+                    "Invalid tenant ID format in RLS clause",
+                    extra={"tenant_id": tid[:20]},
+                )
+                return "1=0"  # Fail closed — return no rows
+
         if len(self.allowed_tenants) == 1:
             return f"tenant_id = '{self.allowed_tenants[0]}'"
         else:

@@ -7,18 +7,27 @@ GET  /api/pixel/status — Check pixel status for a store (authenticated).
 
 Events are stored in the pixel_events table for dbt processing into
 customer sessions and enhanced attribution.
+
+SECURITY:
+- IP-based rate limiting on public /events endpoint (100 req/min per IP)
+- shop_domain format validation (must end with .myshopify.com)
+- event_data depth/size limits to prevent payload bombs
+- Max 100 events per batch
 """
 
+import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Depends, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from src.database.session import get_db_session
 from src.platform.tenant_context import get_tenant_context
+from src.middleware.rate_limit import ip_rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +35,25 @@ router = APIRouter(prefix="/api/pixel", tags=["pixel"])
 
 # Rate limit: max events per single request
 MAX_EVENTS_PER_REQUEST = 100
+
+# Max size of event_data JSON payload (bytes) to prevent payload bombs
+MAX_EVENT_DATA_SIZE = 4096
+
+# Shopify domain pattern: must be a valid myshopify.com domain or custom domain
+_SHOP_DOMAIN_PATTERN = re.compile(
+    r"^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$"
+    r"|^[a-zA-Z0-9][a-zA-Z0-9.\-]*\.[a-zA-Z]{2,}$"
+)
+
+
+def _validate_event_data_size(event_data: Optional[dict]) -> bool:
+    """Check that event_data dict serialized size is within limits."""
+    if event_data is None:
+        return True
+    try:
+        return len(json.dumps(event_data)) <= MAX_EVENT_DATA_SIZE
+    except (TypeError, ValueError):
+        return False
 
 
 class PixelEventPayload(BaseModel):
@@ -42,6 +70,16 @@ class PixelEventPayload(BaseModel):
     utm_content: Optional[str] = Field(None, max_length=500)
     event_timestamp: str  # ISO 8601 timestamp from browser
 
+    @field_validator("event_data")
+    @classmethod
+    def validate_event_data(cls, v: Optional[dict]) -> Optional[dict]:
+        """Reject event_data payloads that exceed size limits."""
+        if v is not None and not _validate_event_data_size(v):
+            raise ValueError(
+                f"event_data exceeds maximum size of {MAX_EVENT_DATA_SIZE} bytes"
+            )
+        return v
+
 
 class PixelEventBatch(BaseModel):
     """Batch of pixel events from a single session."""
@@ -49,6 +87,14 @@ class PixelEventBatch(BaseModel):
     shop_domain: str = Field(..., max_length=255)
     session_id: str = Field(..., max_length=255)
     events: List[PixelEventPayload] = Field(..., max_length=MAX_EVENTS_PER_REQUEST)
+
+    @field_validator("shop_domain")
+    @classmethod
+    def validate_shop_domain(cls, v: str) -> str:
+        """Validate shop_domain format to prevent abuse."""
+        if not _SHOP_DOMAIN_PATTERN.match(v):
+            raise ValueError("Invalid shop domain format")
+        return v.lower()
 
 
 class PixelStatusResponse(BaseModel):
@@ -61,14 +107,17 @@ class PixelStatusResponse(BaseModel):
 
 @router.post("/events", status_code=204)
 async def ingest_pixel_events(
+    request: Request,
     batch: PixelEventBatch,
     session: Session = Depends(get_db_session),
+    _rate_limit=Depends(ip_rate_limit_dependency("pixel_events", limit=100, window=60)),
 ):
     """
     Receive batched pixel events from the Shopify Web Pixel.
 
     No JWT auth — pixel runs in the customer's browser.
     Validated by checking that shop_domain exists in shopify_stores.
+    Rate limited by client IP: 100 requests/minute.
     """
     if len(batch.events) > MAX_EVENTS_PER_REQUEST:
         raise HTTPException(

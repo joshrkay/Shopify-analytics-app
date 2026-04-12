@@ -23,6 +23,7 @@ from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
 from src.api.dependencies.entitlements import check_custom_reports_entitlement
+from src.middleware.rate_limit import rate_limit_dependency
 from src.services.dataset_discovery_service import (
     DatasetDiscoveryService,
     ColumnMetadata,
@@ -187,6 +188,7 @@ def _dataset_to_response(ds: DatasetInfo) -> DatasetResponse:
 async def list_datasets(
     request: Request,
     db_session=Depends(check_custom_reports_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("datasets", limit=30, window=60)),
 ):
     """
     List available datasets with column metadata.
@@ -224,6 +226,7 @@ async def get_dataset_columns(
     request: Request,
     dataset_id: int,
     db_session=Depends(check_custom_reports_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("datasets", limit=30, window=60)),
 ):
     """
     Get column metadata for a specific dataset.
@@ -260,6 +263,7 @@ async def validate_config(
     request: Request,
     body: ValidateConfigRequest,
     db_session=Depends(check_custom_reports_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("datasets", limit=30, window=60)),
 ):
     """
     Validate that columns referenced in a report config still exist.
@@ -327,6 +331,7 @@ async def chart_preview(
     request: Request,
     body: ChartPreviewRequest,
     db_session=Depends(check_custom_reports_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("datasets", limit=30, window=60)),
 ):
     """
     Execute a chart preview query.
@@ -451,6 +456,7 @@ async def get_kpi_summary(
     request: Request,
     timeframe: str = Query("30days", description="Timeframe: 7days, 30days, 90days, thisMonth, thisQuarter"),
     db_session=Depends(_get_db_for_kpi),
+    _rate_limit=Depends(rate_limit_dependency("datasets", limit=30, window=60)),
 ):
     """
     Aggregated KPI metrics for the Overview dashboard.
@@ -629,6 +635,7 @@ async def get_channel_breakdown(
     metric: str = Query("revenue", description="Metric: revenue, spend, roas, conversions"),
     timeframe: str = Query("30days"),
     db_session=Depends(_get_db_for_kpi),
+    _rate_limit=Depends(rate_limit_dependency("datasets", limit=30, window=60)),
 ):
     """
     Level-1 channel breakdown for KPI breakdown modals.
@@ -710,6 +717,7 @@ async def get_channel_drilldown(
     request: Request,
     timeframe: str = Query("30days"),
     db_session=Depends(_get_db_for_kpi),
+    _rate_limit=Depends(rate_limit_dependency("datasets", limit=30, window=60)),
 ):
     """
     Level-2 channel drill-down: daily revenue trend + top products for one channel.

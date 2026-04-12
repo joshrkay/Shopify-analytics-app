@@ -21,7 +21,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.platform.tenant_context import TenantContextMiddleware
 from src.platform.csp_middleware import EmbedOnlyCSPMiddleware
+from src.platform.logging_config import configure_logging
 from src.middleware.audit_middleware import AuditLoggingMiddleware
+from src.middleware.request_timeout import RequestTimeoutMiddleware
 from src.api.routes import health
 from src.api.routes import debug
 from src.api.routes import billing
@@ -82,12 +84,73 @@ from src.api.routes import settings
 from src.platform.db_readiness import REQUIRED_IDENTITY_TABLES, check_required_tables
 from src.database.session import get_db_session_sync
 
-# Configure structured logging
-logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Configure structured logging (JSON in production, colored console in dev).
+# Must run before any logger.info/error call so every downstream logger
+# inherits the structlog formatter and captures extra={} fields as fields.
+configure_logging(
+    env=os.getenv("ENV", "development"),
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
 )
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Production env validation
+# ---------------------------------------------------------------------------
+
+# Variables that MUST be set when ENV=production. A missing value here
+# causes the container to refuse to start, instead of starting and then
+# returning 500s when the first real user hits an endpoint that needs the
+# secret (e.g. first webhook, first rate-limit check, first Clerk API call).
+_REQUIRED_PRODUCTION_ENV_VARS: tuple[str, ...] = (
+    "DATABASE_URL",
+    "REDIS_URL",
+    "CLERK_FRONTEND_API",
+    "CLERK_SECRET_KEY",
+    "SHOPIFY_API_KEY",
+    "SHOPIFY_API_SECRET",
+    "ENCRYPTION_KEY",
+)
+
+# Operational (non-functional) vars — we warn but do not fail if missing.
+_WARN_ONLY_PRODUCTION_ENV_VARS: tuple[str, ...] = (
+    "SENTRY_DSN",
+)
+
+
+def _validate_production_env() -> None:
+    """
+    Fail-fast when critical env vars are missing in production.
+
+    In non-production environments, missing vars are logged as warnings
+    but do not block startup (preserves developer UX).
+    """
+    env = (os.getenv("ENV") or "development").lower()
+    missing_required = [v for v in _REQUIRED_PRODUCTION_ENV_VARS if not os.getenv(v)]
+    missing_warn_only = [v for v in _WARN_ONLY_PRODUCTION_ENV_VARS if not os.getenv(v)]
+
+    if env == "production":
+        for var in missing_warn_only:
+            logger.warning(
+                "Operational env var not set in production",
+                extra={"env_var": var},
+            )
+        if missing_required:
+            logger.error(
+                "Required production env vars are missing",
+                extra={"missing": missing_required},
+            )
+            raise RuntimeError(
+                "Refusing to start in production with missing env vars: "
+                + ", ".join(missing_required)
+            )
+        logger.info("Production env validation passed")
+    else:
+        if missing_required:
+            logger.warning(
+                "Env vars would be required in production",
+                extra={"env": env, "missing": missing_required},
+            )
 
 
 @asynccontextmanager
@@ -95,6 +158,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     logger.info("Starting MarkInsight API")
+
+    # Fail-fast if required production env vars are missing. Runs before
+    # any other startup probe so secret-misconfiguration errors have
+    # precedence over JWKS-unreachable / DB-unreachable errors.
+    _validate_production_env()
 
     # Check Clerk authentication environment variables
     # These are optional - app can run without them but auth will be disabled
@@ -227,6 +295,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Request timeout middleware.
+#
+# Added BEFORE CORSMiddleware so CORS sits outside it in the stack: on a 504
+# timeout response, CORS still applies Access-Control-Allow-* headers on the
+# way back. TenantContextMiddleware (added later) is outer to this middleware
+# and sets request.state.tenant_context before call_next returns, so the
+# timeout handler can still read the tenant for structured logging.
+app.add_middleware(RequestTimeoutMiddleware)
+
 # CORS middleware (configure for your frontend domain)
 # Include Shopify Admin in CORS origins for embedding
 _cors_raw = os.getenv("CORS_ORIGINS", "")
@@ -243,8 +320,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Requested-With",
+        "X-Correlation-ID",
+        "Accept",
+        "Origin",
+    ],
 )
 
 # CSP middleware for Shopify Admin embedding (only applied to /api/v1/embed routes)

@@ -2,7 +2,10 @@
 Debug endpoints for environment and deployment status.
 These endpoints bypass authentication for troubleshooting.
 
-SECURITY: Disabled in production (ENV=production) to prevent information leakage.
+SECURITY:
+- Disabled in production (ENV=production) to prevent information leakage.
+- Requires DEBUG_TOKEN query parameter when set in environment (defense-in-depth).
+- Never exposes secret value prefixes — only shows configured: true/false.
 """
 
 import os
@@ -11,27 +14,38 @@ import json
 import logging
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Query
 from fastapi.responses import JSONResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _production_guard():
-    """Return a 404 response if running in production, else None."""
+def _production_guard(token: str | None = None):
+    """
+    Return a 404 response if running in production, else None.
+
+    If DEBUG_TOKEN env var is set, also requires a matching token
+    query parameter as a secondary guard.
+    """
     if os.getenv("ENV") == "production":
         return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+    # Secondary guard: if DEBUG_TOKEN is configured, require it
+    expected_token = os.getenv("DEBUG_TOKEN")
+    if expected_token and token != expected_token:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+
     return None
 
 
 @router.get("/debug/env-status")
-def env_status():
+def env_status(token: str | None = Query(None)):
     """
     Check which environment variables are configured.
-    Returns status without exposing sensitive values.
+    Returns configured true/false without exposing any value content.
     """
-    blocked = _production_guard()
+    blocked = _production_guard(token)
     if blocked:
         return blocked
     # Environment variables to check
@@ -51,17 +65,9 @@ def env_status():
     status = {}
     for var in env_vars:
         value = os.getenv(var)
-        if value:
-            # Show first 4 chars to confirm it's set, but don't expose full value
-            status[var] = {
-                "configured": True,
-                "prefix": value[:4] + "..." if len(value) > 4 else "***"
-            }
-        else:
-            status[var] = {
-                "configured": False,
-                "prefix": None
-            }
+        status[var] = {
+            "configured": bool(value),
+        }
 
     # Summary counts
     configured_count = sum(1 for v in status.values() if v["configured"])
@@ -79,7 +85,7 @@ def env_status():
 
 
 @router.get("/debug/auth-check")
-async def auth_check(request: Request):
+async def auth_check(request: Request, token: str | None = Query(None)):
     """
     Diagnose JWT/JWKS authentication issues.
 
@@ -90,7 +96,7 @@ async def auth_check(request: Request):
     4. If Authorization header is provided, decodes (without verifying)
        the JWT payload to show issuer/expiry/org_id for comparison
     """
-    blocked = _production_guard()
+    blocked = _production_guard(token)
     if blocked:
         return blocked
 

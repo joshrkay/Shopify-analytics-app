@@ -18,6 +18,7 @@ from sqlalchemy import text
 
 from src.platform.tenant_context import get_tenant_context
 from src.api.dependencies.entitlements import check_cohort_analysis_entitlement
+from src.middleware.rate_limit import rate_limit_dependency
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analytics/cohort-analysis", tags=["cohort_analysis"])
@@ -54,6 +55,7 @@ async def get_cohort_analysis(
     request: Request,
     timeframe: str = Query("12m", description="Lookback: 3m, 6m, 12m"),
     db=Depends(check_cohort_analysis_entitlement),
+    _rate_limit=Depends(rate_limit_dependency("cohort_analysis", limit=20, window=60)),
 ):
     """Return cohort retention grid for the heatmap."""
     tenant_ctx = get_tenant_context(request)
