@@ -90,6 +90,14 @@ services:
       - key: LOG_LEVEL
         value: "INFO"
 
+      # ── Request handling ──────────────────────────────────────────
+      # Hard ceiling on any single HTTP request (seconds). Bounds
+      # worst-case latency so a slow SQL query or wedged downstream
+      # call cannot exhaust the DB connection pool. Enforced by
+      # RequestTimeoutMiddleware in backend/src/middleware/request_timeout.py.
+      - key: REQUEST_TIMEOUT_SECONDS
+        value: "30"
+
       # ── OAuth redirect URI ────────────────────────────────────────
       - key: OAUTH_REDIRECT_URI
         value: "https://app.markinsight.net/api/sources/oauth/callback"
