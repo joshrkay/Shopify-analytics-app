@@ -279,10 +279,13 @@ async def export_data(
     table = DATASET_TO_TABLE[body.dataset]
     dataset_info = AVAILABLE_DATASETS[body.dataset]
 
-    # SECURITY: Defensive assertion — even though table/columns are from
+    # SECURITY: Defensive check — even though table/columns are from
     # hardcoded dicts, verify they are in the known allowlist to prevent
     # SQL injection if the mappings are ever modified to accept dynamic values.
-    assert table in DATASET_TO_TABLE.values(), f"Unexpected table: {table}"
+    # Do NOT use ``assert`` here: Python stripped of asserts (``python -O``)
+    # would silently bypass this gate.
+    if table not in DATASET_TO_TABLE.values():
+        raise RuntimeError(f"Unexpected table: {table}")
     columns = ", ".join(dataset_info.columns)
 
     export_id = str(uuid.uuid4())
