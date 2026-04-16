@@ -797,6 +797,7 @@ class TenantContextMiddleware:
             or request.url.path in PUBLIC_PATHS
             or request.url.path.startswith("/api/webhooks/")
             or request.url.path.startswith("/api/pixel/events")
+            or request.url.path.startswith("/api/test/")  # E2E test seed/teardown (ENV=test guarded in route)
             or request.url.path.startswith("/assets/")
             or request.url.path.endswith(STATIC_EXTENSIONS)
             or not request.url.path.startswith("/api/")
@@ -842,24 +843,58 @@ class TenantContextMiddleware:
         token = credentials.credentials
 
         try:
-            # Get signing key from JWKS (PyJWKClient handles fetching/caching)
-            jwks_client = self._get_jwks_client()
-            signing_key = jwks_client.get_signing_key(token)
+            # E2E mock auth mode: verify JWT with a local RSA public key
+            # instead of fetching JWKS from Clerk. Activated by E2E_AUTH_MODE=mock.
+            e2e_auth_mode = os.getenv("E2E_AUTH_MODE")
+            if e2e_auth_mode == "mock":
+                # Safety: never allow mock auth in production
+                current_env = os.getenv("ENV", "").lower()
+                if current_env not in ("test", "development", ""):
+                    logger.error("E2E_AUTH_MODE=mock is not allowed in %s environment", current_env)
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Invalid auth configuration",
+                    )
+                e2e_public_key_path = os.getenv("E2E_PUBLIC_KEY_PATH")
+                if e2e_public_key_path and os.path.exists(e2e_public_key_path):
+                    with open(e2e_public_key_path, "r") as f:
+                        public_key_pem = f.read()
+                    payload = jwt.decode(
+                        token,
+                        public_key_pem,
+                        algorithms=["RS256"],
+                        options={
+                            "verify_signature": True,
+                            "verify_aud": False,
+                            "verify_iss": False,  # E2E tokens use test issuer
+                            "verify_exp": True,
+                        },
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="E2E mock auth is enabled, but public key was not found at path: "
+                               + str(e2e_public_key_path),
+                    )
+            else:
+                # Production path: Get signing key from JWKS (PyJWKClient handles fetching/caching)
+                jwks_client = self._get_jwks_client()
+                signing_key = jwks_client.get_signing_key(token)
 
-            # Decode and verify token using PyJWT
-            # Clerk uses RS256 and issuer is the Clerk Frontend API URL
-            payload = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["RS256"],
-                issuer=self.issuer,
-                options={
-                    "verify_signature": True,
-                    "verify_aud": False,  # Clerk doesn't always include aud claim
-                    "verify_iss": True,
-                    "verify_exp": True
-                }
-            )
+                # Decode and verify token using PyJWT
+                # Clerk uses RS256 and issuer is the Clerk Frontend API URL
+                payload = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=["RS256"],
+                    issuer=self.issuer,
+                    options={
+                        "verify_signature": True,
+                        "verify_aud": False,  # Clerk doesn't always include aud claim
+                        "verify_iss": True,
+                        "verify_exp": True
+                    }
+                )
 
             # Extract tenant context from Clerk JWT payload
             # Clerk claims:
