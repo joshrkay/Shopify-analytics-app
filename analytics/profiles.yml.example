@@ -71,6 +71,7 @@ markinsight:
       threads: 4
       sslmode: "{{ env_var('DB_SSLMODE', 'require') }}"
 
+
     production:
       type: postgres
       host: "{{ env_var('DB_HOST', 'localhost') }}"
@@ -80,4 +81,4 @@ markinsight:
       dbname: "{{ env_var('DB_NAME', 'markinsight') }}"
       schema: public        # fallback only; named schemas use generate_schema_name macro
       threads: 4
-      sslmode: "{{ env_var('DB_SSLMODE', 'require') }}"
+      sslmode: "{{ env_var('DB_SSLMODE', 'disable') }}"
