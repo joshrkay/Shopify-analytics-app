@@ -95,8 +95,8 @@ def main():
         "models/staging/_tenant_airbyte_connections.sql",
         "models/staging/shopify/stg_shopify_orders.sql",
         "models/staging/shopify/stg_shopify_customers.sql",
-        "models/staging/ads/stg_meta_ads.sql",
-        "models/staging/ads/stg_google_ads.sql",
+        "models/staging/facebook/stg_facebook_ads_performance.sql",
+        "models/staging/google/stg_google_ads_performance.sql",
         "tests/tenant_isolation.sql",
         "tests/test_tenant_mapping.sql"
     ]
@@ -143,8 +143,8 @@ def main():
         "models/staging/_tenant_airbyte_connections.sql",
         "models/staging/shopify/stg_shopify_orders.sql",
         "models/staging/shopify/stg_shopify_customers.sql",
-        "models/staging/ads/stg_meta_ads.sql",
-        "models/staging/ads/stg_google_ads.sql",
+        "models/staging/facebook/stg_facebook_ads_performance.sql",
+        "models/staging/google/stg_google_ads_performance.sql",
         "models/staging/schema.yml",
         "tests/tenant_isolation.sql",
         "tests/test_tenant_mapping.sql",
